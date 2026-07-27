@@ -58,7 +58,7 @@ def test_legal_squad_and_formation_pass_validation() -> None:
 
 def test_squad_validation_reports_multiple_failures() -> None:
     legal = make_legal_squad()
-    expensive_duplicate = Player(1, "Duplicate", 1, Position.FWD, 500)
+    expensive_duplicate = Player(1, "Duplicate", 1, Position.MID, 500)
     invalid = Squad(players=legal.players[:-1] + (expensive_duplicate,))
 
     codes = {error.code for error in validate_squad(invalid, RULES)}
