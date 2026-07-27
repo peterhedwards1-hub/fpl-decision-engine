@@ -96,6 +96,7 @@ def test_collects_archives_and_ingests_snapshot(tmp_path) -> None:
         result = LiveSnapshotCollector(
             database,
             archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
             client=client,
             clock=lambda: captured_at,
         ).collect(season_code="2026-27", season_name="2026/27")
@@ -121,6 +122,8 @@ def test_collects_archives_and_ingests_snapshot(tmp_path) -> None:
     assert manifest["content_sha256"] == expected_digest
     assert (result.archive_directory / "bootstrap-static.json").read_bytes() == client.bootstrap.body
     assert (result.archive_directory / "fixtures.json").read_bytes() == client.fixture_payload.body
+    assert result.report_index.exists()
+    assert result.latest_report_index.exists()
 
 
 def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) -> None:
@@ -135,6 +138,7 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
         first = LiveSnapshotCollector(
             database,
             archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
             client=FakeClient(_bootstrap(price=75), _fixtures()),
             clock=lambda: next(times),
         )
@@ -142,6 +146,7 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
         second = LiveSnapshotCollector(
             database,
             archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
             client=FakeClient(_bootstrap(price=76), _fixtures()),
             clock=lambda: next(times),
         )
@@ -162,6 +167,7 @@ def test_rejects_malformed_bootstrap_before_database_ingestion(tmp_path) -> None
         collector = LiveSnapshotCollector(
             database,
             archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
             client=FakeClient({"events": []}, []),
             clock=lambda: datetime(2026, 7, 27, 12, 0, tzinfo=UTC),
         )
