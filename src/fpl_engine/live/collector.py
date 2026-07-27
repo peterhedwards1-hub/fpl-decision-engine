@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ from fpl_engine.history.records import (
 )
 
 from .client import ApiPayload, FplApiClient
+from .report import write_verification_report
 
 POSITION_BY_ELEMENT_TYPE = {
     1: Position.GK,
@@ -43,6 +45,9 @@ class SnapshotClient(Protocol):
 class CollectionResult:
     ingestion_run_id: int
     archive_directory: Path
+    report_directory: Path
+    report_index: Path
+    latest_report_index: Path
     season_code: str
     gameweek_number: int
     teams: int
@@ -58,15 +63,19 @@ class LiveSnapshotCollector:
         database: HistoricalDatabase,
         *,
         archive_root: str | Path = "data/raw/fpl",
+        report_root: str | Path = "data/reports/fpl",
         client: SnapshotClient | None = None,
-        clock: callable | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.database = database
         self.archive_root = Path(archive_root)
+        self.report_root = Path(report_root)
         self.client = client or FplApiClient()
         self.clock = clock or (lambda: datetime.now(UTC))
 
-    def collect(self, *, season_code: str, season_name: str | None = None) -> CollectionResult:
+    def collect(
+        self, *, season_code: str, season_name: str | None = None
+    ) -> CollectionResult:
         captured_at = self.clock()
         bootstrap = self.client.bootstrap_static()
         fixtures = self.client.fixtures()
@@ -96,9 +105,21 @@ class LiveSnapshotCollector:
             content_sha256=digest,
         )
         run_id = self.database.ingest_bundle(source, bundle)
+        report = write_verification_report(
+            self.database,
+            report_root=self.report_root,
+            season_code=season_code,
+            gameweek_number=gameweek_number,
+            captured_at=captured_at,
+            ingestion_run_id=run_id,
+            archive_directory=archive_directory,
+        )
         return CollectionResult(
             ingestion_run_id=run_id,
             archive_directory=archive_directory,
+            report_directory=report.directory,
+            report_index=report.index_path,
+            latest_report_index=report.latest_index_path,
             season_code=season_code,
             gameweek_number=gameweek_number,
             teams=len(bundle.teams),
