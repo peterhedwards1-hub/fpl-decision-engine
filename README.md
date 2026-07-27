@@ -4,8 +4,8 @@ A personal, reproducible Fantasy Premier League decision-support system.
 
 ## Current status
 
-Milestones 0 and 1 establish the rules, domain and historical-data foundations used by
-later collection, projection, optimisation and front-end work.
+Milestones 0–2 establish the rules, historical-data and live-collection foundations used by
+later projection, optimisation and front-end work.
 
 Implemented:
 
@@ -19,6 +19,8 @@ Implemented:
 - source provenance and ingestion audit records;
 - idempotent, transactional historical imports;
 - a project-owned normalised CSV import format;
+- official FPL bootstrap and fixture snapshot collection;
+- immutable timestamped raw JSON archives with checksums;
 - automated tests and GitHub Actions CI.
 
 ## Development setup
@@ -51,6 +53,30 @@ print(rules.squad.budget_tenths)  # 1000 = £100.0m
 ```
 
 Prices and budgets are stored as integer tenths to avoid floating-point money errors.
+
+## Live snapshot collection
+
+Collect the current official FPL player, team, Gameweek and fixture data:
+
+```bash
+fpl-collect \
+  --database data/fpl.sqlite3 \
+  --archive-root data/raw/fpl \
+  --season-code 2026-27 \
+  --season-name "2026/27"
+```
+
+Each run:
+
+1. fetches `bootstrap-static` and `fixtures` from the official FPL service;
+2. validates the minimum response shape;
+3. archives the exact response bytes under a UTC timestamp;
+4. writes a manifest containing endpoint URLs and a combined SHA-256 checksum;
+5. normalises teams, players, Gameweeks, fixtures, price, ownership and availability;
+6. atomically upserts the snapshot into SQLite with ingestion provenance.
+
+The collector deliberately uses only public, unauthenticated endpoints. It does not access a
+manager's private team and does not make changes to an FPL account.
 
 ## Historical database
 
@@ -97,11 +123,12 @@ than placing source quirks inside the database layer.
 config/seasons/           Versioned season rules
 src/fpl_engine/           Core domain and rules code
 src/fpl_engine/history/   Historical schema, records, import and query code
+src/fpl_engine/live/      Official current-season collection and transformation
 tests/                    Automated tests
 docs/                     Product and implementation documentation
 ```
 
 ## Next milestone
 
-Milestone 2 will collect current-season official data into immutable, timestamped raw
-snapshots and normalise it into the historical database.
+Milestone 3 will add manual squad entry, including bank, free transfers, chips and player
+selling prices, without requiring FPL authentication.
