@@ -39,7 +39,8 @@ class FplApiClient:
 
     def get(self, path: str) -> ApiPayload:
         url = f"{self.base_url}/{path.lstrip('/')}"
-        request = Request(url, headers={"Accept": "application/json", "User-Agent": self.user_agent})
+        headers = {"Accept": "application/json", "User-Agent": self.user_agent}
+        request = Request(url, headers=headers)
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 body = response.read()
