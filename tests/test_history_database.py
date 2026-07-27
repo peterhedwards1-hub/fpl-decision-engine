@@ -116,7 +116,7 @@ def test_bundle_ingestion_preserves_double_gameweek_fixtures(tmp_path) -> None:
         assert totals["expected_goals"] == pytest.approx(0.8)
         assert totals["price_tenths"] == 75
         assert run["status"] == "completed"
-        assert run["row_count"] == 9
+        assert run["row_count"] == 10
         assert run["content_sha256"] == "abc123"
 
 
