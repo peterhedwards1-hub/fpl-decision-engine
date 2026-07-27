@@ -1,0 +1,73 @@
+{
+  "season": "2026-27",
+  "currency": "GBP",
+  "squad": {
+    "budget_tenths": 1000,
+    "squad_size": 15,
+    "max_players_per_team": 3,
+    "position_counts": {
+      "GK": 2,
+      "DEF": 5,
+      "MID": 5,
+      "FWD": 3
+    },
+    "starting_size": 11,
+    "formation_min": {
+      "GK": 1,
+      "DEF": 3,
+      "MID": 2,
+      "FWD": 1
+    },
+    "formation_max": {
+      "GK": 1,
+      "DEF": 5,
+      "MID": 5,
+      "FWD": 3
+    }
+  },
+  "scoring": {
+    "appearance_under_60": 1,
+    "appearance_60_or_more": 2,
+    "goals": {
+      "GK": 10,
+      "DEF": 6,
+      "MID": 5,
+      "FWD": 4
+    },
+    "assists": 3,
+    "clean_sheets": {
+      "GK": 4,
+      "DEF": 4,
+      "MID": 1,
+      "FWD": 0
+    },
+    "goals_conceded_threshold_minutes": 60,
+    "goals_conceded_per_two": {
+      "GK": -1,
+      "DEF": -1,
+      "MID": 0,
+      "FWD": 0
+    },
+    "saves_per_point": 3,
+    "penalty_save": 5,
+    "penalty_miss": -2,
+    "yellow_card": -1,
+    "red_card": -3,
+    "own_goal": -2,
+    "bonus_max": 3,
+    "defensive_contribution_thresholds": {
+      "GK": 1000000,
+      "DEF": 10,
+      "MID": 12,
+      "FWD": 12
+    },
+    "defensive_contribution_points": 2
+  },
+  "transfers": {
+    "initial_free_transfers": 1,
+    "maximum_free_transfers": 5,
+    "transfer_hit_cost": 4
+  },
+  "chip_sets": 2,
+  "first_chip_set_expiry_gameweek": 19
+}
