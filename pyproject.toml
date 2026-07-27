@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fpl-decision-engine"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reproducible Fantasy Premier League decision support"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -14,6 +14,7 @@ dependencies = []
 
 [project.scripts]
 fpl-history = "fpl_engine.history.cli:main"
+fpl-collect = "fpl_engine.live.cli:main"
 
 [project.optional-dependencies]
 dev = [
