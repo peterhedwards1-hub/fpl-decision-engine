@@ -32,7 +32,17 @@ jobs:
           python -m pip install --quiet -e ".[dev]"
 
       - name: Lint
-        run: python -m ruff check . --output-format=concise
+        run: python -m ruff check . --output-format=concise 2>&1 | tee ruff-output.txt
+
+      - name: Upload lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-output
+          path: ruff-output.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Test
+        if: always()
         run: python -m pytest
