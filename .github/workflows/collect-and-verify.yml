@@ -50,7 +50,7 @@ jobs:
           echo "## FPL verification report" >> "$GITHUB_STEP_SUMMARY"
           echo "Download the artifact below and open:" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          echo "reports/$SEASON_CODE/latest/index.html" >> "$GITHUB_STEP_SUMMARY"
+          echo "data/reports/fpl/$SEASON_CODE/latest/index.html" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload database and verification files
