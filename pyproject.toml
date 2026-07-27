@@ -4,13 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fpl-decision-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reproducible Fantasy Premier League decision support"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Peter Edwards" }]
 dependencies = []
+
+[project.scripts]
+fpl-history = "fpl_engine.history.cli:main"
 
 [project.optional-dependencies]
 dev = [
