@@ -120,8 +120,10 @@ def test_collects_archives_and_ingests_snapshot(tmp_path) -> None:
         client.bootstrap.body + b"\n" + client.fixture_payload.body
     ).hexdigest()
     assert manifest["content_sha256"] == expected_digest
-    assert (result.archive_directory / "bootstrap-static.json").read_bytes() == client.bootstrap.body
-    assert (result.archive_directory / "fixtures.json").read_bytes() == client.fixture_payload.body
+    bootstrap_archive = result.archive_directory / "bootstrap-static.json"
+    assert bootstrap_archive.read_bytes() == client.bootstrap.body
+    fixtures_archive = result.archive_directory / "fixtures.json"
+    assert fixtures_archive.read_bytes() == client.fixture_payload.body
     assert result.report_index.exists()
     assert result.latest_report_index.exists()
 
@@ -178,5 +180,6 @@ def test_rejects_malformed_bootstrap_before_database_ingestion(tmp_path) -> None
         else:
             raise AssertionError("Malformed payload should fail")
 
-        count = database.connection.execute("SELECT COUNT(*) FROM ingestion_runs").fetchone()[0]
+        query = "SELECT COUNT(*) FROM ingestion_runs"
+        count = database.connection.execute(query).fetchone()[0]
         assert count == 0
