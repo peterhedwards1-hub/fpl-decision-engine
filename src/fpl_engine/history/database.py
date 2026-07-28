@@ -7,6 +7,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .records import (
@@ -43,6 +44,12 @@ def _observation_mode_filter(mode: str) -> str:
 
 def _stable_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _utc_timestamp(value: datetime, field_name: str) -> str:
+    if value.tzinfo is None:
+        raise ValueError(f"{field_name} must be timezone-aware")
+    return value.astimezone(UTC).isoformat()
 
 
 class HistoricalDatabase:
@@ -112,8 +119,25 @@ class HistoricalDatabase:
 
     def _migrate_v3_to_v4(self) -> None:
         try:
+            timing_rows = self._validate_v3_timing_rows()
+            ingestion_rows = self._validate_v3_ingestion_timestamps()
             self.connection.execute("PRAGMA foreign_keys = OFF")
             self.connection.executescript(MIGRATE_V3_TO_V4_SQL)
+            for row_id, observed_at in timing_rows.items():
+                if observed_at is not None:
+                    self.connection.execute(
+                        """
+                        UPDATE player_gameweek_observations
+                        SET observed_at = ?
+                        WHERE id = ?
+                        """,
+                        (observed_at, row_id),
+                    )
+            for run_id, retrieved_at in ingestion_rows.items():
+                self.connection.execute(
+                    "UPDATE ingestion_runs SET retrieved_at = ? WHERE id = ?",
+                    (retrieved_at, run_id),
+                )
             foreign_key_issues = self.connection.execute(
                 "PRAGMA foreign_key_check"
             ).fetchall()
@@ -129,6 +153,79 @@ class HistoricalDatabase:
             raise RuntimeError(f"Version 3 to 4 migration failed safely: {error}") from error
         finally:
             self.connection.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_v3_timing_rows(self) -> dict[int, str | None]:
+        rows = self.connection.execute(
+            """
+            SELECT id, timing_quality, observed_at
+            FROM player_gameweek_observations
+            ORDER BY id
+            """
+        ).fetchall()
+        normalized: dict[int, str | None] = {}
+        for row in rows:
+            row_id = int(row["id"])
+            quality = row["timing_quality"]
+            observed_at = row["observed_at"]
+            if quality not in {"exact", "date_only", "unknown"}:
+                raise RuntimeError(
+                    f"Version 3 observation row {row_id} has invalid timing_quality "
+                    f"value {quality!r}"
+                )
+            if quality == "unknown":
+                if observed_at is not None:
+                    raise RuntimeError(
+                        "Version 3 observation row "
+                        f"{row_id} is inconsistent: timing_quality='unknown' "
+                        "has an observed_at timestamp"
+                    )
+                normalized[row_id] = None
+                continue
+            if observed_at is None:
+                raise RuntimeError(
+                    "Version 3 observation row "
+                    f"{row_id} is inconsistent: timing_quality={quality!r} "
+                    "requires an observed_at timestamp"
+                )
+            try:
+                parsed = datetime.fromisoformat(observed_at)
+            except ValueError as error:
+                raise RuntimeError(
+                    f"Version 3 observation row {row_id} has invalid observed_at "
+                    f"value {observed_at!r}"
+                ) from error
+            if parsed.tzinfo is None:
+                raise RuntimeError(
+                    f"Version 3 observation row {row_id} has a naive observed_at "
+                    f"value {observed_at!r}"
+                )
+            normalized[row_id] = (
+                parsed.astimezone(UTC).isoformat() if quality == "exact" else None
+            )
+        return normalized
+
+    def _validate_v3_ingestion_timestamps(self) -> dict[int, str]:
+        rows = self.connection.execute(
+            "SELECT id, retrieved_at FROM ingestion_runs ORDER BY id"
+        ).fetchall()
+        normalized: dict[int, str] = {}
+        for row in rows:
+            run_id = int(row["id"])
+            retrieved_at = row["retrieved_at"]
+            try:
+                parsed = datetime.fromisoformat(retrieved_at)
+            except (TypeError, ValueError) as error:
+                raise RuntimeError(
+                    f"Version 3 ingestion run {run_id} has invalid retrieved_at "
+                    f"value {retrieved_at!r}"
+                ) from error
+            if parsed.tzinfo is None:
+                raise RuntimeError(
+                    f"Version 3 ingestion run {run_id} has a naive retrieved_at "
+                    f"value {retrieved_at!r}"
+                )
+            normalized[run_id] = parsed.astimezone(UTC).isoformat()
+        return normalized
 
     @property
     def schema_version(self) -> int:
@@ -147,6 +244,7 @@ class HistoricalDatabase:
             self.connection.commit()
 
     def start_ingestion(self, source: IngestionSource) -> int:
+        retrieved_at = _utc_timestamp(source.retrieved_at, "ingestion retrieved_at")
         cursor = self.connection.execute(
             """
             INSERT INTO ingestion_runs (
@@ -158,7 +256,7 @@ class HistoricalDatabase:
                 source.name,
                 source.identifier_namespace,
                 source.url,
-                source.retrieved_at.isoformat(),
+                retrieved_at,
                 source.content_sha256,
                 source.source_revision,
                 source.adapter_version,
@@ -770,7 +868,11 @@ class HistoricalDatabase:
         gameweek_id = self._gameweek_id(season_id, record.gameweek_number)
         source_key = record.source_observation_key
         if source_key is None and record.observation_kind == "live_pre_deadline":
-            timestamp = record.captured_at.isoformat() if record.captured_at else "unknown"
+            timestamp = (
+                _utc_timestamp(record.captured_at, "observation captured_at")
+                if record.captured_at
+                else "unknown"
+            )
             source_key = _stable_hash(
                 "|".join(
                     (
@@ -841,7 +943,9 @@ class HistoricalDatabase:
                 player_season_id,
                 gameweek_id,
                 record.observation_kind,
-                record.captured_at.isoformat() if record.captured_at else None,
+                _utc_timestamp(record.captured_at, "observation captured_at")
+                if record.captured_at
+                else None,
                 record.observed_on.isoformat() if record.observed_on else None,
                 record.timing_quality,
                 team_id,

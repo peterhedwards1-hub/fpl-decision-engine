@@ -175,6 +175,7 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
             JOIN player_gameweek_snapshots snapshots
               ON snapshots.player_season_id = ps.id
             WHERE ps.season_id = (SELECT id FROM seasons WHERE code = '2026-27')
+            ORDER BY snapshots.captured_at DESC, snapshots.id DESC
             """
         ).fetchone()
         assert player_season["source_team_id"] == "1"
@@ -186,6 +187,57 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
         assert "South City" in second_result.latest_report_index.read_text(
             encoding="utf-8"
         )
+
+
+def test_live_report_uses_pre_deadline_observation_when_post_gameweek_exists(tmp_path) -> None:
+    captured_at = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        collector = LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(_bootstrap(price=75), _fixtures()),
+            clock=lambda: captured_at,
+        )
+        collector.collect(season_code="2026-27")
+        player_season_id = database.connection.execute(
+            "SELECT id FROM player_seasons WHERE source_player_id = '101'"
+        ).fetchone()[0]
+        gameweek_id = database.connection.execute(
+            "SELECT id FROM gameweeks WHERE number = 1"
+        ).fetchone()[0]
+        team_id = database.connection.execute(
+            "SELECT id FROM teams WHERE source_team_id = '1'"
+        ).fetchone()[0]
+        database.connection.execute(
+            """
+            INSERT INTO player_gameweek_observations (
+                player_season_id, gameweek_id, observation_kind, observed_at,
+                timing_quality, team_id, price_tenths, source_observation_key,
+                provenance_run_id
+            ) VALUES (?, ?, 'post_gameweek', ?, 'exact', ?, 99, 'post-existing', 1)
+            """,
+            (
+                player_season_id,
+                gameweek_id,
+                captured_at.isoformat(),
+                team_id,
+            ),
+        )
+        database.connection.commit()
+
+        result = LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(_bootstrap(price=76), _fixtures()),
+            clock=lambda: captured_at.replace(microsecond=1),
+        ).collect(season_code="2026-27")
+
+        report = result.latest_report_index.read_text(encoding="utf-8")
+        assert "£7.6m" in report
+        assert "£9.9m" not in report
 
 
 def test_live_codes_ignore_temporary_values_but_keep_opta_and_later_permanent_code(

@@ -158,3 +158,47 @@ def test_latest_observation_modes_do_not_mix_pre_and_post_gameweek(tmp_path) -> 
         assert database.player_gameweek_totals(
             "2025-26", "101", 1, observation_mode="latest_post_gameweek"
         )["price_tenths"] == 76
+
+
+def test_exact_timestamps_are_stored_and_ordered_in_utc(tmp_path) -> None:
+    base = make_bundle()
+    # 12:30+02:00 is 10:30 UTC, while 11:00 UTC is the later instant.
+    earlier = replace(
+        base.gameweek_snapshots[0],
+        captured_at=datetime.fromisoformat("2025-08-15T12:30:00+02:00"),
+        source_observation_key="offset-earlier",
+        price_tenths=75,
+    )
+    later = replace(
+        base.gameweek_snapshots[0],
+        captured_at=datetime.fromisoformat("2025-08-15T11:00:00+00:00"),
+        source_observation_key="offset-later",
+        price_tenths=76,
+    )
+    first_source = replace(
+        SOURCE,
+        retrieved_at=datetime.fromisoformat("2025-08-15T12:00:00+02:00"),
+    )
+    second_source = replace(
+        SOURCE,
+        retrieved_at=datetime.fromisoformat("2025-08-15T11:30:00+00:00"),
+        content_sha256="second-offset",
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(first_source, replace(base, gameweek_snapshots=(earlier,)))
+        database.ingest_bundle(second_source, replace(base, gameweek_snapshots=(later,)))
+
+        rows = database.connection.execute(
+            """
+            SELECT observations.observed_at, ingestion_runs.retrieved_at
+            FROM player_gameweek_observations observations
+            JOIN ingestion_runs ON ingestion_runs.id = observations.provenance_run_id
+            ORDER BY observations.id
+            """
+        ).fetchall()
+        assert rows[0]["observed_at"] == "2025-08-15T10:30:00+00:00"
+        assert rows[1]["observed_at"] == "2025-08-15T11:00:00+00:00"
+        assert rows[0]["retrieved_at"] == "2025-08-15T10:00:00+00:00"
+        assert rows[1]["retrieved_at"] == "2025-08-15T11:30:00+00:00"
+        assert database.player_gameweek_totals("2025-26", "101", 1)["price_tenths"] == 76

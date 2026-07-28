@@ -116,6 +116,7 @@ class LiveSnapshotCollector:
             captured_at=captured_at,
             ingestion_run_id=run_id,
             archive_directory=archive_directory,
+            observation_mode="latest_pre_deadline",
         )
         return CollectionResult(
             ingestion_run_id=run_id,

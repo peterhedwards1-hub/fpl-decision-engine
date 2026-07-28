@@ -73,8 +73,11 @@ only for the table swap, preserves existing row IDs and copies all domain/proven
 records. Existing snapshot rows become `live_pre_deadline` observations with their old
 captured timestamp and a `legacy-v2-{id}` idempotency key. The v3-to-v4 migration adds
 `observed_on`, converts any legacy date-only representation to a date, checks foreign keys
-before committing, fails clearly on errors, is repeatable, and rejects newer schema
-versions. No domain rows are recreated by ordinary initialisation.
+before committing, normalises exact observation and ingestion timestamps to UTC, fails
+clearly on ambiguous v3 timing rows, is repeatable, and rejects newer schema versions.
+No domain rows are recreated by ordinary initialisation. A v3 row with `unknown` timing
+and a timestamp, or a timestamp-less `exact`/`date_only` row, is rejected because its
+meaning cannot be recovered without inventing information.
 
 When a migrated season-specific record has no stable identifier and a later delivery
 supplies an official FPL or Opta identifier, reconciliation is explicit and transactional.

@@ -116,6 +116,10 @@ Each run:
    same archived capture idempotently refreshes its observation;
 7. reads the normalised rows back from SQLite and creates a verification report.
 
+Live verification reports explicitly select the latest pre-deadline observation, even when
+post-Gameweek observations are already present. Generic historical queries can still use
+`latest_available` when that is the intended view.
+
 The latest report is written to:
 
 ```text
