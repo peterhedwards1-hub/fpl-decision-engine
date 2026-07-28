@@ -26,10 +26,24 @@ from .records import (
     TeamRecord,
 )
 
+REQUIRED_FILES = (
+    "teams.csv",
+    "players.csv",
+    "player_seasons.csv",
+    "gameweeks.csv",
+    "fixtures.csv",
+)
+
 
 def load_csv_bundle(directory: str | Path, season: SeasonRecord) -> HistoricalBundle:
     root = Path(directory)
-    return HistoricalBundle(
+    if not root.is_dir():
+        raise FileNotFoundError(f"CSV bundle directory does not exist: {root}")
+    missing = [name for name in REQUIRED_FILES if not (root / name).is_file()]
+    if missing:
+        raise ValueError(f"CSV bundle is missing required files: {', '.join(missing)}")
+
+    bundle = HistoricalBundle(
         season=season,
         teams=tuple(_load_teams(root / "teams.csv")),
         players=tuple(_load_players(root / "players.csv")),
@@ -43,6 +57,9 @@ def load_csv_bundle(directory: str | Path, season: SeasonRecord) -> HistoricalBu
             _load_gameweek_snapshots(root / "player_gameweek_snapshots.csv")
         ),
     )
+    if not bundle.teams or not bundle.players:
+        raise ValueError("CSV bundle must contain at least one team and one player")
+    return bundle
 
 
 def _rows(path: Path) -> list[dict[str, str]]:
@@ -155,6 +172,7 @@ def _load_gameweek_snapshots(path: Path) -> list[PlayerGameweekSnapshotRecord]:
             gameweek_number=int(row["gameweek_number"]),
             price_tenths=int(row["price_tenths"]),
             captured_at=datetime.fromisoformat(row["captured_at"]),
+            source_team_id=_optional(row.get("source_team_id")),
             selected_by_percent=_optional_float(row.get("selected_by_percent")),
             transfers_in=_optional_int(row.get("transfers_in")),
             transfers_out=_optional_int(row.get("transfers_out")),

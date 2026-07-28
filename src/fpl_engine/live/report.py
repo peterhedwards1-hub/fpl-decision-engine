@@ -6,7 +6,7 @@ import csv
 import html
 import io
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +76,7 @@ def write_verification_report(
     )
     checks = _checks(database, players, fixtures, summary, ingestion)
 
-    stamp = captured_at.strftime("%Y%m%dT%H%M%SZ")
+    stamp = captured_at.astimezone(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     season_root = Path(report_root) / season_code
     directory = season_root / stamp
     latest = season_root / "latest"
@@ -118,8 +118,10 @@ def _players(
     rows = database.connection.execute(
         """
         SELECT players.source_player_id AS player_id, players.web_name,
-               players.first_name, players.second_name, teams.name AS team,
-               teams.short_name AS team_short_name, ps.position,
+               players.first_name, players.second_name,
+               COALESCE(snapshot_teams.name, teams.name) AS team,
+               COALESCE(snapshot_teams.short_name, teams.short_name) AS team_short_name,
+               ps.position,
                snapshots.price_tenths, snapshots.selected_by_percent,
                snapshots.transfers_in, snapshots.transfers_out, snapshots.status,
                snapshots.chance_of_playing_next_round, snapshots.news,
@@ -129,6 +131,7 @@ def _players(
         JOIN seasons ON seasons.id = ps.season_id
         JOIN players ON players.id = ps.player_id
         JOIN teams ON teams.id = ps.team_id
+        LEFT JOIN teams snapshot_teams ON snapshot_teams.id = snapshots.team_id
         JOIN gameweeks ON gameweeks.id = snapshots.gameweek_id
         WHERE seasons.code = ? AND gameweeks.number = ?
         ORDER BY players.web_name COLLATE NOCASE, players.source_player_id

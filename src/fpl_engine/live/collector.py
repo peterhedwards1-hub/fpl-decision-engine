@@ -80,6 +80,7 @@ class LiveSnapshotCollector:
         bootstrap = self.client.bootstrap_static()
         fixtures = self.client.fixtures()
         self._validate_payloads(bootstrap.data, fixtures.data)
+        gameweek_number = self._snapshot_gameweek(bootstrap.data["events"])
 
         digest = hashlib.sha256(bootstrap.body + b"\n" + fixtures.body).hexdigest()
         archive_directory = self._archive(
@@ -89,7 +90,6 @@ class LiveSnapshotCollector:
             fixtures=fixtures,
             digest=digest,
         )
-        gameweek_number = self._snapshot_gameweek(bootstrap.data["events"])
         bundle = self._build_bundle(
             season_code=season_code,
             season_name=season_name or season_code,
@@ -132,8 +132,23 @@ class LiveSnapshotCollector:
         required = {"events", "teams", "elements"}
         if not isinstance(bootstrap, dict) or not required.issubset(bootstrap):
             raise ValueError("bootstrap-static payload is missing required collections")
-        if not isinstance(fixtures, list):
+        for name in required:
+            if not isinstance(bootstrap[name], list) or not all(
+                isinstance(item, dict) for item in bootstrap[name]
+            ):
+                raise ValueError(f"bootstrap-static collection {name!r} is malformed")
+        if not isinstance(fixtures, list) or not all(
+            isinstance(item, dict) for item in fixtures
+        ):
             raise ValueError("fixtures payload must be a list")
+        _require_keys(bootstrap["events"], {"id"}, "event")
+        _require_keys(bootstrap["teams"], {"id", "name", "short_name"}, "team")
+        _require_keys(
+            bootstrap["elements"],
+            {"id", "web_name", "team", "element_type", "now_cost"},
+            "player",
+        )
+        _require_keys(fixtures, {"id", "team_h", "team_a"}, "fixture")
 
     @staticmethod
     def _snapshot_gameweek(events: list[dict[str, Any]]) -> int:
@@ -215,6 +230,7 @@ class LiveSnapshotCollector:
                 gameweek_number=gameweek_number,
                 price_tenths=int(player["now_cost"]),
                 captured_at=captured_at,
+                source_team_id=str(player["team"]),
                 selected_by_percent=_optional_float(player.get("selected_by_percent")),
                 transfers_in=_optional_int(player.get("transfers_in_event")),
                 transfers_out=_optional_int(player.get("transfers_out_event")),
@@ -245,7 +261,7 @@ class LiveSnapshotCollector:
         fixtures: ApiPayload,
         digest: str,
     ) -> Path:
-        stamp = captured_at.strftime("%Y%m%dT%H%M%SZ")
+        stamp = captured_at.astimezone(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         directory = self.archive_root / season_code / stamp
         directory.mkdir(parents=True, exist_ok=False)
         _atomic_write(directory / "bootstrap-static.json", bootstrap.body)
@@ -277,3 +293,14 @@ def _optional_int(value: Any) -> int | None:
 
 def _optional_float(value: Any) -> float | None:
     return None if value is None or value == "" else float(value)
+
+
+def _require_keys(
+    records: list[dict[str, Any]], required: set[str], entity: str
+) -> None:
+    for index, record in enumerate(records):
+        missing = sorted(required - record.keys())
+        if missing:
+            raise ValueError(
+                f"{entity} record {index} is missing required fields: {', '.join(missing)}"
+            )

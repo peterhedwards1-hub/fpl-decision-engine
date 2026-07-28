@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from fpl_engine.domain import Position
+from fpl_engine.history.csv_bundle import load_csv_bundle
 from fpl_engine.history import (
     FixtureRecord,
     GameweekRecord,
@@ -79,7 +80,7 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
 
-        assert database.schema_version == 1
+        assert database.schema_version == 2
         table_names = {
             row[0]
             for row in database.connection.execute(
@@ -164,3 +165,28 @@ def test_failed_bundle_rolls_back_domain_rows_and_records_failure(tmp_path) -> N
         assert database.connection.execute(
             "SELECT COUNT(*) FROM players"
         ).fetchone()[0] == 0
+
+
+def test_csv_loader_rejects_missing_bundle_files(tmp_path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_csv_bundle(tmp_path / "missing", SeasonRecord("2025-26", "2025/26"))
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    with pytest.raises(ValueError, match="missing required files"):
+        load_csv_bundle(bundle_dir, SeasonRecord("2025-26", "2025/26"))
+
+
+def test_import_rejects_team_id_owned_by_another_source(tmp_path) -> None:
+    other_source = IngestionSource(
+        name="other-source",
+        url=SOURCE.url,
+        retrieved_at=SOURCE.retrieved_at,
+        content_sha256=SOURCE.content_sha256,
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, make_bundle())
+
+        with pytest.raises(ValueError, match="already owned"):
+            database.ingest_bundle(other_source, make_bundle())

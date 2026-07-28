@@ -104,6 +104,7 @@ class PlayerGameweekSnapshotRecord:
     status: str | None = None
     chance_of_playing_next_round: int | None = None
     news: str | None = None
+    source_team_id: str | None = None
 
 
 @dataclass(frozen=True)

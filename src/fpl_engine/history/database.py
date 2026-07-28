@@ -41,7 +41,25 @@ class HistoricalDatabase:
         self.close()
 
     def initialise(self) -> None:
+        current_version = self.schema_version
+        if current_version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Database schema version {current_version} is newer than supported "
+                f"version {SCHEMA_VERSION}"
+            )
         self.connection.executescript(SCHEMA_SQL)
+        if current_version < 2:
+            columns = {
+                row[1]
+                for row in self.connection.execute(
+                    "PRAGMA table_info(player_gameweek_snapshots)"
+                )
+            }
+            if "team_id" not in columns:
+                self.connection.execute(
+                    "ALTER TABLE player_gameweek_snapshots ADD COLUMN "
+                    "team_id INTEGER REFERENCES teams(id)"
+                )
         self.connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.connection.commit()
 
@@ -109,7 +127,7 @@ class HistoricalDatabase:
             with self.transaction():
                 season_id = self.upsert_season(bundle.season)
                 for record in bundle.teams:
-                    self.upsert_team(season_id, record, run_id)
+                    self.upsert_team(season_id, source.name, record, run_id)
                     row_count += 1
                 for record in bundle.players:
                     self.upsert_player(source.name, record)
@@ -123,7 +141,7 @@ class HistoricalDatabase:
                     self.upsert_gameweek(season_id, record, run_id)
                     row_count += 1
                 for record in bundle.fixtures:
-                    self.upsert_fixture(season_id, record, run_id)
+                    self.upsert_fixture(season_id, source.name, record, run_id)
                     row_count += 1
                 for record in bundle.fixture_stats:
                     self.upsert_fixture_stats(
@@ -156,7 +174,12 @@ class HistoricalDatabase:
             (record.code, record.name, record.starts_on, record.ends_on),
         )
 
-    def upsert_team(self, season_id: int, record: TeamRecord, run_id: int) -> int:
+    def upsert_team(
+        self, season_id: int, source_name: str, record: TeamRecord, run_id: int
+    ) -> int:
+        self._assert_source_ownership(
+            "teams", season_id, "source_team_id", record.source_team_id, source_name
+        )
         return self._upsert_id(
             """
             INSERT INTO teams (
@@ -219,7 +242,6 @@ class HistoricalDatabase:
                 end_price_tenths, provenance_run_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(season_id, player_id) DO UPDATE SET
-                team_id = excluded.team_id,
                 position = excluded.position,
                 start_price_tenths = excluded.start_price_tenths,
                 end_price_tenths = excluded.end_price_tenths,
@@ -261,8 +283,11 @@ class HistoricalDatabase:
         )
 
     def upsert_fixture(
-        self, season_id: int, record: FixtureRecord, run_id: int
+        self, season_id: int, source_name: str, record: FixtureRecord, run_id: int
     ) -> int:
+        self._assert_source_ownership(
+            "fixtures", season_id, "source_fixture_id", record.source_fixture_id, source_name
+        )
         home_team_id = self._team_id(season_id, record.home_team_source_id)
         away_team_id = self._team_id(season_id, record.away_team_source_id)
         gameweek_id = None
@@ -387,13 +412,14 @@ class HistoricalDatabase:
         return self._upsert_id(
             """
             INSERT INTO player_gameweek_snapshots (
-                player_season_id, gameweek_id, price_tenths, selected_by_percent,
+                player_season_id, gameweek_id, price_tenths, selected_by_percent, team_id,
                 transfers_in, transfers_out, status, chance_of_playing_next_round,
                 news, captured_at, provenance_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_season_id, gameweek_id) DO UPDATE SET
                 price_tenths = excluded.price_tenths,
                 selected_by_percent = excluded.selected_by_percent,
+                team_id = excluded.team_id,
                 transfers_in = excluded.transfers_in,
                 transfers_out = excluded.transfers_out,
                 status = excluded.status,
@@ -408,6 +434,9 @@ class HistoricalDatabase:
                 gameweek_id,
                 record.price_tenths,
                 record.selected_by_percent,
+                self._team_id(season_id, record.source_team_id)
+                if record.source_team_id is not None
+                else None,
                 record.transfers_in,
                 record.transfers_out,
                 record.status,
@@ -490,6 +519,32 @@ class HistoricalDatabase:
         if row is None:
             raise ValueError(f"Referenced {entity_name} does not exist")
         return int(row[0])
+
+    def _assert_source_ownership(
+        self,
+        table: str,
+        season_id: int,
+        source_id_column: str,
+        source_id: str,
+        source_name: str,
+    ) -> None:
+        allowed_tables = {"teams": "source_team_id", "fixtures": "source_fixture_id"}
+        if allowed_tables.get(table) != source_id_column:
+            raise ValueError("Unsupported source-owned table")
+        row = self.connection.execute(
+            f"""
+            SELECT ingestion_runs.source_name
+            FROM {table}
+            JOIN ingestion_runs ON ingestion_runs.id = {table}.provenance_run_id
+            WHERE {table}.season_id = ? AND {table}.{source_id_column} = ?
+            """,
+            (season_id, source_id),
+        ).fetchone()
+        if row is not None and row[0] != source_name:
+            raise ValueError(
+                f"{table[:-1].capitalize()} ID {source_id!r} is already owned by "
+                f"source {row[0]!r}"
+            )
 
     def _team_id(self, season_id: int, source_team_id: str) -> int:
         return self._required_id(

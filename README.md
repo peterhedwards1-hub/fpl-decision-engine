@@ -152,15 +152,21 @@ Inspect row counts:
 fpl-history --database data/fpl_history.sqlite3 summary 2025-26
 ```
 
-The optional CSV files are:
+The required core CSV files are:
 
 - `teams.csv`;
 - `players.csv`;
 - `player_seasons.csv`;
 - `gameweeks.csv`;
 - `fixtures.csv`;
+
+The optional CSV files are:
+
 - `player_fixture_stats.csv`;
 - `player_gameweek_snapshots.csv`.
+
+The snapshot file may include `source_team_id` so repeated collections preserve a
+player's current team without rewriting earlier season affiliation.
 
 Each file uses the field names defined by the matching dataclass in
 `src/fpl_engine/history/records.py`. Missing optional files are treated as empty.

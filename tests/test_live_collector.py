@@ -30,7 +30,7 @@ def _payload(path: str, data: object) -> ApiPayload:
     )
 
 
-def _bootstrap(*, price: int = 75) -> dict:
+def _bootstrap(*, price: int = 75, team: int = 1) -> dict:
     return {
         "events": [
             {
@@ -58,7 +58,7 @@ def _bootstrap(*, price: int = 75) -> dict:
                 "first_name": "Ada",
                 "second_name": "Striker",
                 "web_name": "Ada",
-                "team": 1,
+                "team": team,
                 "element_type": 4,
                 "now_cost": price,
                 "selected_by_percent": "12.3",
@@ -131,8 +131,8 @@ def test_collects_archives_and_ingests_snapshot(tmp_path) -> None:
 def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) -> None:
     times = iter(
         [
-            datetime(2026, 7, 27, 12, 0, tzinfo=UTC),
-            datetime(2026, 7, 27, 13, 0, tzinfo=UTC),
+            datetime(2026, 7, 27, 12, 0, 0, tzinfo=UTC),
+            datetime(2026, 7, 27, 12, 0, 0, 500000, tzinfo=UTC),
         ]
     )
     with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
@@ -149,7 +149,7 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
             database,
             archive_root=tmp_path / "raw",
             report_root=tmp_path / "reports",
-            client=FakeClient(_bootstrap(price=76), _fixtures()),
+            client=FakeClient(_bootstrap(price=76, team=2), _fixtures()),
             clock=lambda: next(times),
         )
         second.collect(season_code="2026-27")
@@ -161,6 +161,22 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
         totals = database.player_gameweek_totals("2026-27", "101", 1)
         assert totals is not None
         assert totals["price_tenths"] == 76
+        player_season = database.connection.execute(
+            """
+            SELECT teams.source_team_id, snapshots.team_id
+            FROM player_seasons ps
+            JOIN teams ON teams.id = ps.team_id
+            JOIN player_gameweek_snapshots snapshots
+              ON snapshots.player_season_id = ps.id
+            WHERE ps.season_id = (SELECT id FROM seasons WHERE code = '2026-27')
+            """
+        ).fetchone()
+        assert player_season["source_team_id"] == "1"
+        current_team = database.connection.execute(
+            "SELECT source_team_id FROM teams WHERE id = ?",
+            (player_season["team_id"],),
+        ).fetchone()
+        assert current_team["source_team_id"] == "2"
 
 
 def test_rejects_malformed_bootstrap_before_database_ingestion(tmp_path) -> None:

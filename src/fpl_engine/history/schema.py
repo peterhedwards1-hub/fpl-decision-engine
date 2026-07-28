@@ -5,7 +5,7 @@ that double Gameweeks can be represented without duplicating price, ownership or
 availability data.
 """
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS player_gameweek_snapshots (
     id INTEGER PRIMARY KEY,
     player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
     gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id),
     price_tenths INTEGER NOT NULL CHECK (price_tenths >= 0),
     selected_by_percent REAL CHECK (selected_by_percent IS NULL OR selected_by_percent BETWEEN 0 AND 100),
     transfers_in INTEGER CHECK (transfers_in IS NULL OR transfers_in >= 0),
