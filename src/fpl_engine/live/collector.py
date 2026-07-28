@@ -95,6 +95,7 @@ class LiveSnapshotCollector:
             season_name=season_name or season_code,
             gameweek_number=gameweek_number,
             captured_at=captured_at,
+            content_sha256=digest,
             bootstrap=bootstrap.data,
             fixtures=fixtures.data,
         )
@@ -169,6 +170,7 @@ class LiveSnapshotCollector:
         season_name: str,
         gameweek_number: int,
         captured_at: datetime,
+        content_sha256: str,
         bootstrap: dict[str, Any],
         fixtures: list[dict[str, Any]],
     ) -> HistoricalBundle:
@@ -194,7 +196,11 @@ class LiveSnapshotCollector:
                 first_name=str(player.get("first_name", "")),
                 second_name=str(player.get("second_name", "")),
                 web_name=str(player["web_name"]),
-                official_fpl_code=_optional_identifier(player.get("code")),
+                official_fpl_code=(
+                    None
+                    if player.get("has_temporary_code") is True
+                    else _optional_identifier(player.get("code"))
+                ),
                 opta_code=_optional_identifier(player.get("opta_code")),
             )
             for player in bootstrap["elements"]
@@ -245,6 +251,13 @@ class LiveSnapshotCollector:
                     player.get("chance_of_playing_next_round")
                 ),
                 news=player.get("news") or None,
+                source_observation_key=_live_capture_key(
+                    "official-fpl-api",
+                    season_code,
+                    gameweek_number,
+                    captured_at,
+                    content_sha256,
+                ),
             )
             for player in bootstrap["elements"]
         )
@@ -268,8 +281,8 @@ class LiveSnapshotCollector:
         digest: str,
     ) -> Path:
         stamp = captured_at.astimezone(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        directory = self.archive_root / season_code / stamp
-        directory.mkdir(parents=True, exist_ok=False)
+        directory = self.archive_root / season_code / f"{stamp}-{digest[:12]}"
+        directory.mkdir(parents=True, exist_ok=True)
         _atomic_write(directory / "bootstrap-static.json", bootstrap.body)
         _atomic_write(directory / "fixtures.json", fixtures.body)
         manifest = {
@@ -303,6 +316,27 @@ def _optional_float(value: Any) -> float | None:
 
 def _optional_identifier(value: Any) -> str | None:
     return None if value is None or value == "" else str(value)
+
+
+def _live_capture_key(
+    source_name: str,
+    season_code: str,
+    gameweek_number: int,
+    captured_at: datetime,
+    content_sha256: str,
+) -> str:
+    """Identify an archived capture, not merely its repeated content."""
+
+    canonical = "|".join(
+        (
+            source_name,
+            season_code,
+            str(gameweek_number),
+            captured_at.astimezone(UTC).isoformat(),
+            content_sha256,
+        )
+    )
+    return "live-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _require_keys(

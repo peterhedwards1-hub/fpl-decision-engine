@@ -30,7 +30,10 @@ def _payload(path: str, data: object) -> ApiPayload:
     )
 
 
-def _bootstrap(*, price: int = 75, team: int = 1) -> dict:
+def _bootstrap(
+    *, price: int = 75, team: int = 1, code: int | None = None,
+    temporary: bool = False, opta_code: str | None = None
+) -> dict:
     return {
         "events": [
             {
@@ -67,6 +70,9 @@ def _bootstrap(*, price: int = 75, team: int = 1) -> dict:
                 "status": "a",
                 "chance_of_playing_next_round": 100,
                 "news": "",
+                **({"code": code} if code is not None else {}),
+                **({"has_temporary_code": True} if temporary else {}),
+                **({"opta_code": opta_code} if opta_code is not None else {}),
             }
         ],
     }
@@ -180,6 +186,63 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
         assert "South City" in second_result.latest_report_index.read_text(
             encoding="utf-8"
         )
+
+
+def test_live_codes_ignore_temporary_values_but_keep_opta_and_later_permanent_code(
+    tmp_path,
+) -> None:
+    captured_at = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(
+                _bootstrap(code=123, temporary=True, opta_code="opta-1"), _fixtures()
+            ),
+            clock=lambda: captured_at,
+        ).collect(season_code="2026-27")
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM player_identifiers WHERE identifier_type = 'official_fpl_code'"
+        ).fetchone()[0] == 0
+        assert database.connection.execute(
+            "SELECT identifier_value FROM player_identifiers WHERE identifier_type = 'opta_code'"
+        ).fetchone()[0] == "opta-1"
+
+        LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(_bootstrap(code=456), _fixtures()),
+            clock=lambda: captured_at.replace(microsecond=1),
+        ).collect(season_code="2026-27")
+        assert database.connection.execute(
+            "SELECT identifier_value FROM player_identifiers "
+            "WHERE identifier_type = 'official_fpl_code'"
+        ).fetchone()[0] == "456"
+
+
+def test_same_live_content_at_different_capture_times_is_distinct(tmp_path) -> None:
+    times = iter(
+        [
+            datetime(2026, 7, 27, 12, 0, tzinfo=UTC),
+            datetime(2026, 7, 27, 12, 1, tzinfo=UTC),
+        ]
+    )
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        for _ in range(2):
+            LiveSnapshotCollector(
+                database,
+                archive_root=tmp_path / "raw",
+                report_root=tmp_path / "reports",
+                client=FakeClient(_bootstrap(), _fixtures()),
+                clock=lambda: next(times),
+            ).collect(season_code="2026-27")
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM player_gameweek_observations"
+        ).fetchone()[0] == 2
 
 
 def test_rejects_malformed_bootstrap_before_database_ingestion(tmp_path) -> None:

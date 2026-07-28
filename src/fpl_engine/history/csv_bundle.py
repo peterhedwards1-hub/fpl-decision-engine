@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from math import isfinite
 from pathlib import Path
 from typing import Any
@@ -116,8 +116,12 @@ def _load_teams(path: Path) -> list[TeamRecord]:
     rows = _rows(path, {"source_team_id", "name", "short_name"})
     _ensure_unique(rows, path, lambda row: row["source_team_id"], "source_team_id")
     return [
-        TeamRecord(row["source_team_id"] or "", row["name"] or "", row["short_name"] or "")
-        for _, row in rows
+        TeamRecord(
+            _required_text(row.get("source_team_id"), path, line, "source_team_id"),
+            _required_text(row.get("name"), path, line, "name"),
+            _required_text(row.get("short_name"), path, line, "short_name"),
+        )
+        for line, row in rows
     ]
 
 
@@ -126,28 +130,42 @@ def _load_players(path: Path) -> list[PlayerRecord]:
     _ensure_unique(rows, path, lambda row: row["source_player_id"], "source_player_id")
     return [
         PlayerRecord(
-            source_player_id=row["source_player_id"] or "",
-            web_name=row["web_name"] or "",
+            source_player_id=_required_text(
+                row.get("source_player_id"), path, line, "source_player_id"
+            ),
+            web_name=_required_text(row.get("web_name"), path, line, "web_name"),
             first_name=row.get("first_name") or "",
             second_name=row.get("second_name") or "",
             date_of_birth=_optional_text(row.get("date_of_birth")),
             official_fpl_code=_optional_text(row.get("official_fpl_code")),
             opta_code=_optional_text(row.get("opta_code")),
         )
-        for _, row in rows
+        for line, row in rows
     ]
 
 
 def _load_player_seasons(path: Path) -> list[PlayerSeasonRecord]:
     rows = _rows(path, {"source_player_id", "source_team_id", "position"})
-    _ensure_unique(rows, path, lambda row: row["source_player_id"], "source_player_id")
+    _ensure_unique(
+        rows,
+        path,
+        lambda row: (
+            row.get("identifier_namespace") or "official-fpl",
+            row["source_player_id"],
+        ),
+        "identifier_namespace/source_player_id",
+    )
     records = []
     for line, row in rows:
         position = _position(row["position"], path, line)
         records.append(
             PlayerSeasonRecord(
-                source_player_id=row["source_player_id"] or "",
-                source_team_id=row["source_team_id"] or "",
+                source_player_id=_required_text(
+                    row.get("source_player_id"), path, line, "source_player_id"
+                ),
+                source_team_id=_required_text(
+                    row.get("source_team_id"), path, line, "source_team_id"
+                ),
                 position=position,
                 start_price_tenths=_optional_int(
                     row.get("start_price_tenths"), path, line, "start_price_tenths"
@@ -182,9 +200,15 @@ def _load_fixtures(path: Path) -> list[FixtureRecord]:
     _ensure_unique(rows, path, lambda row: row["source_fixture_id"], "source_fixture_id")
     return [
         FixtureRecord(
-            source_fixture_id=row["source_fixture_id"] or "",
-            home_team_source_id=row["home_team_source_id"] or "",
-            away_team_source_id=row["away_team_source_id"] or "",
+            source_fixture_id=_required_text(
+                row.get("source_fixture_id"), path, line, "source_fixture_id"
+            ),
+            home_team_source_id=_required_text(
+                row.get("home_team_source_id"), path, line, "home_team_source_id"
+            ),
+            away_team_source_id=_required_text(
+                row.get("away_team_source_id"), path, line, "away_team_source_id"
+            ),
             gameweek_number=_optional_int(
                 row.get("gameweek_number"), path, line, "gameweek_number"
             ),
@@ -209,8 +233,12 @@ def _load_fixture_stats(path: Path) -> list[PlayerFixtureStatsRecord]:
     for line, row in rows:
         records.append(
             PlayerFixtureStatsRecord(
-                source_player_id=row["source_player_id"] or "",
-                source_fixture_id=row["source_fixture_id"] or "",
+                source_player_id=_required_text(
+                    row.get("source_player_id"), path, line, "source_player_id"
+                ),
+                source_fixture_id=_required_text(
+                    row.get("source_fixture_id"), path, line, "source_fixture_id"
+                ),
                 minutes=_int(row, "minutes", path, line),
                 starts=_bool(row.get("starts"), path, line, "starts"),
                 goals=_int(row, "goals", path, line),
@@ -269,7 +297,11 @@ def _load_gameweek_snapshots(path: Path) -> list[PlayerGameweekSnapshotRecord]:
     for line, row in rows:
         observation_kind = row.get("observation_kind") or "live_pre_deadline"
         timing_quality = row.get("timing_quality") or (
-            "exact" if row.get("captured_at") else "unknown"
+            "date_only"
+            if row.get("observed_on")
+            else "exact"
+            if row.get("captured_at")
+            else "unknown"
         )
         if observation_kind not in OBSERVATION_KINDS:
             raise CsvBundleError(
@@ -281,16 +313,20 @@ def _load_gameweek_snapshots(path: Path) -> list[PlayerGameweekSnapshotRecord]:
                 f"{path.name}: row {line}, field timing_quality has invalid value "
                 f"{timing_quality!r}"
             )
-        records.append(
-            PlayerGameweekSnapshotRecord(
-                source_player_id=row["source_player_id"] or "",
+        captured_at = _timestamp(row.get("captured_at"), path, line, timing_quality)
+        observed_on = _date(row.get("observed_on"), path, line)
+        record = PlayerGameweekSnapshotRecord(
+                source_player_id=_required_text(
+                    row.get("source_player_id"), path, line, "source_player_id"
+                ),
                 gameweek_number=_required_int(
                     row.get("gameweek_number"), path, line, "gameweek_number"
                 ),
                 price_tenths=_required_int(
                     row.get("price_tenths"), path, line, "price_tenths"
                 ),
-                captured_at=_timestamp(row.get("captured_at"), path, line),
+                captured_at=captured_at,
+                observed_on=observed_on,
                 selected_by_percent=_optional_float(
                     row.get("selected_by_percent"),
                     path,
@@ -321,13 +357,20 @@ def _load_gameweek_snapshots(path: Path) -> list[PlayerGameweekSnapshotRecord]:
                     row.get("source_observation_key")
                 ),
             )
-        )
+        try:
+            record.validate_timing()
+        except ValueError as error:
+            raise CsvBundleError(
+                f"{path.name}: row {line}, timing fields are invalid: {error}"
+            ) from error
+        records.append(record)
     return records
 
 
 def _validate_references(bundle: HistoricalBundle) -> None:
     team_ids = {record.source_team_id for record in bundle.teams}
     player_ids = {record.source_player_id for record in bundle.players}
+    player_season_ids = {record.source_player_id for record in bundle.player_seasons}
     gameweek_numbers = {record.number for record in bundle.gameweeks}
     fixture_ids = {record.source_fixture_id for record in bundle.fixtures}
 
@@ -343,6 +386,11 @@ def _validate_references(bundle: HistoricalBundle) -> None:
                 f"{record.source_team_id!r} is missing from teams.csv"
             )
     for index, record in enumerate(bundle.fixtures, start=2):
+        if record.home_team_source_id == record.away_team_source_id:
+            raise CsvBundleError(
+                f"fixtures.csv: row {index}, home_team_source_id and "
+                f"away_team_source_id cannot be the same value {record.home_team_source_id!r}"
+            )
         if record.home_team_source_id not in team_ids:
             raise CsvBundleError(
                 f"fixtures.csv: row {index}, home_team_source_id "
@@ -362,10 +410,10 @@ def _validate_references(bundle: HistoricalBundle) -> None:
                 f"{record.gameweek_number!r} is missing from gameweeks.csv"
             )
     for index, record in enumerate(bundle.fixture_stats, start=2):
-        if record.source_player_id not in player_ids:
+        if record.source_player_id not in player_season_ids:
             raise CsvBundleError(
                 f"player_fixture_stats.csv: row {index}, source_player_id "
-                f"{record.source_player_id!r} is missing from players.csv"
+                f"{record.source_player_id!r} is missing from player_seasons.csv"
             )
         if record.source_fixture_id not in fixture_ids:
             raise CsvBundleError(
@@ -373,10 +421,10 @@ def _validate_references(bundle: HistoricalBundle) -> None:
                 f"{record.source_fixture_id!r} is missing from fixtures.csv"
             )
     for index, record in enumerate(bundle.gameweek_snapshots, start=2):
-        if record.source_player_id not in player_ids:
+        if record.source_player_id not in player_season_ids:
             raise CsvBundleError(
                 f"player_gameweek_snapshots.csv: row {index}, source_player_id "
-                f"{record.source_player_id!r} is missing from players.csv"
+                f"{record.source_player_id!r} is missing from player_seasons.csv"
             )
         if record.gameweek_number not in gameweek_numbers:
             raise CsvBundleError(
@@ -436,6 +484,12 @@ def _required_int(value: str | None, path: Path, line: int, key: str) -> int:
         ) from error
 
 
+def _required_text(value: str | None, path: Path, line: int, key: str) -> str:
+    if value is None or not value.strip():
+        raise CsvBundleError(f"{path.name}: row {line}, field {key} is required")
+    return value.strip()
+
+
 def _optional_int(
     value: str | None, path: Path, line: int, key: str
 ) -> int | None:
@@ -473,14 +527,30 @@ def _bool(value: str | None, path: Path, line: int, key: str) -> bool:
     )
 
 
-def _timestamp(value: str | None, path: Path, line: int) -> datetime | None:
+def _timestamp(
+    value: str | None, path: Path, line: int, timing_quality: str
+) -> datetime | None:
     if value in (None, ""):
         return None
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
+        if timing_quality == "exact" and parsed.tzinfo is None:
+            raise ValueError("exact timestamp must include a timezone")
+        return parsed
     except ValueError as error:
         raise CsvBundleError(
             f"{path.name}: row {line}, field captured_at has invalid timestamp {value!r}"
+        ) from error
+
+
+def _date(value: str | None, path: Path, line: int) -> date | None:
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise CsvBundleError(
+            f"{path.name}: row {line}, field observed_on has invalid date {value!r}"
         ) from error
 
 

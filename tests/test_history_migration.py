@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from fpl_engine.history.database import HistoricalDatabase
+from fpl_engine.history.schema import MIGRATE_V2_TO_V3_SQL
 
 V2_SCHEMA = Path(__file__).parent / "fixtures" / "schema_v2.sql"
 
@@ -54,7 +55,7 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
     with HistoricalDatabase(database_path) as database:
         database.initialise()
 
-        assert database.schema_version == 3
+        assert database.schema_version == 4
         assert database.connection.execute(
             "SELECT COUNT(*) FROM seasons"
         ).fetchone()[0] == 1
@@ -72,7 +73,7 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
         ).fetchone()[0] == 1
         observation = database.connection.execute(
             """
-            SELECT observation_kind, timing_quality, observed_at,
+            SELECT observation_kind, timing_quality, observed_at, observed_on,
                    selected_by_percent, source_observation_key
             FROM player_gameweek_observations
             """
@@ -80,13 +81,14 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
         assert observation["observation_kind"] == "live_pre_deadline"
         assert observation["timing_quality"] == "exact"
         assert observation["observed_at"] == "2025-08-15T12:00:00+00:00"
+        assert observation["observed_on"] is None
         assert observation["selected_by_percent"] == 12.3
         assert observation["source_observation_key"] == "legacy-v2-1"
         assert database.connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert not database.connection.execute("PRAGMA foreign_key_check").fetchall()
 
         database.initialise()
-        assert database.schema_version == 3
+        assert database.schema_version == 4
         assert database.connection.execute(
             "SELECT COUNT(*) FROM player_gameweek_observations"
         ).fetchone()[0] == 1
@@ -95,7 +97,7 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
 def test_newer_schema_versions_are_rejected(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
-        database.connection.execute("PRAGMA user_version = 4")
+        database.connection.execute("PRAGMA user_version = 5")
         database.connection.commit()
 
         try:
@@ -104,3 +106,24 @@ def test_newer_schema_versions_are_rejected(tmp_path) -> None:
             assert "newer than supported" in str(error)
         else:
             raise AssertionError("Newer schema version should be rejected")
+
+
+def test_version_3_migrates_date_only_observations_to_version_4(tmp_path) -> None:
+    database_path = tmp_path / "history.sqlite3"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(V2_SCHEMA.read_text())
+    connection.execute("PRAGMA user_version = 2")
+    connection.commit()
+    connection.executescript(MIGRATE_V2_TO_V3_SQL)
+    connection.commit()
+    connection.close()
+
+    with HistoricalDatabase(database_path) as database:
+        assert database.schema_version == 3
+        # The empty version-3 database is sufficient to exercise the table rebuild
+        # and its repeatability without fabricating a timestamp for historical rows.
+        database.initialise()
+        assert database.schema_version == 4
+        assert not database.connection.execute("PRAGMA foreign_key_check").fetchall()
+        database.initialise()
+        assert database.schema_version == 4

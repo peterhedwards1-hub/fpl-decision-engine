@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS player_gameweek_observations (
         observation_kind IN ('live_pre_deadline', 'post_gameweek', 'historical_reconstruction')
     ),
     observed_at TEXT,
+    observed_on TEXT,
     timing_quality TEXT NOT NULL CHECK (
         timing_quality IN ('exact', 'date_only', 'unknown')
     ),
@@ -156,6 +157,12 @@ CREATE TABLE IF NOT EXISTS player_gameweek_observations (
     news TEXT,
     source_observation_key TEXT NOT NULL,
     provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
+    CHECK (
+        (timing_quality = 'exact' AND observed_at IS NOT NULL AND observed_on IS NULL)
+        OR (timing_quality = 'date_only' AND observed_at IS NULL
+            AND observed_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+        OR (timing_quality = 'unknown' AND observed_at IS NULL AND observed_on IS NULL)
+    ),
     UNIQUE (
         player_season_id, gameweek_id, observation_kind, source_observation_key
     )
@@ -167,7 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_player_seasons_source
 CREATE INDEX IF NOT EXISTS idx_fixtures_gameweek ON fixtures(gameweek_id);
 CREATE INDEX IF NOT EXISTS idx_fixture_stats_fixture ON player_fixture_stats(fixture_id);
 CREATE INDEX IF NOT EXISTS idx_observations_gameweek
-    ON player_gameweek_observations(gameweek_id, observed_at);
+    ON player_gameweek_observations(gameweek_id, observed_at, observed_on);
 
 CREATE VIEW IF NOT EXISTS player_gameweek_snapshots AS
 SELECT
@@ -184,6 +191,10 @@ SELECT
     chance_of_playing_next_round,
     news,
     observed_at AS captured_at,
+    observed_on,
+    timing_quality,
+    observation_kind,
+    source_observation_key,
     provenance_run_id
 FROM player_gameweek_observations;
 """
@@ -433,4 +444,84 @@ SELECT id, player_season_id, gameweek_id, team_id, price_tenths,
 FROM player_gameweek_observations;
 
 PRAGMA user_version = 3;
+"""
+
+MIGRATE_V3_TO_V4_SQL = """
+PRAGMA foreign_keys = OFF;
+BEGIN;
+
+DROP VIEW IF EXISTS player_gameweek_snapshots;
+DROP INDEX IF EXISTS idx_observations_gameweek;
+ALTER TABLE player_gameweek_observations RENAME TO _v3_player_gameweek_observations;
+
+CREATE TABLE player_gameweek_observations (
+    id INTEGER PRIMARY KEY,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id) ON DELETE CASCADE,
+    observation_kind TEXT NOT NULL CHECK (
+        observation_kind IN ('live_pre_deadline', 'post_gameweek', 'historical_reconstruction')
+    ),
+    observed_at TEXT,
+    observed_on TEXT,
+    timing_quality TEXT NOT NULL CHECK (
+        timing_quality IN ('exact', 'date_only', 'unknown')
+    ),
+    team_id INTEGER REFERENCES teams(id),
+    price_tenths INTEGER NOT NULL CHECK (price_tenths >= 0),
+    selected_count INTEGER CHECK (selected_count IS NULL OR selected_count >= 0),
+    selected_by_percent REAL CHECK (
+        selected_by_percent IS NULL OR selected_by_percent BETWEEN 0 AND 100
+    ),
+    transfers_in INTEGER CHECK (transfers_in IS NULL OR transfers_in >= 0),
+    transfers_out INTEGER CHECK (transfers_out IS NULL OR transfers_out >= 0),
+    status TEXT,
+    chance_of_playing_next_round INTEGER CHECK (
+        chance_of_playing_next_round IS NULL
+        OR chance_of_playing_next_round BETWEEN 0 AND 100
+    ),
+    news TEXT,
+    source_observation_key TEXT NOT NULL,
+    provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
+    CHECK (
+        (timing_quality = 'exact' AND observed_at IS NOT NULL AND observed_on IS NULL)
+        OR (timing_quality = 'date_only' AND observed_at IS NULL
+            AND observed_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+        OR (timing_quality = 'unknown' AND observed_at IS NULL AND observed_on IS NULL)
+    ),
+    UNIQUE (player_season_id, gameweek_id, observation_kind, source_observation_key)
+);
+
+CREATE INDEX idx_observations_gameweek
+    ON player_gameweek_observations(gameweek_id, observed_at, observed_on);
+
+INSERT INTO player_gameweek_observations (
+    id, player_season_id, gameweek_id, observation_kind, observed_at, observed_on,
+    timing_quality, team_id, price_tenths, selected_count, selected_by_percent,
+    transfers_in, transfers_out, status, chance_of_playing_next_round, news,
+    source_observation_key, provenance_run_id
+)
+SELECT id, player_season_id, gameweek_id, observation_kind,
+       CASE WHEN timing_quality = 'exact' THEN observed_at ELSE NULL END,
+       CASE WHEN timing_quality = 'date_only' THEN substr(observed_at, 1, 10) ELSE NULL END,
+       CASE
+           WHEN timing_quality = 'exact' AND observed_at IS NOT NULL THEN 'exact'
+           WHEN timing_quality = 'date_only' AND observed_at IS NOT NULL THEN 'date_only'
+           ELSE 'unknown'
+       END,
+       team_id, price_tenths, selected_count, selected_by_percent,
+       transfers_in, transfers_out, status, chance_of_playing_next_round, news,
+       source_observation_key, provenance_run_id
+FROM _v3_player_gameweek_observations;
+
+DROP TABLE _v3_player_gameweek_observations;
+
+CREATE VIEW player_gameweek_snapshots AS
+SELECT id, player_season_id, gameweek_id, team_id, price_tenths,
+       selected_count, selected_by_percent, transfers_in, transfers_out,
+       status, chance_of_playing_next_round, news,
+       observed_at AS captured_at, observed_on, timing_quality,
+       observation_kind, source_observation_key, provenance_run_id
+FROM player_gameweek_observations;
+
+PRAGMA user_version = 4;
 """

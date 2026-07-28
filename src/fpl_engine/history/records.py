@@ -1,7 +1,7 @@
 """Typed records accepted by the historical database layer."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from fpl_engine.domain import Position
 
@@ -115,6 +115,26 @@ class PlayerGameweekSnapshotRecord:
     observation_kind: str = "live_pre_deadline"
     timing_quality: str = "exact"
     source_observation_key: str | None = None
+    observed_on: date | None = None
+
+    def validate_timing(self) -> None:
+        if self.timing_quality == "exact":
+            if self.captured_at is None or self.captured_at.tzinfo is None:
+                raise ValueError(
+                    "exact observation timing requires a timezone-aware captured_at"
+                )
+            if self.observed_on is not None:
+                raise ValueError("exact observation timing cannot include observed_on")
+        elif self.timing_quality == "date_only":
+            if self.captured_at is not None:
+                raise ValueError("date_only observation timing cannot include captured_at")
+            if self.observed_on is None:
+                raise ValueError("date_only observation timing requires observed_on")
+        elif self.timing_quality == "unknown":
+            if self.captured_at is not None or self.observed_on is not None:
+                raise ValueError("unknown observation timing cannot include a date or timestamp")
+        else:
+            raise ValueError(f"invalid observation timing quality {self.timing_quality!r}")
 
 
 @dataclass(frozen=True)

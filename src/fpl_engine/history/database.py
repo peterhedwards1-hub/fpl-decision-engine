@@ -21,7 +21,28 @@ from .records import (
     SeasonRecord,
     TeamRecord,
 )
-from .schema import MIGRATE_V2_TO_V3_SQL, SCHEMA_SQL, SCHEMA_VERSION
+from .schema import (
+    MIGRATE_V2_TO_V3_SQL,
+    MIGRATE_V3_TO_V4_SQL,
+    SCHEMA_SQL,
+    SCHEMA_VERSION,
+)
+
+
+def _observation_mode_filter(mode: str) -> str:
+    filters = {
+        "latest_available": "1 = 1",
+        "latest_pre_deadline": "observations.observation_kind = 'live_pre_deadline'",
+        "latest_post_gameweek": "observations.observation_kind = 'post_gameweek'",
+    }
+    try:
+        return filters[mode]
+    except KeyError as error:
+        raise ValueError(f"Unknown observation mode {mode!r}") from error
+
+
+def _stable_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 class HistoricalDatabase:
@@ -56,11 +77,14 @@ class HistoricalDatabase:
             return
         if current_version == 2:
             self._migrate_v2_to_v3()
+            current_version = 3
+        if current_version == 3:
+            self._migrate_v3_to_v4()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
                 f"Cannot migrate database schema version {current_version} to "
-                f"version {SCHEMA_VERSION}; only version 2 is supported"
+                f"version {SCHEMA_VERSION}; supported migrations start at version 2"
             )
         self.connection.executescript(SCHEMA_SQL)
         self.connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -83,6 +107,26 @@ class HistoricalDatabase:
         except Exception as error:
             self.connection.rollback()
             raise RuntimeError(f"Version 2 to 3 migration failed safely: {error}") from error
+        finally:
+            self.connection.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_v3_to_v4(self) -> None:
+        try:
+            self.connection.execute("PRAGMA foreign_keys = OFF")
+            self.connection.executescript(MIGRATE_V3_TO_V4_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                self.connection.rollback()
+                raise RuntimeError(
+                    f"Version 3 to 4 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 3 to 4 migration failed safely: {error}") from error
         finally:
             self.connection.execute("PRAGMA foreign_keys = ON")
 
@@ -301,10 +345,12 @@ class HistoricalDatabase:
         player_id = next(iter(stable_matches), None)
         if season_match is not None:
             if player_id is not None and player_id != season_match["player_id"]:
-                raise ValueError(
-                    f"Player ID {record.source_player_id!r} conflicts with stable identity"
+                player_id = self.reconcile_player_identities(
+                    stable_player_id=player_id,
+                    duplicate_player_id=season_match["player_id"],
                 )
-            player_id = season_match["player_id"]
+            else:
+                player_id = season_match["player_id"]
 
         if player_id is None:
             player_id = self._upsert_id(
@@ -375,6 +421,131 @@ class HistoricalDatabase:
                 (player_id, identifier_type, identifier_value, run_id),
             )
         return int(player_id)
+
+    def reconcile_player_identities(
+        self, *, stable_player_id: int, duplicate_player_id: int
+    ) -> int:
+        """Merge an unidentified identity into the identity backed by stable IDs.
+
+        This is deliberately only callable with explicit database identities found
+        through stable identifiers; names and descriptive metadata never trigger it.
+        The surviving row is the stable-ID identity, so all season memberships and
+        their child statistics/observations retain their existing primary keys.
+        """
+
+        if stable_player_id == duplicate_player_id:
+            return stable_player_id
+        if self.connection.in_transaction:
+            return self._reconcile_player_identities(stable_player_id, duplicate_player_id)
+        with self.transaction():
+            return self._reconcile_player_identities(stable_player_id, duplicate_player_id)
+
+    def _reconcile_player_identities(self, stable_player_id: int, duplicate_player_id: int) -> int:
+        stable = self.connection.execute(
+            "SELECT * FROM players WHERE id = ?", (stable_player_id,)
+        ).fetchone()
+        duplicate = self.connection.execute(
+            "SELECT * FROM players WHERE id = ?", (duplicate_player_id,)
+        ).fetchone()
+        if stable is None or duplicate is None:
+            raise ValueError("Both player identities must exist before reconciliation")
+
+        stable_identifiers = {
+            row["identifier_type"]: row["identifier_value"]
+            for row in self.connection.execute(
+                "SELECT identifier_type, identifier_value "
+                "FROM player_identifiers WHERE player_id = ?",
+                (stable_player_id,),
+            )
+        }
+        duplicate_identifiers = {
+            row["identifier_type"]: row["identifier_value"]
+            for row in self.connection.execute(
+                "SELECT identifier_type, identifier_value "
+                "FROM player_identifiers WHERE player_id = ?",
+                (duplicate_player_id,),
+            )
+        }
+        for identifier_type, value in duplicate_identifiers.items():
+            existing = stable_identifiers.get(identifier_type)
+            if existing is not None and existing != value:
+                raise ValueError(
+                    f"Cannot reconcile players: contradictory {identifier_type} values "
+                    f"{existing!r} and {value!r}"
+                )
+            collision = self.connection.execute(
+                """
+                SELECT player_id FROM player_identifiers
+                WHERE identifier_type = ? AND identifier_value = ?
+                """,
+                (identifier_type, value),
+            ).fetchone()
+            if collision is not None and collision["player_id"] not in {
+                stable_player_id,
+                duplicate_player_id,
+            }:
+                raise ValueError(
+                    f"Cannot reconcile players: {identifier_type}={value!r} is already assigned"
+                )
+
+        duplicate_seasons = self.connection.execute(
+            """
+            SELECT season_id, identifier_namespace, source_player_id
+            FROM player_seasons WHERE player_id = ?
+            """,
+            (duplicate_player_id,),
+        ).fetchall()
+        for row in duplicate_seasons:
+            collision = self.connection.execute(
+                """
+                SELECT id FROM player_seasons
+                WHERE player_id = ? AND season_id = ?
+                  AND identifier_namespace = ? AND source_player_id = ?
+                """,
+                (
+                    stable_player_id,
+                    row["season_id"],
+                    row["identifier_namespace"],
+                    row["source_player_id"],
+                ),
+            ).fetchone()
+            if collision is not None:
+                raise ValueError(
+                    "Cannot reconcile players: duplicate season-specific identity "
+                    f"{row['identifier_namespace']}:{row['source_player_id']}"
+                )
+
+        merged_metadata = {
+            field: stable[field] or duplicate[field]
+            for field in ("first_name", "second_name", "web_name", "date_of_birth")
+        }
+        self.connection.execute(
+            """
+            UPDATE players
+            SET first_name = ?, second_name = ?, web_name = ?, date_of_birth = ?
+            WHERE id = ?
+            """,
+            (
+                merged_metadata["first_name"],
+                merged_metadata["second_name"],
+                merged_metadata["web_name"],
+                merged_metadata["date_of_birth"],
+                stable_player_id,
+            ),
+        )
+        self.connection.execute(
+            "UPDATE player_seasons SET player_id = ? WHERE player_id = ?",
+            (stable_player_id, duplicate_player_id),
+        )
+        for identifier_type, _value in duplicate_identifiers.items():
+            if identifier_type not in stable_identifiers:
+                self.connection.execute(
+                    "UPDATE player_identifiers SET player_id = ? WHERE player_id = ? "
+                    "AND identifier_type = ?",
+                    (stable_player_id, duplicate_player_id, identifier_type),
+                )
+        self.connection.execute("DELETE FROM players WHERE id = ?", (duplicate_player_id,))
+        return stable_player_id
 
     def upsert_player_season(
         self,
@@ -592,13 +763,30 @@ class HistoricalDatabase:
         record: PlayerGameweekSnapshotRecord,
         run_id: int,
     ) -> int:
+        record.validate_timing()
         player_season_id = self._player_season_id(
             season_id, identifier_namespace, record.source_player_id
         )
         gameweek_id = self._gameweek_id(season_id, record.gameweek_number)
-        source_key = record.source_observation_key or source.content_sha256
+        source_key = record.source_observation_key
+        if source_key is None and record.observation_kind == "live_pre_deadline":
+            timestamp = record.captured_at.isoformat() if record.captured_at else "unknown"
+            source_key = _stable_hash(
+                "|".join(
+                    (
+                        "live-capture",
+                        source.name,
+                        str(season_id),
+                        str(gameweek_id),
+                        timestamp,
+                        source.content_sha256 or "",
+                    )
+                )
+            )
         if not source_key:
-            source_key = hashlib.sha256(
+            source_key = source.content_sha256
+        if not source_key:
+            source_key = _stable_hash(
                 json.dumps(
                     {
                         "player_season_id": player_season_id,
@@ -615,8 +803,8 @@ class HistoricalDatabase:
                         "news": record.news,
                     },
                     sort_keys=True,
-                ).encode()
-            ).hexdigest()
+                )
+            )
         team_id = (
             self._team_id(season_id, identifier_namespace, record.source_team_id)
             if record.source_team_id is not None
@@ -626,15 +814,16 @@ class HistoricalDatabase:
             """
             INSERT INTO player_gameweek_observations (
                 player_season_id, gameweek_id, observation_kind, observed_at,
-                timing_quality, team_id, price_tenths, selected_count,
+                observed_on, timing_quality, team_id, price_tenths, selected_count,
                 selected_by_percent, transfers_in, transfers_out, status,
                 chance_of_playing_next_round, news, source_observation_key,
                 provenance_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(
                 player_season_id, gameweek_id, observation_kind, source_observation_key
             ) DO UPDATE SET
                 observed_at = excluded.observed_at,
+                observed_on = excluded.observed_on,
                 timing_quality = excluded.timing_quality,
                 team_id = excluded.team_id,
                 price_tenths = excluded.price_tenths,
@@ -653,6 +842,7 @@ class HistoricalDatabase:
                 gameweek_id,
                 record.observation_kind,
                 record.captured_at.isoformat() if record.captured_at else None,
+                record.observed_on.isoformat() if record.observed_on else None,
                 record.timing_quality,
                 team_id,
                 record.price_tenths,
@@ -699,20 +889,32 @@ class HistoricalDatabase:
         source_player_id: str,
         gameweek_number: int,
         identifier_namespace: str = "official-fpl",
+        observation_mode: str = "latest_available",
     ) -> sqlite3.Row | None:
-        """Return fixture-aggregated performance and the latest GW observation."""
+        """Return fixture totals and the latest relevant Gameweek observation."""
+
+        observation_filter = _observation_mode_filter(observation_mode)
 
         return self.connection.execute(
-            """
+            f"""
             WITH latest_observations AS (
                 SELECT observations.*,
                        ROW_NUMBER() OVER (
                            PARTITION BY observations.player_season_id,
                                         observations.gameweek_id
-                           ORDER BY observations.observed_at IS NULL,
-                                    observations.observed_at DESC, observations.id DESC
+                           ORDER BY CASE observations.timing_quality
+                                        WHEN 'exact' THEN 0
+                                        WHEN 'date_only' THEN 1
+                                        ELSE 2
+                                    END,
+                                    observations.observed_at DESC,
+                                    observations.observed_on DESC,
+                                    ingestion_runs.retrieved_at DESC,
+                                    observations.id DESC
                        ) AS observation_rank
                 FROM player_gameweek_observations observations
+                JOIN ingestion_runs ON ingestion_runs.id = observations.provenance_run_id
+                WHERE {observation_filter}
             )
             SELECT
                 ps.source_player_id,

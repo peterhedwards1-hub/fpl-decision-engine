@@ -1,6 +1,7 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
+import pytest
 from test_history_database import SOURCE, make_bundle
 
 from fpl_engine.history.database import HistoricalDatabase
@@ -100,3 +101,60 @@ def test_contradictory_team_id_is_rejected(tmp_path) -> None:
         assert database.connection.execute(
             "SELECT COUNT(*) FROM teams WHERE name = 'Unrelated Club'"
         ).fetchone()[0] == 0
+
+
+def test_timing_quality_requires_explicit_date_semantics(tmp_path) -> None:
+    base = make_bundle()
+    date_only = replace(
+        base.gameweek_snapshots[0],
+        captured_at=None,
+        observed_on=date(2025, 8, 15),
+        timing_quality="date_only",
+        source_observation_key="date-only",
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, replace(base, gameweek_snapshots=(date_only,)))
+        row = database.connection.execute(
+            "SELECT observed_at, observed_on, timing_quality FROM player_gameweek_observations"
+        ).fetchone()
+        assert row["observed_at"] is None
+        assert row["observed_on"] == "2025-08-15"
+        assert row["timing_quality"] == "date_only"
+
+        with pytest.raises(ValueError, match="timezone-aware"):
+            database.ingest_bundle(
+                SOURCE,
+                replace(
+                    base,
+                    gameweek_snapshots=(
+                        replace(
+                            base.gameweek_snapshots[0],
+                            captured_at=datetime(2025, 8, 15, 17, 0),
+                            source_observation_key="naive",
+                        ),
+                    ),
+                ),
+            )
+
+
+def test_latest_observation_modes_do_not_mix_pre_and_post_gameweek(tmp_path) -> None:
+    base = make_bundle()
+    observations = (
+        replace(base.gameweek_snapshots[0], price_tenths=75, source_observation_key="pre"),
+        replace(
+            base.gameweek_snapshots[0],
+            price_tenths=76,
+            observation_kind="post_gameweek",
+            source_observation_key="post",
+        ),
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, replace(base, gameweek_snapshots=observations))
+        assert database.player_gameweek_totals(
+            "2025-26", "101", 1, observation_mode="latest_pre_deadline"
+        )["price_tenths"] == 75
+        assert database.player_gameweek_totals(
+            "2025-26", "101", 1, observation_mode="latest_post_gameweek"
+        )["price_tenths"] == 76

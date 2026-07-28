@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fpl_engine.history.database import HistoricalDatabase
+from fpl_engine.history.database import HistoricalDatabase, _observation_mode_filter
 
 STATUS_LABELS = {
     "a": "Available",
@@ -47,10 +47,11 @@ def write_verification_report(
     captured_at: datetime,
     ingestion_run_id: int,
     archive_directory: Path,
+    observation_mode: str = "latest_available",
 ) -> VerificationReport:
     """Export the normalised database rows as CSV and a browser report."""
 
-    players = _players(database, season_code, gameweek_number)
+    players = _players(database, season_code, gameweek_number, observation_mode)
     fixtures = _fixtures(database, season_code)
     summary = database.season_summary(season_code)
     gameweek = _one(
@@ -81,7 +82,7 @@ def write_verification_report(
     season_root = Path(report_root) / season_code
     directory = season_root / stamp
     latest = season_root / "latest"
-    directory.mkdir(parents=True, exist_ok=False)
+    directory.mkdir(parents=True, exist_ok=True)
     latest.mkdir(parents=True, exist_ok=True)
 
     files = {
@@ -114,22 +115,35 @@ def write_verification_report(
 
 
 def _players(
-    database: HistoricalDatabase, season_code: str, gameweek_number: int
+    database: HistoricalDatabase,
+    season_code: str,
+    gameweek_number: int,
+    observation_mode: str = "latest_available",
 ) -> list[dict[str, Any]]:
+    observation_filter = _observation_mode_filter(observation_mode)
     rows = database.connection.execute(
-        """
+        f"""
         WITH ranked_observations AS (
             SELECT observations.*,
                    ROW_NUMBER() OVER (
                        PARTITION BY observations.player_season_id,
                                     observations.gameweek_id
-                       ORDER BY observations.observed_at IS NULL,
-                                observations.observed_at DESC, observations.id DESC
+                       ORDER BY CASE observations.timing_quality
+                                    WHEN 'exact' THEN 0
+                                    WHEN 'date_only' THEN 1
+                                    ELSE 2
+                                END,
+                                observations.observed_at DESC,
+                                observations.observed_on DESC,
+                                ingestion_runs.retrieved_at DESC,
+                                observations.id DESC
                    ) AS observation_rank
             FROM player_gameweek_observations observations
+            JOIN ingestion_runs ON ingestion_runs.id = observations.provenance_run_id
             JOIN gameweeks ON gameweeks.id = observations.gameweek_id
             JOIN seasons ON seasons.id = gameweeks.season_id
             WHERE seasons.code = ? AND gameweeks.number = ?
+              AND {observation_filter}
         )
         SELECT ps.source_player_id AS player_id, players.web_name,
                players.first_name, players.second_name,
@@ -140,7 +154,8 @@ def _players(
                snapshots.selected_by_percent, snapshots.transfers_in,
                snapshots.transfers_out, snapshots.status,
                snapshots.chance_of_playing_next_round, snapshots.news,
-               snapshots.observed_at AS captured_at
+               snapshots.observed_at AS captured_at, snapshots.observed_on,
+               snapshots.timing_quality, snapshots.observation_kind
         FROM ranked_observations snapshots
         JOIN player_seasons ps ON ps.id = snapshots.player_season_id
         JOIN seasons ON seasons.id = ps.season_id
@@ -269,6 +284,9 @@ def _players_csv(players: list[dict[str, Any]]) -> bytes:
         "chance_of_playing_next_round",
         "news",
         "captured_at",
+        "observed_on",
+        "timing_quality",
+        "observation_kind",
     ]
     rows = []
     for player in players:

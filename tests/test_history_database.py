@@ -81,7 +81,7 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
 
-        assert database.schema_version == 3
+        assert database.schema_version == 4
         table_names = {
             row[0]
             for row in database.connection.execute(
@@ -292,3 +292,59 @@ def test_same_name_does_not_merge_players_without_stable_identifier(tmp_path) ->
         assert database.connection.execute(
             "SELECT COUNT(*) FROM players"
         ).fetchone()[0] == 2
+
+
+def test_stable_identity_reconciles_migrated_unidentified_season_data(tmp_path) -> None:
+    unidentified = make_bundle()
+    identified_other_season = replace(
+        make_bundle(),
+        season=SeasonRecord("2026-27", "2026/27"),
+        players=(replace(make_bundle().players[0], official_fpl_code="9001"),),
+    )
+    identified_original_season = replace(
+        make_bundle(),
+        players=(replace(make_bundle().players[0], official_fpl_code="9001"),),
+    )
+
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, unidentified)
+        database.ingest_bundle(replace(SOURCE, content_sha256="other"), identified_other_season)
+        database.ingest_bundle(replace(SOURCE, content_sha256="third"), identified_original_season)
+
+        assert database.connection.execute("SELECT COUNT(*) FROM players").fetchone()[0] == 1
+        assert database.connection.execute("SELECT COUNT(*) FROM player_seasons").fetchone()[0] == 2
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM player_fixture_stats"
+        ).fetchone()[0] == 4
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM player_gameweek_observations"
+        ).fetchone()[0] == 3
+        assert database.connection.execute(
+            "SELECT identifier_value FROM player_identifiers"
+        ).fetchone()[0] == "9001"
+
+
+def test_reconciliation_rejects_contradictory_stable_identifiers(tmp_path) -> None:
+    first = replace(
+        make_bundle(), players=(replace(make_bundle().players[0], official_fpl_code="9001"),)
+    )
+    second = replace(
+        make_bundle(),
+        season=SeasonRecord("2026-27", "2026/27"),
+        players=(replace(make_bundle().players[0], official_fpl_code="9002"),),
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, first)
+        database.ingest_bundle(replace(SOURCE, content_sha256="other"), second)
+        stable_id = database.connection.execute(
+            "SELECT player_id FROM player_identifiers WHERE identifier_value = '9001'"
+        ).fetchone()[0]
+        duplicate_id = database.connection.execute(
+            "SELECT player_id FROM player_identifiers WHERE identifier_value = '9002'"
+        ).fetchone()[0]
+        with pytest.raises(ValueError, match="contradictory"):
+            database.reconcile_player_identities(
+                stable_player_id=stable_id, duplicate_player_id=duplicate_id
+            )
