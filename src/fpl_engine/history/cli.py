@@ -27,7 +27,12 @@ def main() -> None:
     import_parser.add_argument("--season-code", required=True)
     import_parser.add_argument("--season-name", required=True)
     import_parser.add_argument("--source-name", required=True)
+    import_parser.add_argument(
+        "--identifier-namespace", default="official-fpl"
+    )
     import_parser.add_argument("--source-url")
+    import_parser.add_argument("--source-revision")
+    import_parser.add_argument("--adapter-version")
     import_parser.add_argument("--starts-on")
     import_parser.add_argument("--ends-on")
 
@@ -54,6 +59,9 @@ def main() -> None:
             url=args.source_url,
             retrieved_at=datetime.now(UTC),
             content_sha256=_directory_digest(directory),
+            identifier_namespace=args.identifier_namespace,
+            source_revision=args.source_revision,
+            adapter_version=args.adapter_version,
         )
         season = SeasonRecord(
             code=args.season_code,

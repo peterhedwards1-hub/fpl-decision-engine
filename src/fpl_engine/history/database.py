@@ -1,7 +1,9 @@
-"""Historical FPL database and idempotent ingestion operations."""
+"""Historical FPL database and transactional ingestion operations."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -19,7 +21,7 @@ from .records import (
     SeasonRecord,
     TeamRecord,
 )
-from .schema import SCHEMA_SQL, SCHEMA_VERSION
+from .schema import MIGRATE_V2_TO_V3_SQL, SCHEMA_SQL, SCHEMA_VERSION
 
 
 class HistoricalDatabase:
@@ -47,21 +49,42 @@ class HistoricalDatabase:
                 f"Database schema version {current_version} is newer than supported "
                 f"version {SCHEMA_VERSION}"
             )
+        if current_version == 0:
+            self.connection.executescript(SCHEMA_SQL)
+            self.connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self.connection.commit()
+            return
+        if current_version == 2:
+            self._migrate_v2_to_v3()
+            return
+        if current_version != SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Cannot migrate database schema version {current_version} to "
+                f"version {SCHEMA_VERSION}; only version 2 is supported"
+            )
         self.connection.executescript(SCHEMA_SQL)
-        if current_version < 2:
-            columns = {
-                row[1]
-                for row in self.connection.execute(
-                    "PRAGMA table_info(player_gameweek_snapshots)"
-                )
-            }
-            if "team_id" not in columns:
-                self.connection.execute(
-                    "ALTER TABLE player_gameweek_snapshots ADD COLUMN "
-                    "team_id INTEGER REFERENCES teams(id)"
-                )
         self.connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.connection.commit()
+
+    def _migrate_v2_to_v3(self) -> None:
+        try:
+            self.connection.execute("PRAGMA foreign_keys = OFF")
+            self.connection.executescript(MIGRATE_V2_TO_V3_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                self.connection.rollback()
+                raise RuntimeError(
+                    f"Version 2 to 3 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 2 to 3 migration failed safely: {error}") from error
+        finally:
+            self.connection.execute("PRAGMA foreign_keys = ON")
 
     @property
     def schema_version(self) -> int:
@@ -83,14 +106,18 @@ class HistoricalDatabase:
         cursor = self.connection.execute(
             """
             INSERT INTO ingestion_runs (
-                source_name, source_url, retrieved_at, content_sha256, status
-            ) VALUES (?, ?, ?, ?, 'running')
+                source_name, identifier_namespace, source_url, retrieved_at,
+                content_sha256, source_revision, adapter_version, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running')
             """,
             (
                 source.name,
+                source.identifier_namespace,
                 source.url,
                 source.retrieved_at.isoformat(),
                 source.content_sha256,
+                source.source_revision,
+                source.adapter_version,
             ),
         )
         self.connection.commit()
@@ -115,42 +142,56 @@ class HistoricalDatabase:
         self.connection.commit()
 
     def ingest_bundle(self, source: IngestionSource, bundle: HistoricalBundle) -> int:
-        """Atomically upsert a complete normalised historical bundle.
-
-        The ingestion run itself is retained if ingestion fails, while all domain
-        rows from the failed transaction are rolled back.
-        """
+        """Atomically upsert a complete normalised historical bundle."""
 
         run_id = self.start_ingestion(source)
         row_count = 0
         try:
             with self.transaction():
                 season_id = self.upsert_season(bundle.season)
+                player_ids: dict[str, int] = {}
                 for record in bundle.teams:
-                    self.upsert_team(season_id, source.name, record, run_id)
+                    self.upsert_team(
+                        season_id, source.identifier_namespace, record, run_id
+                    )
                     row_count += 1
                 for record in bundle.players:
-                    self.upsert_player(source.name, record)
+                    player_ids[record.source_player_id] = self.upsert_player(
+                        season_id, source, record, run_id
+                    )
                     row_count += 1
                 for record in bundle.player_seasons:
+                    player_id = player_ids.get(record.source_player_id)
                     self.upsert_player_season(
-                        season_id, source.name, record, run_id
+                        season_id,
+                        source.identifier_namespace
+                        if record.identifier_namespace is None
+                        else record.identifier_namespace,
+                        record,
+                        run_id,
+                        player_id=player_id,
                     )
                     row_count += 1
                 for record in bundle.gameweeks:
                     self.upsert_gameweek(season_id, record, run_id)
                     row_count += 1
                 for record in bundle.fixtures:
-                    self.upsert_fixture(season_id, source.name, record, run_id)
+                    self.upsert_fixture(
+                        season_id, source.identifier_namespace, record, run_id
+                    )
                     row_count += 1
                 for record in bundle.fixture_stats:
                     self.upsert_fixture_stats(
-                        season_id, source.name, record, run_id
+                        season_id, source.identifier_namespace, record, run_id
                     )
                     row_count += 1
                 for record in bundle.gameweek_snapshots:
-                    self.upsert_gameweek_snapshot(
-                        season_id, source.name, record, run_id
+                    self.upsert_gameweek_observation(
+                        season_id,
+                        source.identifier_namespace,
+                        source,
+                        record,
+                        run_id,
                     )
                     row_count += 1
         except Exception as error:
@@ -175,73 +216,192 @@ class HistoricalDatabase:
         )
 
     def upsert_team(
-        self, season_id: int, source_name: str, record: TeamRecord, run_id: int
+        self,
+        season_id: int,
+        identifier_namespace: str,
+        record: TeamRecord,
+        run_id: int,
     ) -> int:
-        self._assert_source_ownership(
-            "teams", season_id, "source_team_id", record.source_team_id, source_name
-        )
+        existing = self.connection.execute(
+            """
+            SELECT id, name, short_name
+            FROM teams
+            WHERE season_id = ? AND identifier_namespace = ? AND source_team_id = ?
+            """,
+            (season_id, identifier_namespace, record.source_team_id),
+        ).fetchone()
+        if existing is not None and (
+            existing["name"] != record.name
+            or existing["short_name"] != record.short_name
+        ):
+            raise ValueError(
+                f"Contradictory team identity for namespace {identifier_namespace!r}, "
+                f"ID {record.source_team_id!r}: existing {existing['name']!r}, "
+                f"incoming {record.name!r}"
+            )
         return self._upsert_id(
             """
             INSERT INTO teams (
-                season_id, source_team_id, name, short_name, provenance_run_id
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(season_id, source_team_id) DO UPDATE SET
+                season_id, identifier_namespace, source_team_id, name, short_name,
+                provenance_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(season_id, identifier_namespace, source_team_id) DO UPDATE SET
                 name = excluded.name,
                 short_name = excluded.short_name,
                 provenance_run_id = excluded.provenance_run_id
             RETURNING id
             """,
-            (season_id, record.source_team_id, record.name, record.short_name, run_id),
-        )
-
-    def upsert_player(self, source_name: str, record: PlayerRecord) -> int:
-        return self._upsert_id(
-            """
-            INSERT INTO players (
-                source_name, source_player_id, first_name, second_name, web_name,
-                date_of_birth
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(source_name, source_player_id) DO UPDATE SET
-                first_name = excluded.first_name,
-                second_name = excluded.second_name,
-                web_name = excluded.web_name,
-                date_of_birth = excluded.date_of_birth
-            RETURNING id
-            """,
             (
-                source_name,
-                record.source_player_id,
-                record.first_name,
-                record.second_name,
-                record.web_name,
-                record.date_of_birth,
+                season_id,
+                identifier_namespace,
+                record.source_team_id,
+                record.name,
+                record.short_name,
+                run_id,
             ),
         )
+
+    def upsert_player(
+        self,
+        season_id: int,
+        source: IngestionSource,
+        record: PlayerRecord,
+        run_id: int,
+    ) -> int:
+        stable_ids = {
+            "official_fpl_code": record.official_fpl_code,
+            "opta_code": record.opta_code,
+        }
+        stable_ids = {key: value for key, value in stable_ids.items() if value}
+        stable_matches = {
+            row["player_id"]
+            for identifier_type, identifier_value in stable_ids.items()
+            for row in self.connection.execute(
+                """
+                SELECT player_id FROM player_identifiers
+                WHERE identifier_type = ? AND identifier_value = ?
+                """,
+                (identifier_type, identifier_value),
+            )
+        }
+        if len(stable_matches) > 1:
+            raise ValueError(
+                f"Stable identifiers for player {record.source_player_id!r} "
+                "refer to different identities"
+            )
+
+        season_match = self.connection.execute(
+            """
+            SELECT player_id
+            FROM player_seasons
+            WHERE season_id = ? AND identifier_namespace = ? AND source_player_id = ?
+            """,
+            (season_id, source.identifier_namespace, record.source_player_id),
+        ).fetchone()
+        player_id = next(iter(stable_matches), None)
+        if season_match is not None:
+            if player_id is not None and player_id != season_match["player_id"]:
+                raise ValueError(
+                    f"Player ID {record.source_player_id!r} conflicts with stable identity"
+                )
+            player_id = season_match["player_id"]
+
+        if player_id is None:
+            player_id = self._upsert_id(
+                """
+                INSERT INTO players (
+                    first_name, second_name, web_name, date_of_birth, provenance_run_id
+                ) VALUES (?, ?, ?, ?, ?)
+                RETURNING id
+                """,
+                (
+                    record.first_name,
+                    record.second_name,
+                    record.web_name,
+                    record.date_of_birth,
+                    run_id,
+                ),
+            )
+        else:
+            self.connection.execute(
+                """
+                UPDATE players
+                SET first_name = ?, second_name = ?, web_name = ?, date_of_birth = ?,
+                    provenance_run_id = ?
+                WHERE id = ?
+                """,
+                (
+                    record.first_name,
+                    record.second_name,
+                    record.web_name,
+                    record.date_of_birth,
+                    run_id,
+                    player_id,
+                ),
+            )
+
+        for identifier_type, identifier_value in stable_ids.items():
+            existing = self.connection.execute(
+                """
+                SELECT player_id FROM player_identifiers
+                WHERE identifier_type = ? AND identifier_value = ?
+                """,
+                (identifier_type, identifier_value),
+            ).fetchone()
+            if existing is not None and existing["player_id"] != player_id:
+                raise ValueError(
+                    f"Stable identifier {identifier_type}={identifier_value!r} "
+                    "is already assigned to another player"
+                )
+            existing_for_player = self.connection.execute(
+                """
+                SELECT identifier_value FROM player_identifiers
+                WHERE player_id = ? AND identifier_type = ?
+                """,
+                (player_id, identifier_type),
+            ).fetchone()
+            if existing_for_player is not None:
+                if existing_for_player["identifier_value"] != identifier_value:
+                    raise ValueError(
+                        f"Player {player_id} has contradictory {identifier_type} values"
+                    )
+                continue
+            self.connection.execute(
+                """
+                INSERT INTO player_identifiers (
+                    player_id, identifier_type, identifier_value, provenance_run_id
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (player_id, identifier_type, identifier_value, run_id),
+            )
+        return int(player_id)
 
     def upsert_player_season(
         self,
         season_id: int,
-        source_name: str,
+        identifier_namespace: str,
         record: PlayerSeasonRecord,
         run_id: int,
+        *,
+        player_id: int | None = None,
     ) -> int:
-        player_id = self._required_id(
-            "SELECT id FROM players WHERE source_name = ? AND source_player_id = ?",
-            (source_name, record.source_player_id),
-            "player",
+        player_id = player_id or self._required_id(
+            """
+            SELECT player_id FROM player_seasons
+            WHERE season_id = ? AND identifier_namespace = ? AND source_player_id = ?
+            """,
+            (season_id, identifier_namespace, record.source_player_id),
+            "player season",
         )
-        team_id = self._required_id(
-            "SELECT id FROM teams WHERE season_id = ? AND source_team_id = ?",
-            (season_id, record.source_team_id),
-            "team",
-        )
+        team_id = self._team_id(season_id, identifier_namespace, record.source_team_id)
         return self._upsert_id(
             """
             INSERT INTO player_seasons (
-                season_id, player_id, team_id, position, start_price_tenths,
-                end_price_tenths, provenance_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(season_id, player_id) DO UPDATE SET
+                season_id, player_id, identifier_namespace, source_player_id, team_id,
+                position, start_price_tenths, end_price_tenths, provenance_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(season_id, identifier_namespace, source_player_id) DO UPDATE SET
+                player_id = excluded.player_id,
                 position = excluded.position,
                 start_price_tenths = excluded.start_price_tenths,
                 end_price_tenths = excluded.end_price_tenths,
@@ -251,6 +411,8 @@ class HistoricalDatabase:
             (
                 season_id,
                 player_id,
+                identifier_namespace,
+                record.source_player_id,
                 team_id,
                 record.position.value,
                 record.start_price_tenths,
@@ -283,24 +445,45 @@ class HistoricalDatabase:
         )
 
     def upsert_fixture(
-        self, season_id: int, source_name: str, record: FixtureRecord, run_id: int
+        self,
+        season_id: int,
+        identifier_namespace: str,
+        record: FixtureRecord,
+        run_id: int,
     ) -> int:
-        self._assert_source_ownership(
-            "fixtures", season_id, "source_fixture_id", record.source_fixture_id, source_name
+        home_team_id = self._team_id(
+            season_id, identifier_namespace, record.home_team_source_id
         )
-        home_team_id = self._team_id(season_id, record.home_team_source_id)
-        away_team_id = self._team_id(season_id, record.away_team_source_id)
+        away_team_id = self._team_id(
+            season_id, identifier_namespace, record.away_team_source_id
+        )
+        existing = self.connection.execute(
+            """
+            SELECT home_team_id, away_team_id
+            FROM fixtures
+            WHERE season_id = ? AND identifier_namespace = ? AND source_fixture_id = ?
+            """,
+            (season_id, identifier_namespace, record.source_fixture_id),
+        ).fetchone()
+        if existing is not None and (
+            existing["home_team_id"] != home_team_id
+            or existing["away_team_id"] != away_team_id
+        ):
+            raise ValueError(
+                f"Contradictory fixture identity for namespace {identifier_namespace!r}, "
+                f"ID {record.source_fixture_id!r}"
+            )
         gameweek_id = None
         if record.gameweek_number is not None:
             gameweek_id = self._gameweek_id(season_id, record.gameweek_number)
         return self._upsert_id(
             """
             INSERT INTO fixtures (
-                season_id, source_fixture_id, gameweek_id, kickoff_time,
-                home_team_id, away_team_id, home_score, away_score, finished,
-                provenance_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(season_id, source_fixture_id) DO UPDATE SET
+                season_id, identifier_namespace, source_fixture_id, gameweek_id,
+                kickoff_time, home_team_id, away_team_id, home_score, away_score,
+                finished, provenance_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(season_id, identifier_namespace, source_fixture_id) DO UPDATE SET
                 gameweek_id = excluded.gameweek_id,
                 kickoff_time = excluded.kickoff_time,
                 home_team_id = excluded.home_team_id,
@@ -313,6 +496,7 @@ class HistoricalDatabase:
             """,
             (
                 season_id,
+                identifier_namespace,
                 record.source_fixture_id,
                 gameweek_id,
                 record.kickoff_time,
@@ -328,14 +512,16 @@ class HistoricalDatabase:
     def upsert_fixture_stats(
         self,
         season_id: int,
-        source_name: str,
+        identifier_namespace: str,
         record: PlayerFixtureStatsRecord,
         run_id: int,
     ) -> int:
         player_season_id = self._player_season_id(
-            season_id, source_name, record.source_player_id
+            season_id, identifier_namespace, record.source_player_id
         )
-        fixture_id = self._fixture_id(season_id, record.source_fixture_id)
+        fixture_id = self._fixture_id(
+            season_id, identifier_namespace, record.source_fixture_id
+        )
         values = (
             player_season_id,
             fixture_id,
@@ -398,51 +584,86 @@ class HistoricalDatabase:
             values,
         )
 
-    def upsert_gameweek_snapshot(
+    def upsert_gameweek_observation(
         self,
         season_id: int,
-        source_name: str,
+        identifier_namespace: str,
+        source: IngestionSource,
         record: PlayerGameweekSnapshotRecord,
         run_id: int,
     ) -> int:
         player_season_id = self._player_season_id(
-            season_id, source_name, record.source_player_id
+            season_id, identifier_namespace, record.source_player_id
         )
         gameweek_id = self._gameweek_id(season_id, record.gameweek_number)
+        source_key = record.source_observation_key or source.content_sha256
+        if not source_key:
+            source_key = hashlib.sha256(
+                json.dumps(
+                    {
+                        "player_season_id": player_season_id,
+                        "gameweek_id": gameweek_id,
+                        "kind": record.observation_kind,
+                        "team": record.source_team_id,
+                        "price": record.price_tenths,
+                        "selected_count": record.selected_count,
+                        "selected_by_percent": record.selected_by_percent,
+                        "transfers_in": record.transfers_in,
+                        "transfers_out": record.transfers_out,
+                        "status": record.status,
+                        "chance": record.chance_of_playing_next_round,
+                        "news": record.news,
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+        team_id = (
+            self._team_id(season_id, identifier_namespace, record.source_team_id)
+            if record.source_team_id is not None
+            else None
+        )
         return self._upsert_id(
             """
-            INSERT INTO player_gameweek_snapshots (
-                player_season_id, gameweek_id, price_tenths, selected_by_percent, team_id,
-                transfers_in, transfers_out, status, chance_of_playing_next_round,
-                news, captured_at, provenance_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(player_season_id, gameweek_id) DO UPDATE SET
-                price_tenths = excluded.price_tenths,
-                selected_by_percent = excluded.selected_by_percent,
+            INSERT INTO player_gameweek_observations (
+                player_season_id, gameweek_id, observation_kind, observed_at,
+                timing_quality, team_id, price_tenths, selected_count,
+                selected_by_percent, transfers_in, transfers_out, status,
+                chance_of_playing_next_round, news, source_observation_key,
+                provenance_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(
+                player_season_id, gameweek_id, observation_kind, source_observation_key
+            ) DO UPDATE SET
+                observed_at = excluded.observed_at,
+                timing_quality = excluded.timing_quality,
                 team_id = excluded.team_id,
+                price_tenths = excluded.price_tenths,
+                selected_count = excluded.selected_count,
+                selected_by_percent = excluded.selected_by_percent,
                 transfers_in = excluded.transfers_in,
                 transfers_out = excluded.transfers_out,
                 status = excluded.status,
                 chance_of_playing_next_round = excluded.chance_of_playing_next_round,
                 news = excluded.news,
-                captured_at = excluded.captured_at,
                 provenance_run_id = excluded.provenance_run_id
             RETURNING id
             """,
             (
                 player_season_id,
                 gameweek_id,
+                record.observation_kind,
+                record.captured_at.isoformat() if record.captured_at else None,
+                record.timing_quality,
+                team_id,
                 record.price_tenths,
+                record.selected_count,
                 record.selected_by_percent,
-                self._team_id(season_id, record.source_team_id)
-                if record.source_team_id is not None
-                else None,
                 record.transfers_in,
                 record.transfers_out,
                 record.status,
                 record.chance_of_playing_next_round,
                 record.news,
-                record.captured_at.isoformat(),
+                source_key,
                 run_id,
             ),
         )
@@ -462,8 +683,8 @@ class HistoricalDatabase:
                 WHERE ps.season_id = ?
             """,
             "gameweek_snapshots": """
-                SELECT COUNT(*) FROM player_gameweek_snapshots snapshots
-                JOIN player_seasons ps ON ps.id = snapshots.player_season_id
+                SELECT COUNT(*) FROM player_gameweek_observations observations
+                JOIN player_seasons ps ON ps.id = observations.player_season_id
                 WHERE ps.season_id = ?
             """,
         }
@@ -473,37 +694,57 @@ class HistoricalDatabase:
         }
 
     def player_gameweek_totals(
-        self, season_code: str, source_player_id: str, gameweek_number: int
+        self,
+        season_code: str,
+        source_player_id: str,
+        gameweek_number: int,
+        identifier_namespace: str = "official-fpl",
     ) -> sqlite3.Row | None:
-        """Return fixture-aggregated performance and the matching GW snapshot."""
+        """Return fixture-aggregated performance and the latest GW observation."""
 
         return self.connection.execute(
             """
+            WITH latest_observations AS (
+                SELECT observations.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY observations.player_season_id,
+                                        observations.gameweek_id
+                           ORDER BY observations.observed_at IS NULL,
+                                    observations.observed_at DESC, observations.id DESC
+                       ) AS observation_rank
+                FROM player_gameweek_observations observations
+            )
             SELECT
-                players.source_player_id,
+                ps.source_player_id,
                 players.web_name,
                 gameweeks.number AS gameweek,
                 COALESCE(SUM(stats.minutes), 0) AS minutes,
                 COALESCE(SUM(stats.total_points), 0) AS total_points,
                 COALESCE(SUM(stats.expected_goals), 0.0) AS expected_goals,
                 COALESCE(SUM(stats.expected_assists), 0.0) AS expected_assists,
-                snapshots.price_tenths,
-                snapshots.selected_by_percent,
-                snapshots.status
+                latest_observations.price_tenths,
+                latest_observations.selected_count,
+                latest_observations.selected_by_percent,
+                latest_observations.status,
+                latest_observations.team_id
             FROM player_seasons ps
             JOIN seasons ON seasons.id = ps.season_id
             JOIN players ON players.id = ps.player_id
-            JOIN gameweeks ON gameweeks.season_id = seasons.id AND gameweeks.number = ?
+            JOIN gameweeks
+              ON gameweeks.season_id = seasons.id AND gameweeks.number = ?
             LEFT JOIN fixtures ON fixtures.gameweek_id = gameweeks.id
             LEFT JOIN player_fixture_stats stats
-                ON stats.player_season_id = ps.id AND stats.fixture_id = fixtures.id
-            LEFT JOIN player_gameweek_snapshots snapshots
-                ON snapshots.player_season_id = ps.id
-                AND snapshots.gameweek_id = gameweeks.id
-            WHERE seasons.code = ? AND players.source_player_id = ?
-            GROUP BY ps.id, gameweeks.id, snapshots.id
+              ON stats.player_season_id = ps.id AND stats.fixture_id = fixtures.id
+            LEFT JOIN latest_observations
+              ON latest_observations.player_season_id = ps.id
+             AND latest_observations.gameweek_id = gameweeks.id
+             AND latest_observations.observation_rank = 1
+            WHERE seasons.code = ?
+              AND ps.identifier_namespace = ?
+              AND ps.source_player_id = ?
+            GROUP BY ps.id, gameweeks.id, latest_observations.id
             """,
-            (gameweek_number, season_code, source_player_id),
+            (gameweek_number, season_code, identifier_namespace, source_player_id),
         ).fetchone()
 
     def _upsert_id(self, sql: str, values: tuple[object, ...]) -> int:
@@ -520,36 +761,15 @@ class HistoricalDatabase:
             raise ValueError(f"Referenced {entity_name} does not exist")
         return int(row[0])
 
-    def _assert_source_ownership(
-        self,
-        table: str,
-        season_id: int,
-        source_id_column: str,
-        source_id: str,
-        source_name: str,
-    ) -> None:
-        allowed_tables = {"teams": "source_team_id", "fixtures": "source_fixture_id"}
-        if allowed_tables.get(table) != source_id_column:
-            raise ValueError("Unsupported source-owned table")
-        row = self.connection.execute(
-            f"""
-            SELECT ingestion_runs.source_name
-            FROM {table}
-            JOIN ingestion_runs ON ingestion_runs.id = {table}.provenance_run_id
-            WHERE {table}.season_id = ? AND {table}.{source_id_column} = ?
-            """,
-            (season_id, source_id),
-        ).fetchone()
-        if row is not None and row[0] != source_name:
-            raise ValueError(
-                f"{table[:-1].capitalize()} ID {source_id!r} is already owned by "
-                f"source {row[0]!r}"
-            )
-
-    def _team_id(self, season_id: int, source_team_id: str) -> int:
+    def _team_id(
+        self, season_id: int, identifier_namespace: str, source_team_id: str
+    ) -> int:
         return self._required_id(
-            "SELECT id FROM teams WHERE season_id = ? AND source_team_id = ?",
-            (season_id, source_team_id),
+            """
+            SELECT id FROM teams
+            WHERE season_id = ? AND identifier_namespace = ? AND source_team_id = ?
+            """,
+            (season_id, identifier_namespace, source_team_id),
             "team",
         )
 
@@ -560,25 +780,26 @@ class HistoricalDatabase:
             "gameweek",
         )
 
-    def _fixture_id(self, season_id: int, source_fixture_id: str) -> int:
+    def _fixture_id(
+        self, season_id: int, identifier_namespace: str, source_fixture_id: str
+    ) -> int:
         return self._required_id(
-            "SELECT id FROM fixtures WHERE season_id = ? AND source_fixture_id = ?",
-            (season_id, source_fixture_id),
+            """
+            SELECT id FROM fixtures
+            WHERE season_id = ? AND identifier_namespace = ? AND source_fixture_id = ?
+            """,
+            (season_id, identifier_namespace, source_fixture_id),
             "fixture",
         )
 
     def _player_season_id(
-        self, season_id: int, source_name: str, source_player_id: str
+        self, season_id: int, identifier_namespace: str, source_player_id: str
     ) -> int:
         return self._required_id(
             """
-            SELECT ps.id
-            FROM player_seasons ps
-            JOIN players ON players.id = ps.player_id
-            WHERE ps.season_id = ?
-              AND players.source_name = ?
-              AND players.source_player_id = ?
+            SELECT id FROM player_seasons
+            WHERE season_id = ? AND identifier_namespace = ? AND source_player_id = ?
             """,
-            (season_id, source_name, source_player_id),
+            (season_id, identifier_namespace, source_player_id),
             "player season",
         )

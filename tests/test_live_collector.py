@@ -152,12 +152,12 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
             client=FakeClient(_bootstrap(price=76, team=2), _fixtures()),
             clock=lambda: next(times),
         )
-        second.collect(season_code="2026-27")
+        second_result = second.collect(season_code="2026-27")
 
         summary = database.season_summary("2026-27")
         assert summary["players"] == 1
         assert summary["fixtures"] == 1
-        assert summary["gameweek_snapshots"] == 1
+        assert summary["gameweek_snapshots"] == 2
         totals = database.player_gameweek_totals("2026-27", "101", 1)
         assert totals is not None
         assert totals["price_tenths"] == 76
@@ -177,6 +177,9 @@ def test_repeat_collection_updates_same_gameweek_without_duplicates(tmp_path) ->
             (player_season["team_id"],),
         ).fetchone()
         assert current_team["source_team_id"] == "2"
+        assert "South City" in second_result.latest_report_index.read_text(
+            encoding="utf-8"
+        )
 
 
 def test_rejects_malformed_bootstrap_before_database_ingestion(tmp_path) -> None:

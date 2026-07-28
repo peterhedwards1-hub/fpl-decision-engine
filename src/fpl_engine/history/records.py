@@ -12,6 +12,9 @@ class IngestionSource:
     retrieved_at: datetime
     url: str | None = None
     content_sha256: str | None = None
+    identifier_namespace: str = "official-fpl"
+    source_revision: str | None = None
+    adapter_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,8 @@ class PlayerRecord:
     first_name: str = ""
     second_name: str = ""
     date_of_birth: str | None = None
+    official_fpl_code: str | None = None
+    opta_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,7 @@ class PlayerSeasonRecord:
     position: Position
     start_price_tenths: int | None = None
     end_price_tenths: int | None = None
+    identifier_namespace: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,7 +103,7 @@ class PlayerGameweekSnapshotRecord:
     source_player_id: str
     gameweek_number: int
     price_tenths: int
-    captured_at: datetime
+    captured_at: datetime | None
     selected_by_percent: float | None = None
     transfers_in: int | None = None
     transfers_out: int | None = None
@@ -105,6 +111,10 @@ class PlayerGameweekSnapshotRecord:
     chance_of_playing_next_round: int | None = None
     news: str | None = None
     source_team_id: str | None = None
+    selected_count: int | None = None
+    observation_kind: str = "live_pre_deadline"
+    timing_quality: str = "exact"
+    source_observation_key: str | None = None
 
 
 @dataclass(frozen=True)

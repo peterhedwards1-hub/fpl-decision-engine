@@ -1,6 +1,6 @@
 """Historical data storage and ingestion."""
 
-from .csv_bundle import load_csv_bundle
+from .csv_bundle import CsvBundleError, load_csv_bundle
 from .database import HistoricalDatabase
 from .records import (
     FixtureRecord,
@@ -17,6 +17,7 @@ from .records import (
 
 __all__ = [
     "FixtureRecord",
+    "CsvBundleError",
     "GameweekRecord",
     "HistoricalBundle",
     "HistoricalDatabase",

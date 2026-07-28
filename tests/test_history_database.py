@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from dataclasses import replace
 
 import pytest
 
@@ -80,7 +81,7 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
 
-        assert database.schema_version == 2
+        assert database.schema_version == 3
         table_names = {
             row[0]
             for row in database.connection.execute(
@@ -88,7 +89,14 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
             )
         }
         assert "player_fixture_stats" in table_names
-        assert "player_gameweek_snapshots" in table_names
+        assert "player_gameweek_observations" in table_names
+        view_names = {
+            row[0]
+            for row in database.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'view'"
+            )
+        }
+        assert "player_gameweek_snapshots" in view_names
 
 
 def test_bundle_ingestion_preserves_double_gameweek_fixtures(tmp_path) -> None:
@@ -177,16 +185,110 @@ def test_csv_loader_rejects_missing_bundle_files(tmp_path) -> None:
         load_csv_bundle(bundle_dir, SeasonRecord("2025-26", "2025/26"))
 
 
-def test_import_rejects_team_id_owned_by_another_source(tmp_path) -> None:
+def test_import_refreshes_same_namespace_id_through_another_delivery_source(tmp_path) -> None:
     other_source = IngestionSource(
         name="other-source",
         url=SOURCE.url,
         retrieved_at=SOURCE.retrieved_at,
         content_sha256=SOURCE.content_sha256,
+        identifier_namespace="official-fpl",
+        source_revision="commit-123",
+        adapter_version="historical-v1",
     )
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
         database.ingest_bundle(SOURCE, make_bundle())
 
-        with pytest.raises(ValueError, match="already owned"):
-            database.ingest_bundle(other_source, make_bundle())
+        database.ingest_bundle(other_source, make_bundle())
+
+        row = database.connection.execute(
+            """
+            SELECT ingestion_runs.source_name
+            FROM teams
+            JOIN ingestion_runs ON ingestion_runs.id = teams.provenance_run_id
+            WHERE teams.source_team_id = '1'
+            """
+        ).fetchone()
+        assert row["source_name"] == "other-source"
+        provenance = database.connection.execute(
+            """
+            SELECT identifier_namespace, source_url, content_sha256,
+                   source_revision, adapter_version
+            FROM ingestion_runs WHERE source_name = 'other-source'
+            """
+        ).fetchone()
+        assert dict(provenance) == {
+            "identifier_namespace": "official-fpl",
+            "source_url": SOURCE.url,
+            "content_sha256": SOURCE.content_sha256,
+            "source_revision": "commit-123",
+            "adapter_version": "historical-v1",
+        }
+
+
+def test_same_element_id_in_different_seasons_creates_distinct_identities(tmp_path) -> None:
+    first = make_bundle()
+    second = replace(
+        make_bundle(),
+        season=SeasonRecord("2026-27", "2026/27"),
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, first)
+        database.ingest_bundle(SOURCE, second)
+
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM players"
+        ).fetchone()[0] == 2
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM player_seasons"
+        ).fetchone()[0] == 2
+
+
+def test_stable_identifier_links_real_player_across_seasons(tmp_path) -> None:
+    first_player = replace(make_bundle().players[0], official_fpl_code="9001")
+    second_player = replace(make_bundle().players[0], official_fpl_code="9001")
+    first = replace(
+        make_bundle(),
+        players=(first_player,),
+    )
+    second = replace(
+        make_bundle(),
+        season=SeasonRecord("2026-27", "2026/27"),
+        players=(second_player,),
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, first)
+        database.ingest_bundle(SOURCE, second)
+
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM players"
+        ).fetchone()[0] == 1
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM player_seasons"
+        ).fetchone()[0] == 2
+        identifier = database.connection.execute(
+            "SELECT identifier_value FROM player_identifiers"
+        ).fetchone()
+        assert identifier["identifier_value"] == "9001"
+
+
+def test_same_name_does_not_merge_players_without_stable_identifier(tmp_path) -> None:
+    base = make_bundle()
+    players = (
+        base.players[0],
+        PlayerRecord("102", "Example", "Alex", "Example"),
+    )
+    player_seasons = (
+        base.player_seasons[0],
+        PlayerSeasonRecord("102", "2", Position.MID, 70),
+    )
+    bundle = replace(base, players=players, player_seasons=player_seasons)
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, bundle)
+
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM players"
+        ).fetchone()[0] == 2
