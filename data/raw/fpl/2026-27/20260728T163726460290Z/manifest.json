@@ -1,8 +1,0 @@
-{
-  "captured_at": "2026-07-28T16:37:26.460290+00:00",
-  "content_sha256": "a29981e0a88d5e56fa12cb169e47f1acd4ab9ce8c58c37e8942c2db976839f6a",
-  "endpoints": {
-    "bootstrap-static.json": "https://fantasy.premierleague.com/api/bootstrap-static/",
-    "fixtures.json": "https://fantasy.premierleague.com/api/fixtures/"
-  }
-}

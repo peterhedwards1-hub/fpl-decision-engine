@@ -103,6 +103,8 @@ class LiveSnapshotCollector:
             retrieved_at=captured_at,
             url=bootstrap.url,
             content_sha256=digest,
+            identifier_namespace="official-fpl",
+            adapter_version="official-fpl-api-v1",
         )
         run_id = self.database.ingest_bundle(source, bundle)
         report = write_verification_report(
@@ -192,6 +194,8 @@ class LiveSnapshotCollector:
                 first_name=str(player.get("first_name", "")),
                 second_name=str(player.get("second_name", "")),
                 web_name=str(player["web_name"]),
+                official_fpl_code=_optional_identifier(player.get("code")),
+                opta_code=_optional_identifier(player.get("opta_code")),
             )
             for player in bootstrap["elements"]
         )
@@ -231,6 +235,8 @@ class LiveSnapshotCollector:
                 price_tenths=int(player["now_cost"]),
                 captured_at=captured_at,
                 source_team_id=str(player["team"]),
+                observation_kind="live_pre_deadline",
+                timing_quality="exact",
                 selected_by_percent=_optional_float(player.get("selected_by_percent")),
                 transfers_in=_optional_int(player.get("transfers_in_event")),
                 transfers_out=_optional_int(player.get("transfers_out_event")),
@@ -293,6 +299,10 @@ def _optional_int(value: Any) -> int | None:
 
 def _optional_float(value: Any) -> float | None:
     return None if value is None or value == "" else float(value)
+
+
+def _optional_identifier(value: Any) -> str | None:
+    return None if value is None or value == "" else str(value)
 
 
 def _require_keys(

@@ -68,6 +68,7 @@ def write_verification_report(
         database,
         """
         SELECT id, source_name, source_url, retrieved_at, content_sha256,
+               identifier_namespace, source_revision, adapter_version,
                status, row_count
         FROM ingestion_runs WHERE id = ?
         """,
@@ -117,26 +118,42 @@ def _players(
 ) -> list[dict[str, Any]]:
     rows = database.connection.execute(
         """
-        SELECT players.source_player_id AS player_id, players.web_name,
+        WITH ranked_observations AS (
+            SELECT observations.*,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY observations.player_season_id,
+                                    observations.gameweek_id
+                       ORDER BY observations.observed_at IS NULL,
+                                observations.observed_at DESC, observations.id DESC
+                   ) AS observation_rank
+            FROM player_gameweek_observations observations
+            JOIN gameweeks ON gameweeks.id = observations.gameweek_id
+            JOIN seasons ON seasons.id = gameweeks.season_id
+            WHERE seasons.code = ? AND gameweeks.number = ?
+        )
+        SELECT ps.source_player_id AS player_id, players.web_name,
                players.first_name, players.second_name,
                COALESCE(snapshot_teams.name, teams.name) AS team,
                COALESCE(snapshot_teams.short_name, teams.short_name) AS team_short_name,
                ps.position,
-               snapshots.price_tenths, snapshots.selected_by_percent,
-               snapshots.transfers_in, snapshots.transfers_out, snapshots.status,
+               snapshots.price_tenths, snapshots.selected_count,
+               snapshots.selected_by_percent, snapshots.transfers_in,
+               snapshots.transfers_out, snapshots.status,
                snapshots.chance_of_playing_next_round, snapshots.news,
-               snapshots.captured_at
-        FROM player_gameweek_snapshots snapshots
+               snapshots.observed_at AS captured_at
+        FROM ranked_observations snapshots
         JOIN player_seasons ps ON ps.id = snapshots.player_season_id
         JOIN seasons ON seasons.id = ps.season_id
         JOIN players ON players.id = ps.player_id
         JOIN teams ON teams.id = ps.team_id
         LEFT JOIN teams snapshot_teams ON snapshot_teams.id = snapshots.team_id
         JOIN gameweeks ON gameweeks.id = snapshots.gameweek_id
-        WHERE seasons.code = ? AND gameweeks.number = ?
-        ORDER BY players.web_name COLLATE NOCASE, players.source_player_id
+        WHERE snapshots.observation_rank = 1
+          AND seasons.code = ? AND gameweeks.number = ?
+          AND ps.identifier_namespace = 'official-fpl'
+        ORDER BY players.web_name COLLATE NOCASE, ps.source_player_id
         """,
-        (season_code, gameweek_number),
+        (season_code, gameweek_number, season_code, gameweek_number),
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -153,7 +170,7 @@ def _fixtures(database: HistoricalDatabase, season_code: str) -> list[dict[str, 
         JOIN teams home ON home.id = fixtures.home_team_id
         JOIN teams away ON away.id = fixtures.away_team_id
         LEFT JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
-        WHERE seasons.code = ?
+        WHERE seasons.code = ? AND fixtures.identifier_namespace = 'official-fpl'
         ORDER BY COALESCE(gameweeks.number, 999), fixtures.kickoff_time,
                  fixtures.source_fixture_id
         """,
@@ -245,6 +262,7 @@ def _players_csv(players: list[dict[str, Any]]) -> bytes:
         "position",
         "price_millions",
         "selected_by_percent",
+        "selected_count",
         "transfers_in",
         "transfers_out",
         "status",
@@ -324,6 +342,7 @@ def _html_report(
             row["position"],
             _price(row["price_tenths"]),
             _percent(row["selected_by_percent"]),
+            row["selected_count"] or "",
             STATUS_LABELS.get(row["status"], row["status"] or "Unknown"),
             _chance(row["chance_of_playing_next_round"]),
             row["news"] or "",
@@ -368,6 +387,7 @@ def _html_report(
         "Pos",
         "Price",
         "Owned",
+        "Selected",
         "Status",
         "Chance",
         "News",
@@ -376,9 +396,12 @@ def _html_report(
     provenance = [
         ("Ingestion run", ingestion["id"]),
         ("Source", ingestion["source_name"]),
+        ("Identifier namespace", ingestion["identifier_namespace"]),
         ("Source URL", ingestion["source_url"] or ""),
         ("Retrieved", ingestion["retrieved_at"]),
         ("SHA-256", ingestion["content_sha256"] or ""),
+        ("Source revision", ingestion["source_revision"] or ""),
+        ("Adapter version", ingestion["adapter_version"] or ""),
         ("Raw archive", archive_directory),
     ]
     return f"""<!doctype html>

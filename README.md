@@ -4,7 +4,7 @@ A personal, reproducible Fantasy Premier League decision-support system.
 
 ## Current status
 
-Milestones 0–2 establish the rules, historical-data and live-collection foundations used by
+Milestones 0–2.1 establish the rules, historical-data and live-collection foundations used by
 later projection, optimisation and front-end work.
 
 Implemented:
@@ -24,6 +24,11 @@ Implemented:
 - browser and Excel verification reports generated from SQLite;
 - a manual GitHub workflow for collecting data without local setup;
 - automated tests and GitHub Actions CI.
+
+Milestone 2.1 also provides schema version 3, in-place version-2 migration, stable player
+identity links, explicit identifier namespaces and delivery-source provenance, timestamped
+multi-observation Gameweek history, selected-manager counts, and strict CSV contract
+validation. See [the historical import foundation design](docs/historical-import-foundation.md).
 
 ## Easiest data check: use GitHub
 
@@ -107,7 +112,7 @@ Each run:
 3. archives the exact response bytes under a UTC timestamp;
 4. writes a manifest containing endpoint URLs and a combined SHA-256 checksum;
 5. normalises teams, players, Gameweeks, fixtures, price, ownership and availability;
-6. atomically upserts the snapshot into SQLite with ingestion provenance;
+6. atomically appends or idempotently refreshes timestamped Gameweek observations in SQLite;
 7. reads the normalised rows back from SQLite and creates a verification report.
 
 The latest report is written to:
@@ -165,8 +170,9 @@ The optional CSV files are:
 - `player_fixture_stats.csv`;
 - `player_gameweek_snapshots.csv`.
 
-The snapshot file may include `source_team_id` so repeated collections preserve a
-player's current team without rewriting earlier season affiliation.
+The snapshot file may include `source_team_id`, `selected_count`, `observation_kind`,
+`timing_quality` and `source_observation_key`. Historical observations can omit
+`captured_at` when an exact timestamp is unknown.
 
 Each file uses the field names defined by the matching dataclass in
 `src/fpl_engine/history/records.py`. Missing optional files are treated as empty.
@@ -186,5 +192,6 @@ docs/                     Product and implementation documentation
 
 ## Next milestone
 
-Milestone 3 will add manual squad entry, including bank, free transfers, chips and player
-selling prices, without requiring FPL authentication.
+The next milestone will add the Vaastav historical source adapter. It will not require FPL
+authentication. The proposed interface is documented in
+`docs/historical-import-foundation.md`.
