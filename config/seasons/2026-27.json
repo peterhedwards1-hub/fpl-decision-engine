@@ -65,9 +65,43 @@
   },
   "transfers": {
     "initial_free_transfers": 1,
+    "free_transfers_per_gameweek": 1,
     "maximum_free_transfers": 5,
     "transfer_hit_cost": 4
   },
-  "chip_sets": 2,
-  "first_chip_set_expiry_gameweek": 19
+  "selling_prices": {
+    "profit_step_tenths": 2,
+    "profit_return_tenths": 1
+  },
+  "chips": {
+    "names": [
+      "wildcard",
+      "free_hit",
+      "bench_boost",
+      "triple_captain"
+    ],
+    "sets_per_season": 2,
+    "first_set_expiry_gameweek": 19,
+    "second_set_start_gameweek": 20,
+    "maximum_active_per_gameweek": 1,
+    "unavailable_gameweeks": {
+      "wildcard": [
+        1
+      ],
+      "free_hit": [
+        1
+      ]
+    },
+    "minimum_gap_gameweeks": {
+      "free_hit": 1
+    },
+    "banked_transfers_preserved": true
+  },
+  "validated_on": "2026-07-29",
+  "source_urls": [
+    "https://www.premierleague.com/en/news/4679873/all-you-need-to-know-about-changes-to-fpl-for-202627",
+    "https://www.premierleague.com/en/news/4679879/whats-happening-with-fpl-chips-in-202627",
+    "https://www.premierleague.com/en/news/4361991/whats-new-in-202526-fantasy-defensive-contributions",
+    "https://www.premierleague.com/en/news/2858775/fpl-player-price-changes-how-why-and-when-does-it-happen"
+  ]
 }

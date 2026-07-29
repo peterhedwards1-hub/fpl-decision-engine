@@ -11,8 +11,16 @@ from .records import (
     PlayerGameweekSnapshotRecord,
     PlayerRecord,
     PlayerSeasonRecord,
+    PlayerSeasonStatsObservationRecord,
     SeasonRecord,
     TeamRecord,
+)
+from .vaastav import (
+    VaastavAdapter,
+    VaastavClient,
+    VaastavImportError,
+    VaastavLoadResult,
+    VaastavQualityReport,
 )
 
 __all__ = [
@@ -25,8 +33,14 @@ __all__ = [
     "PlayerFixtureStatsRecord",
     "PlayerGameweekSnapshotRecord",
     "PlayerRecord",
+    "PlayerSeasonStatsObservationRecord",
     "PlayerSeasonRecord",
     "SeasonRecord",
     "TeamRecord",
+    "VaastavAdapter",
+    "VaastavClient",
+    "VaastavImportError",
+    "VaastavLoadResult",
+    "VaastavQualityReport",
     "load_csv_bundle",
 ]

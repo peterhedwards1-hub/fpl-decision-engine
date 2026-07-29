@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 8
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -101,6 +101,18 @@ CREATE TABLE IF NOT EXISTS fixtures (
     UNIQUE (season_id, identifier_namespace, source_fixture_id)
 );
 
+CREATE TABLE IF NOT EXISTS fixture_observations (
+    id INTEGER PRIMARY KEY,
+    fixture_id INTEGER NOT NULL REFERENCES fixtures(id) ON DELETE CASCADE,
+    gameweek_id INTEGER REFERENCES gameweeks(id),
+    kickoff_time TEXT,
+    home_score INTEGER CHECK (home_score IS NULL OR home_score >= 0),
+    away_score INTEGER CHECK (away_score IS NULL OR away_score >= 0),
+    finished INTEGER NOT NULL DEFAULT 0 CHECK (finished IN (0, 1)),
+    provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
+    UNIQUE (fixture_id, provenance_run_id)
+);
+
 CREATE TABLE IF NOT EXISTS player_fixture_stats (
     id INTEGER PRIMARY KEY,
     player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
@@ -127,6 +139,37 @@ CREATE TABLE IF NOT EXISTS player_fixture_stats (
     total_points INTEGER NOT NULL DEFAULT 0,
     provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
     UNIQUE (player_season_id, fixture_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_season_stats_observations (
+    id INTEGER PRIMARY KEY,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    observed_at TEXT NOT NULL,
+    minutes INTEGER NOT NULL DEFAULT 0 CHECK (minutes >= 0),
+    starts INTEGER NOT NULL DEFAULT 0 CHECK (starts >= 0),
+    goals INTEGER NOT NULL DEFAULT 0 CHECK (goals >= 0),
+    assists INTEGER NOT NULL DEFAULT 0 CHECK (assists >= 0),
+    clean_sheets INTEGER NOT NULL DEFAULT 0 CHECK (clean_sheets >= 0),
+    goals_conceded INTEGER NOT NULL DEFAULT 0 CHECK (goals_conceded >= 0),
+    own_goals INTEGER NOT NULL DEFAULT 0 CHECK (own_goals >= 0),
+    penalties_saved INTEGER NOT NULL DEFAULT 0 CHECK (penalties_saved >= 0),
+    penalties_missed INTEGER NOT NULL DEFAULT 0 CHECK (penalties_missed >= 0),
+    yellow_cards INTEGER NOT NULL DEFAULT 0 CHECK (yellow_cards >= 0),
+    red_cards INTEGER NOT NULL DEFAULT 0 CHECK (red_cards >= 0),
+    saves INTEGER NOT NULL DEFAULT 0 CHECK (saves >= 0),
+    bonus INTEGER NOT NULL DEFAULT 0 CHECK (bonus >= 0),
+    bps INTEGER NOT NULL DEFAULT 0,
+    defensive_contributions INTEGER NOT NULL DEFAULT 0 CHECK (
+        defensive_contributions >= 0
+    ),
+    expected_goals REAL,
+    expected_assists REAL,
+    expected_goal_involvements REAL,
+    expected_goals_conceded REAL,
+    total_points INTEGER NOT NULL DEFAULT 0,
+    source_observation_key TEXT NOT NULL,
+    provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
+    UNIQUE (player_season_id, source_observation_key)
 );
 
 CREATE TABLE IF NOT EXISTS player_gameweek_observations (
@@ -168,13 +211,169 @@ CREATE TABLE IF NOT EXISTS player_gameweek_observations (
     )
 );
 
+CREATE TABLE IF NOT EXISTS manager_snapshots (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    data_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    captured_at TEXT NOT NULL,
+    bank_tenths INTEGER NOT NULL CHECK (bank_tenths >= 0),
+    free_transfers INTEGER NOT NULL CHECK (free_transfers BETWEEN 0 AND 5),
+    remaining_chips_json TEXT NOT NULL,
+    captain_player_season_id INTEGER REFERENCES player_seasons(id),
+    vice_captain_player_season_id INTEGER REFERENCES player_seasons(id),
+    note TEXT,
+    CHECK (
+        captain_player_season_id IS NULL
+        OR vice_captain_player_season_id IS NULL
+        OR captain_player_season_id <> vice_captain_player_season_id
+    )
+);
+
+CREATE TABLE IF NOT EXISTS manager_squad_entries (
+    id INTEGER PRIMARY KEY,
+    manager_snapshot_id INTEGER NOT NULL
+        REFERENCES manager_snapshots(id) ON DELETE CASCADE,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id),
+    purchase_price_tenths INTEGER NOT NULL CHECK (purchase_price_tenths >= 0),
+    selling_price_tenths INTEGER NOT NULL CHECK (selling_price_tenths >= 0),
+    is_starter INTEGER NOT NULL CHECK (is_starter IN (0, 1)),
+    bench_order INTEGER CHECK (
+        (is_starter = 1 AND bench_order IS NULL)
+        OR (is_starter = 0 AND bench_order BETWEEN 1 AND 4)
+    ),
+    UNIQUE (manager_snapshot_id, player_season_id),
+    UNIQUE (manager_snapshot_id, bench_order)
+);
+
+CREATE TABLE IF NOT EXISTS projection_runs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    generated_at TEXT NOT NULL,
+    start_gameweek INTEGER NOT NULL CHECK (start_gameweek BETWEEN 1 AND 38),
+    horizon_gameweeks INTEGER NOT NULL CHECK (horizon_gameweeks > 0),
+    model_version TEXT NOT NULL,
+    observation_mode TEXT NOT NULL,
+    assumptions_json TEXT NOT NULL,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id)
+);
+
+CREATE TABLE IF NOT EXISTS player_gameweek_projections (
+    id INTEGER PRIMARY KEY,
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id) ON DELETE CASCADE,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    gameweek_number INTEGER NOT NULL CHECK (gameweek_number BETWEEN 1 AND 38),
+    expected_minutes REAL NOT NULL CHECK (expected_minutes BETWEEN 0 AND 180),
+    appearance_points REAL NOT NULL,
+    goal_points REAL NOT NULL,
+    assist_points REAL NOT NULL,
+    clean_sheet_points REAL NOT NULL,
+    save_points REAL NOT NULL,
+    defensive_contribution_points REAL NOT NULL,
+    bonus_points REAL NOT NULL,
+    deduction_points REAL NOT NULL,
+    expected_points REAL NOT NULL,
+    uncertainty REAL NOT NULL CHECK (uncertainty >= 0),
+    assumptions_json TEXT NOT NULL,
+    override_rationale TEXT,
+    UNIQUE (projection_run_id, player_season_id, gameweek_number)
+);
+
+CREATE TABLE IF NOT EXISTS news_evidence (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    player_season_id INTEGER REFERENCES player_seasons(id),
+    evidence_type TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source_url TEXT,
+    evidence_at TEXT NOT NULL,
+    confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')),
+    review_status TEXT NOT NULL CHECK (
+        review_status IN ('pending', 'accepted', 'rejected')
+    ),
+    expected_minutes_adjustment REAL,
+    rationale TEXT
+);
+
+CREATE TABLE IF NOT EXISTS weekly_decision_runs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    manager_snapshot_id INTEGER NOT NULL REFERENCES manager_snapshots(id),
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    mode TEXT NOT NULL CHECK (mode IN ('provisional', 'final')),
+    created_at TEXT NOT NULL,
+    frozen_at TEXT,
+    recommendation_json TEXT NOT NULL,
+    decision_triggers_json TEXT NOT NULL,
+    overrides_json TEXT NOT NULL,
+    CHECK (
+        (mode = 'provisional' AND frozen_at IS NULL)
+        OR (mode = 'final' AND frozen_at IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS actual_actions (
+    id INTEGER PRIMARY KEY,
+    weekly_decision_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES weekly_decision_runs(id) ON DELETE CASCADE,
+    recorded_at TEXT NOT NULL,
+    action_json TEXT NOT NULL,
+    followed_recommendation INTEGER NOT NULL CHECK (
+        followed_recommendation IN (0, 1)
+    ),
+    deviation_reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS weekly_evaluations (
+    id INTEGER PRIMARY KEY,
+    weekly_decision_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES weekly_decision_runs(id) ON DELETE CASCADE,
+    evaluated_at TEXT NOT NULL,
+    forecast_points REAL NOT NULL,
+    realised_points REAL NOT NULL,
+    score_error REAL NOT NULL,
+    review_notes TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_player_seasons_team ON player_seasons(team_id);
 CREATE INDEX IF NOT EXISTS idx_player_seasons_source
     ON player_seasons(identifier_namespace, source_player_id);
 CREATE INDEX IF NOT EXISTS idx_fixtures_gameweek ON fixtures(gameweek_id);
+CREATE INDEX IF NOT EXISTS idx_fixture_observations_fixture
+    ON fixture_observations(fixture_id, provenance_run_id);
 CREATE INDEX IF NOT EXISTS idx_fixture_stats_fixture ON player_fixture_stats(fixture_id);
+CREATE INDEX IF NOT EXISTS idx_season_stats_player_time
+    ON player_season_stats_observations(player_season_id, observed_at);
 CREATE INDEX IF NOT EXISTS idx_observations_gameweek
     ON player_gameweek_observations(gameweek_id, observed_at, observed_on);
+CREATE INDEX IF NOT EXISTS idx_manager_snapshots_gameweek
+    ON manager_snapshots(season_id, gameweek_id, captured_at);
+CREATE INDEX IF NOT EXISTS idx_manager_entries_snapshot
+    ON manager_squad_entries(manager_snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_projection_runs_season
+    ON projection_runs(season_id, generated_at);
+CREATE INDEX IF NOT EXISTS idx_projections_run_gameweek
+    ON player_gameweek_projections(projection_run_id, gameweek_number);
+CREATE INDEX IF NOT EXISTS idx_news_review_queue
+    ON news_evidence(season_id, gameweek_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_weekly_runs_gameweek
+    ON weekly_decision_runs(season_id, gameweek_id, created_at);
+
+CREATE TRIGGER IF NOT EXISTS prevent_final_weekly_run_update
+BEFORE UPDATE ON weekly_decision_runs
+WHEN OLD.mode = 'final'
+BEGIN
+    SELECT RAISE(ABORT, 'final weekly decision runs are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prevent_final_weekly_run_delete
+BEFORE DELETE ON weekly_decision_runs
+WHEN OLD.mode = 'final'
+BEGIN
+    SELECT RAISE(ABORT, 'final weekly decision runs are immutable');
+END;
 
 CREATE VIEW IF NOT EXISTS player_gameweek_snapshots AS
 SELECT
@@ -524,4 +723,248 @@ SELECT id, player_season_id, gameweek_id, team_id, price_tenths,
 FROM player_gameweek_observations;
 
 PRAGMA user_version = 4;
+"""
+
+MIGRATE_V4_TO_V5_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+CREATE TABLE fixture_observations (
+    id INTEGER PRIMARY KEY,
+    fixture_id INTEGER NOT NULL REFERENCES fixtures(id) ON DELETE CASCADE,
+    gameweek_id INTEGER REFERENCES gameweeks(id),
+    kickoff_time TEXT,
+    home_score INTEGER CHECK (home_score IS NULL OR home_score >= 0),
+    away_score INTEGER CHECK (away_score IS NULL OR away_score >= 0),
+    finished INTEGER NOT NULL DEFAULT 0 CHECK (finished IN (0, 1)),
+    provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
+    UNIQUE (fixture_id, provenance_run_id)
+);
+
+CREATE INDEX idx_fixture_observations_fixture
+    ON fixture_observations(fixture_id, provenance_run_id);
+
+CREATE TABLE player_season_stats_observations (
+    id INTEGER PRIMARY KEY,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    observed_at TEXT NOT NULL,
+    minutes INTEGER NOT NULL DEFAULT 0 CHECK (minutes >= 0),
+    starts INTEGER NOT NULL DEFAULT 0 CHECK (starts >= 0),
+    goals INTEGER NOT NULL DEFAULT 0 CHECK (goals >= 0),
+    assists INTEGER NOT NULL DEFAULT 0 CHECK (assists >= 0),
+    clean_sheets INTEGER NOT NULL DEFAULT 0 CHECK (clean_sheets >= 0),
+    goals_conceded INTEGER NOT NULL DEFAULT 0 CHECK (goals_conceded >= 0),
+    own_goals INTEGER NOT NULL DEFAULT 0 CHECK (own_goals >= 0),
+    penalties_saved INTEGER NOT NULL DEFAULT 0 CHECK (penalties_saved >= 0),
+    penalties_missed INTEGER NOT NULL DEFAULT 0 CHECK (penalties_missed >= 0),
+    yellow_cards INTEGER NOT NULL DEFAULT 0 CHECK (yellow_cards >= 0),
+    red_cards INTEGER NOT NULL DEFAULT 0 CHECK (red_cards >= 0),
+    saves INTEGER NOT NULL DEFAULT 0 CHECK (saves >= 0),
+    bonus INTEGER NOT NULL DEFAULT 0 CHECK (bonus >= 0),
+    bps INTEGER NOT NULL DEFAULT 0,
+    defensive_contributions INTEGER NOT NULL DEFAULT 0 CHECK (
+        defensive_contributions >= 0
+    ),
+    expected_goals REAL,
+    expected_assists REAL,
+    expected_goal_involvements REAL,
+    expected_goals_conceded REAL,
+    total_points INTEGER NOT NULL DEFAULT 0,
+    source_observation_key TEXT NOT NULL,
+    provenance_run_id INTEGER NOT NULL REFERENCES ingestion_runs(id),
+    UNIQUE (player_season_id, source_observation_key)
+);
+
+CREATE INDEX idx_season_stats_player_time
+    ON player_season_stats_observations(player_season_id, observed_at);
+
+INSERT INTO fixture_observations (
+    fixture_id, gameweek_id, kickoff_time, home_score, away_score,
+    finished, provenance_run_id
+)
+SELECT id, gameweek_id, kickoff_time, home_score, away_score,
+       finished, provenance_run_id
+FROM fixtures;
+
+PRAGMA user_version = 5;
+COMMIT;
+"""
+
+MIGRATE_V5_TO_V6_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+CREATE TABLE manager_snapshots (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    data_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    captured_at TEXT NOT NULL,
+    bank_tenths INTEGER NOT NULL CHECK (bank_tenths >= 0),
+    free_transfers INTEGER NOT NULL CHECK (free_transfers BETWEEN 0 AND 5),
+    remaining_chips_json TEXT NOT NULL,
+    captain_player_season_id INTEGER REFERENCES player_seasons(id),
+    vice_captain_player_season_id INTEGER REFERENCES player_seasons(id),
+    note TEXT,
+    CHECK (
+        captain_player_season_id IS NULL
+        OR vice_captain_player_season_id IS NULL
+        OR captain_player_season_id <> vice_captain_player_season_id
+    )
+);
+
+CREATE TABLE manager_squad_entries (
+    id INTEGER PRIMARY KEY,
+    manager_snapshot_id INTEGER NOT NULL
+        REFERENCES manager_snapshots(id) ON DELETE CASCADE,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id),
+    purchase_price_tenths INTEGER NOT NULL CHECK (purchase_price_tenths >= 0),
+    selling_price_tenths INTEGER NOT NULL CHECK (selling_price_tenths >= 0),
+    is_starter INTEGER NOT NULL CHECK (is_starter IN (0, 1)),
+    bench_order INTEGER CHECK (
+        (is_starter = 1 AND bench_order IS NULL)
+        OR (is_starter = 0 AND bench_order BETWEEN 1 AND 4)
+    ),
+    UNIQUE (manager_snapshot_id, player_season_id),
+    UNIQUE (manager_snapshot_id, bench_order)
+);
+
+CREATE INDEX idx_manager_snapshots_gameweek
+    ON manager_snapshots(season_id, gameweek_id, captured_at);
+CREATE INDEX idx_manager_entries_snapshot
+    ON manager_squad_entries(manager_snapshot_id);
+
+PRAGMA user_version = 6;
+COMMIT;
+"""
+
+MIGRATE_V6_TO_V7_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+CREATE TABLE projection_runs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    generated_at TEXT NOT NULL,
+    start_gameweek INTEGER NOT NULL CHECK (start_gameweek BETWEEN 1 AND 38),
+    horizon_gameweeks INTEGER NOT NULL CHECK (horizon_gameweeks > 0),
+    model_version TEXT NOT NULL,
+    observation_mode TEXT NOT NULL,
+    assumptions_json TEXT NOT NULL,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id)
+);
+
+CREATE TABLE player_gameweek_projections (
+    id INTEGER PRIMARY KEY,
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id) ON DELETE CASCADE,
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    gameweek_number INTEGER NOT NULL CHECK (gameweek_number BETWEEN 1 AND 38),
+    expected_minutes REAL NOT NULL CHECK (expected_minutes BETWEEN 0 AND 180),
+    appearance_points REAL NOT NULL,
+    goal_points REAL NOT NULL,
+    assist_points REAL NOT NULL,
+    clean_sheet_points REAL NOT NULL,
+    save_points REAL NOT NULL,
+    defensive_contribution_points REAL NOT NULL,
+    bonus_points REAL NOT NULL,
+    deduction_points REAL NOT NULL,
+    expected_points REAL NOT NULL,
+    uncertainty REAL NOT NULL CHECK (uncertainty >= 0),
+    assumptions_json TEXT NOT NULL,
+    override_rationale TEXT,
+    UNIQUE (projection_run_id, player_season_id, gameweek_number)
+);
+
+CREATE INDEX idx_projection_runs_season
+    ON projection_runs(season_id, generated_at);
+CREATE INDEX idx_projections_run_gameweek
+    ON player_gameweek_projections(projection_run_id, gameweek_number);
+
+PRAGMA user_version = 7;
+COMMIT;
+"""
+
+MIGRATE_V7_TO_V8_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+CREATE TABLE news_evidence (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    player_season_id INTEGER REFERENCES player_seasons(id),
+    evidence_type TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source_url TEXT,
+    evidence_at TEXT NOT NULL,
+    confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')),
+    review_status TEXT NOT NULL CHECK (
+        review_status IN ('pending', 'accepted', 'rejected')
+    ),
+    expected_minutes_adjustment REAL,
+    rationale TEXT
+);
+
+CREATE TABLE weekly_decision_runs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    manager_snapshot_id INTEGER NOT NULL REFERENCES manager_snapshots(id),
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    mode TEXT NOT NULL CHECK (mode IN ('provisional', 'final')),
+    created_at TEXT NOT NULL,
+    frozen_at TEXT,
+    recommendation_json TEXT NOT NULL,
+    decision_triggers_json TEXT NOT NULL,
+    overrides_json TEXT NOT NULL,
+    CHECK (
+        (mode = 'provisional' AND frozen_at IS NULL)
+        OR (mode = 'final' AND frozen_at IS NOT NULL)
+    )
+);
+
+CREATE TABLE actual_actions (
+    id INTEGER PRIMARY KEY,
+    weekly_decision_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES weekly_decision_runs(id) ON DELETE CASCADE,
+    recorded_at TEXT NOT NULL,
+    action_json TEXT NOT NULL,
+    followed_recommendation INTEGER NOT NULL CHECK (
+        followed_recommendation IN (0, 1)
+    ),
+    deviation_reason TEXT
+);
+
+CREATE TABLE weekly_evaluations (
+    id INTEGER PRIMARY KEY,
+    weekly_decision_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES weekly_decision_runs(id) ON DELETE CASCADE,
+    evaluated_at TEXT NOT NULL,
+    forecast_points REAL NOT NULL,
+    realised_points REAL NOT NULL,
+    score_error REAL NOT NULL,
+    review_notes TEXT
+);
+
+CREATE INDEX idx_news_review_queue
+    ON news_evidence(season_id, gameweek_id, review_status);
+CREATE INDEX idx_weekly_runs_gameweek
+    ON weekly_decision_runs(season_id, gameweek_id, created_at);
+
+CREATE TRIGGER prevent_final_weekly_run_update
+BEFORE UPDATE ON weekly_decision_runs
+WHEN OLD.mode = 'final'
+BEGIN
+    SELECT RAISE(ABORT, 'final weekly decision runs are immutable');
+END;
+
+CREATE TRIGGER prevent_final_weekly_run_delete
+BEFORE DELETE ON weekly_decision_runs
+WHEN OLD.mode = 'final'
+BEGIN
+    SELECT RAISE(ABORT, 'final weekly decision runs are immutable');
+END;
+
+PRAGMA user_version = 8;
+COMMIT;
 """

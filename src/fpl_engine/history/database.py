@@ -19,12 +19,17 @@ from .records import (
     PlayerGameweekSnapshotRecord,
     PlayerRecord,
     PlayerSeasonRecord,
+    PlayerSeasonStatsObservationRecord,
     SeasonRecord,
     TeamRecord,
 )
 from .schema import (
     MIGRATE_V2_TO_V3_SQL,
     MIGRATE_V3_TO_V4_SQL,
+    MIGRATE_V4_TO_V5_SQL,
+    MIGRATE_V5_TO_V6_SQL,
+    MIGRATE_V6_TO_V7_SQL,
+    MIGRATE_V7_TO_V8_SQL,
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
@@ -87,6 +92,18 @@ class HistoricalDatabase:
             current_version = 3
         if current_version == 3:
             self._migrate_v3_to_v4()
+            current_version = 4
+        if current_version == 4:
+            self._migrate_v4_to_v5()
+            current_version = 5
+        if current_version == 5:
+            self._migrate_v5_to_v6()
+            current_version = 6
+        if current_version == 6:
+            self._migrate_v6_to_v7()
+            current_version = 7
+        if current_version == 7:
+            self._migrate_v7_to_v8()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
@@ -153,6 +170,70 @@ class HistoricalDatabase:
             raise RuntimeError(f"Version 3 to 4 migration failed safely: {error}") from error
         finally:
             self.connection.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_v4_to_v5(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V4_TO_V5_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 4 to 5 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 4 to 5 migration failed safely: {error}") from error
+
+    def _migrate_v5_to_v6(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V5_TO_V6_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 5 to 6 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 5 to 6 migration failed safely: {error}") from error
+
+    def _migrate_v6_to_v7(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V6_TO_V7_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 6 to 7 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 6 to 7 migration failed safely: {error}") from error
+
+    def _migrate_v7_to_v8(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V7_TO_V8_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 7 to 8 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 7 to 8 migration failed safely: {error}") from error
 
     def _validate_v3_timing_rows(self) -> dict[int, str | None]:
         rows = self.connection.execute(
@@ -325,6 +406,14 @@ class HistoricalDatabase:
                 for record in bundle.fixture_stats:
                     self.upsert_fixture_stats(
                         season_id, source.identifier_namespace, record, run_id
+                    )
+                    row_count += 1
+                for record in bundle.season_stats_observations:
+                    self.upsert_player_season_stats_observation(
+                        season_id,
+                        source.identifier_namespace,
+                        record,
+                        run_id,
                     )
                     row_count += 1
                 for record in bundle.gameweek_snapshots:
@@ -745,7 +834,7 @@ class HistoricalDatabase:
         gameweek_id = None
         if record.gameweek_number is not None:
             gameweek_id = self._gameweek_id(season_id, record.gameweek_number)
-        return self._upsert_id(
+        fixture_id = self._upsert_id(
             """
             INSERT INTO fixtures (
                 season_id, identifier_namespace, source_fixture_id, gameweek_id,
@@ -777,6 +866,30 @@ class HistoricalDatabase:
                 run_id,
             ),
         )
+        self.connection.execute(
+            """
+            INSERT INTO fixture_observations (
+                fixture_id, gameweek_id, kickoff_time, home_score, away_score,
+                finished, provenance_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fixture_id, provenance_run_id) DO UPDATE SET
+                gameweek_id = excluded.gameweek_id,
+                kickoff_time = excluded.kickoff_time,
+                home_score = excluded.home_score,
+                away_score = excluded.away_score,
+                finished = excluded.finished
+            """,
+            (
+                fixture_id,
+                gameweek_id,
+                record.kickoff_time,
+                record.home_score,
+                record.away_score,
+                int(record.finished),
+                run_id,
+            ),
+        )
+        return fixture_id
 
     def upsert_fixture_stats(
         self,
@@ -851,6 +964,85 @@ class HistoricalDatabase:
             RETURNING id
             """,
             values,
+        )
+
+    def upsert_player_season_stats_observation(
+        self,
+        season_id: int,
+        identifier_namespace: str,
+        record: PlayerSeasonStatsObservationRecord,
+        run_id: int,
+    ) -> int:
+        player_season_id = self._player_season_id(
+            season_id, identifier_namespace, record.source_player_id
+        )
+        observed_at = _utc_timestamp(
+            record.observed_at, "season stats observed_at"
+        )
+        return self._upsert_id(
+            """
+            INSERT INTO player_season_stats_observations (
+                player_season_id, observed_at, minutes, starts, goals, assists,
+                clean_sheets, goals_conceded, own_goals, penalties_saved,
+                penalties_missed, yellow_cards, red_cards, saves, bonus, bps,
+                defensive_contributions, expected_goals, expected_assists,
+                expected_goal_involvements, expected_goals_conceded,
+                total_points, source_observation_key, provenance_run_id
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?
+            )
+            ON CONFLICT(player_season_id, source_observation_key) DO UPDATE SET
+                observed_at = excluded.observed_at,
+                minutes = excluded.minutes,
+                starts = excluded.starts,
+                goals = excluded.goals,
+                assists = excluded.assists,
+                clean_sheets = excluded.clean_sheets,
+                goals_conceded = excluded.goals_conceded,
+                own_goals = excluded.own_goals,
+                penalties_saved = excluded.penalties_saved,
+                penalties_missed = excluded.penalties_missed,
+                yellow_cards = excluded.yellow_cards,
+                red_cards = excluded.red_cards,
+                saves = excluded.saves,
+                bonus = excluded.bonus,
+                bps = excluded.bps,
+                defensive_contributions = excluded.defensive_contributions,
+                expected_goals = excluded.expected_goals,
+                expected_assists = excluded.expected_assists,
+                expected_goal_involvements = excluded.expected_goal_involvements,
+                expected_goals_conceded = excluded.expected_goals_conceded,
+                total_points = excluded.total_points,
+                provenance_run_id = excluded.provenance_run_id
+            RETURNING id
+            """,
+            (
+                player_season_id,
+                observed_at,
+                record.minutes,
+                record.starts,
+                record.goals,
+                record.assists,
+                record.clean_sheets,
+                record.goals_conceded,
+                record.own_goals,
+                record.penalties_saved,
+                record.penalties_missed,
+                record.yellow_cards,
+                record.red_cards,
+                record.saves,
+                record.bonus,
+                record.bps,
+                record.defensive_contributions,
+                record.expected_goals,
+                record.expected_assists,
+                record.expected_goal_involvements,
+                record.expected_goals_conceded,
+                record.total_points,
+                record.source_observation_key,
+                run_id,
+            ),
         )
 
     def upsert_gameweek_observation(
@@ -974,6 +1166,11 @@ class HistoricalDatabase:
             "fixture_stats": """
                 SELECT COUNT(*) FROM player_fixture_stats stats
                 JOIN player_seasons ps ON ps.id = stats.player_season_id
+                WHERE ps.season_id = ?
+            """,
+            "season_stats_observations": """
+                SELECT COUNT(*) FROM player_season_stats_observations observations
+                JOIN player_seasons ps ON ps.id = observations.player_season_id
                 WHERE ps.season_id = ?
             """,
             "gameweek_snapshots": """

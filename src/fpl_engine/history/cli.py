@@ -11,6 +11,7 @@ from pathlib import Path
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
 from .records import IngestionSource, SeasonRecord
+from .vaastav import VaastavAdapter, VaastavClient
 
 
 def main() -> None:
@@ -36,6 +37,20 @@ def main() -> None:
     import_parser.add_argument("--starts-on")
     import_parser.add_argument("--ends-on")
 
+    vaastav_parser = subparsers.add_parser(
+        "import-vaastav",
+        help="Download and import historical seasons from an immutable Vaastav revision",
+    )
+    vaastav_parser.add_argument("--source-ref", required=True)
+    vaastav_parser.add_argument("--seasons", nargs="+", required=True)
+    vaastav_parser.add_argument(
+        "--source-base-url",
+        default=(
+            "https://raw.githubusercontent.com/"
+            "vaastav/Fantasy-Premier-League"
+        ),
+    )
+
     summary_parser = subparsers.add_parser("summary", help="Show season row counts")
     summary_parser.add_argument("season_code")
 
@@ -51,6 +66,56 @@ def main() -> None:
 
         if args.command == "summary":
             print(json.dumps(database.season_summary(args.season_code), indent=2))
+            return
+
+        if args.command == "import-vaastav":
+            adapter = VaastavAdapter(
+                VaastavClient(base_url=args.source_base_url)
+            )
+            for season_code in args.seasons:
+                result = adapter.load_season(
+                    source_ref=args.source_ref,
+                    season_code=season_code,
+                )
+                source = IngestionSource(
+                    name="vaastav-fpl-dataset",
+                    url=(
+                        "https://github.com/vaastav/"
+                        "Fantasy-Premier-League/tree/"
+                        f"{args.source_ref}/data/{season_code}"
+                    ),
+                    retrieved_at=datetime.now(UTC),
+                    content_sha256=result.content_sha256,
+                    identifier_namespace="official-fpl",
+                    source_revision=args.source_ref,
+                    adapter_version="vaastav-v1",
+                )
+                run_id = database.ingest_bundle(source, result.bundle)
+                print(
+                    f"Completed Vaastav ingestion run {run_id} "
+                    f"for {season_code} from {len(result.source_files)} files"
+                )
+                print(
+                    json.dumps(
+                        {
+                            "teams": result.quality.teams,
+                            "players": result.quality.players,
+                            "gameweeks": result.quality.gameweeks,
+                            "fixtures": result.quality.fixtures,
+                            "fixture_stats": result.quality.fixture_stats,
+                            "gameweek_observations": (
+                                result.quality.gameweek_observations
+                            ),
+                            "skipped_rescheduled_rows": (
+                                result.quality.skipped_rescheduled_rows
+                            ),
+                            "players_without_gameweek_rows": (
+                                result.quality.players_without_gameweek_rows
+                            ),
+                        },
+                        indent=2,
+                    )
+                )
             return
 
         directory = Path(args.directory)

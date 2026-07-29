@@ -15,11 +15,19 @@ dependencies = []
 [project.scripts]
 fpl-history = "fpl_engine.history.cli:main"
 fpl-collect = "fpl_engine.live.cli:main"
+fpl-app = "fpl_engine.ui.cli:main"
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2",
   "ruff>=0.5",
+]
+ui = [
+  "pulp>=3.2,<4",
+  "streamlit>=1.47",
+]
+optimize = [
+  "pulp>=3.2,<4",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -29,6 +37,10 @@ packages = ["src/fpl_engine"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = [
+  "ignore:Constructing LpVariable.*:DeprecationWarning:pulp.*",
+  "ignore:PULP_CBC_CMD.*:DeprecationWarning:pulp.*",
+]
 
 [tool.ruff]
 target-version = "py312"

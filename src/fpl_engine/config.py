@@ -40,8 +40,27 @@ class ScoringRules:
 @dataclass(frozen=True)
 class TransferRules:
     initial_free_transfers: int
+    free_transfers_per_gameweek: int
     maximum_free_transfers: int
     transfer_hit_cost: int
+
+
+@dataclass(frozen=True)
+class SellingPriceRules:
+    profit_step_tenths: int
+    profit_return_tenths: int
+
+
+@dataclass(frozen=True)
+class ChipRules:
+    names: tuple[str, ...]
+    sets_per_season: int
+    first_set_expiry_gameweek: int
+    second_set_start_gameweek: int
+    maximum_active_per_gameweek: int
+    unavailable_gameweeks: dict[str, tuple[int, ...]]
+    minimum_gap_gameweeks: dict[str, int]
+    banked_transfers_preserved: bool
 
 
 @dataclass(frozen=True)
@@ -51,8 +70,22 @@ class SeasonRules:
     squad: SquadRules
     scoring: ScoringRules
     transfers: TransferRules
-    chip_sets: int
-    first_chip_set_expiry_gameweek: int | None
+    selling_prices: SellingPriceRules
+    chips: ChipRules
+    validated_on: str
+    source_urls: tuple[str, ...]
+
+    @property
+    def chip_sets(self) -> int:
+        """Compatibility alias for callers written before the chip contract."""
+
+        return self.chips.sets_per_season
+
+    @property
+    def first_chip_set_expiry_gameweek(self) -> int:
+        """Compatibility alias for callers written before the chip contract."""
+
+        return self.chips.first_set_expiry_gameweek
 
 
 def _required(data: dict[str, Any], key: str) -> Any:
@@ -71,6 +104,8 @@ def load_season_rules(path: str | Path) -> SeasonRules:
     squad_raw = _required(raw, "squad")
     scoring_raw = _required(raw, "scoring")
     transfer_raw = _required(raw, "transfers")
+    selling_price_raw = _required(raw, "selling_prices")
+    chips_raw = _required(raw, "chips")
 
     rules = SeasonRules(
         season=str(_required(raw, "season")),
@@ -113,15 +148,50 @@ def load_season_rules(path: str | Path) -> SeasonRules:
         ),
         transfers=TransferRules(
             initial_free_transfers=int(_required(transfer_raw, "initial_free_transfers")),
+            free_transfers_per_gameweek=int(
+                _required(transfer_raw, "free_transfers_per_gameweek")
+            ),
             maximum_free_transfers=int(_required(transfer_raw, "maximum_free_transfers")),
             transfer_hit_cost=int(_required(transfer_raw, "transfer_hit_cost")),
         ),
-        chip_sets=int(_required(raw, "chip_sets")),
-        first_chip_set_expiry_gameweek=(
-            int(raw["first_chip_set_expiry_gameweek"])
-            if raw.get("first_chip_set_expiry_gameweek") is not None
-            else None
+        selling_prices=SellingPriceRules(
+            profit_step_tenths=int(
+                _required(selling_price_raw, "profit_step_tenths")
+            ),
+            profit_return_tenths=int(
+                _required(selling_price_raw, "profit_return_tenths")
+            ),
         ),
+        chips=ChipRules(
+            names=tuple(str(value) for value in _required(chips_raw, "names")),
+            sets_per_season=int(_required(chips_raw, "sets_per_season")),
+            first_set_expiry_gameweek=int(
+                _required(chips_raw, "first_set_expiry_gameweek")
+            ),
+            second_set_start_gameweek=int(
+                _required(chips_raw, "second_set_start_gameweek")
+            ),
+            maximum_active_per_gameweek=int(
+                _required(chips_raw, "maximum_active_per_gameweek")
+            ),
+            unavailable_gameweeks={
+                str(name): tuple(int(value) for value in gameweeks)
+                for name, gameweeks in _required(
+                    chips_raw, "unavailable_gameweeks"
+                ).items()
+            },
+            minimum_gap_gameweeks={
+                str(name): int(value)
+                for name, value in _required(
+                    chips_raw, "minimum_gap_gameweeks"
+                ).items()
+            },
+            banked_transfers_preserved=bool(
+                _required(chips_raw, "banked_transfers_preserved")
+            ),
+        ),
+        validated_on=str(_required(raw, "validated_on")),
+        source_urls=tuple(str(value) for value in _required(raw, "source_urls")),
     )
 
     _validate_rules(rules)
@@ -137,3 +207,31 @@ def _validate_rules(rules: SeasonRules) -> None:
         raise ValueError("Budget must be positive")
     if rules.transfers.maximum_free_transfers < rules.transfers.initial_free_transfers:
         raise ValueError("Maximum free transfers cannot be below the initial allocation")
+    if rules.transfers.free_transfers_per_gameweek <= 0:
+        raise ValueError("Free transfers per Gameweek must be positive")
+    if rules.transfers.transfer_hit_cost <= 0:
+        raise ValueError("Transfer hit cost must be positive")
+    if rules.selling_prices.profit_step_tenths <= 0:
+        raise ValueError("Selling-price profit step must be positive")
+    if not 0 < rules.selling_prices.profit_return_tenths <= (
+        rules.selling_prices.profit_step_tenths
+    ):
+        raise ValueError("Selling-price return must be within the configured profit step")
+    if rules.chips.sets_per_season <= 0:
+        raise ValueError("Chip sets per season must be positive")
+    if rules.chips.maximum_active_per_gameweek != 1:
+        raise ValueError("FPL permits exactly one active chip per Gameweek")
+    if rules.chips.second_set_start_gameweek != (
+        rules.chips.first_set_expiry_gameweek + 1
+    ):
+        raise ValueError("The second chip set must start after the first set expires")
+    if len(set(rules.chips.names)) != len(rules.chips.names):
+        raise ValueError("Chip names must be unique")
+    unknown_availability = set(rules.chips.unavailable_gameweeks) - set(
+        rules.chips.names
+    )
+    unknown_gaps = set(rules.chips.minimum_gap_gameweeks) - set(rules.chips.names)
+    if unknown_availability or unknown_gaps:
+        raise ValueError("Chip availability configuration contains an unknown chip")
+    if not rules.source_urls:
+        raise ValueError("At least one official rules source URL is required")

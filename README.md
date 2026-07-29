@@ -4,8 +4,16 @@ A personal, reproducible Fantasy Premier League decision-support system.
 
 ## Current status
 
-Milestones 0–2.1 establish the rules, historical-data and live-collection foundations used by
-later projection, optimisation and front-end work.
+Milestones 0–8 are implemented as a connected baseline. Milestone 9 supports the complete
+manual provisional/final cycle, with automated post-deadline reconciliation still to add.
+Milestone 10 is in progress.
+
+The canonical delivery sequence and acceptance criteria are defined in
+[the implementation roadmap](docs/02_ImplementationRoadmap.md). Cross-cutting database,
+snapshot-storage and manager-state decisions are recorded in
+[the architecture decisions](docs/03_ArchitectureDecisions.md).
+Exact completion evidence and remaining qualifications are tracked in
+[the milestone status](docs/04_MilestoneStatus.md).
 
 Implemented:
 
@@ -19,13 +27,21 @@ Implemented:
 - source provenance and ingestion audit records;
 - idempotent, transactional historical imports;
 - a project-owned normalised CSV import format;
+- a pinned-revision Vaastav historical adapter with explicit data-quality counts;
 - official FPL bootstrap and fixture snapshot collection;
 - immutable timestamped raw JSON archives with checksums;
 - browser and Excel verification reports generated from SQLite;
 - a manual GitHub workflow for collecting data without local setup;
+- validated append-only manager-state snapshots and a browser team editor;
+- transparent eight-Gameweek projections with reasoned overrides;
+- exact XI, full-squad, opening-squad and transfer optimisation;
+- bench, autosub, captaincy and chip-specific decision support;
+- provisional/final weekly audit records and model-health scoring;
 - automated tests and GitHub Actions CI.
 
-Milestone 2.1.1 also provides schema version 4, in-place version-2 migration, stable player
+Schema version 8 includes the hardened identity and observation foundation, fixture-state
+history, manager state, projections and weekly decision records. The database supports
+in-place version-2 migration, stable player
 identity links, explicit identifier namespaces and delivery-source provenance, timestamped
 multi-observation Gameweek history, selected-manager counts, and strict CSV contract
 validation. See [the historical import foundation design](docs/historical-import-foundation.md).
@@ -77,6 +93,16 @@ On Windows PowerShell, activate the environment with:
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
+
+Install and launch the browser interface:
+
+```powershell
+python -m pip install -e ".[ui]"
+fpl-app
+```
+
+The app provides team entry, a saved pitch view, projections, optimal XI, opening squad,
+transfer comparison, weekly evidence/review and model-health views.
 
 ## Rules usage
 
@@ -196,8 +222,8 @@ tests/                    Automated tests
 docs/                     Product and implementation documentation
 ```
 
-## Next milestone
+## Current milestone
 
-The next milestone will add the Vaastav historical source adapter. It will not require FPL
-authentication. The proposed interface is documented in
-`docs/historical-import-foundation.md`.
+Milestone 10 is in progress. The immediate focus is calibration from real 2026/27 snapshots,
+automatic post-deadline reconciliation, richer uncertainty and expected-minutes modelling,
+and season-long chip/transfer planning.

@@ -76,7 +76,16 @@ def write_verification_report(
         (ingestion_run_id,),
         "Ingestion run",
     )
-    checks = _checks(database, players, fixtures, summary, ingestion)
+    checks = _checks(
+        database,
+        players,
+        fixtures,
+        summary,
+        ingestion,
+        gameweek,
+        captured_at,
+        observation_mode,
+    )
 
     stamp = captured_at.astimezone(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     season_root = Path(report_root) / season_code
@@ -144,6 +153,19 @@ def _players(
             JOIN seasons ON seasons.id = gameweeks.season_id
             WHERE seasons.code = ? AND gameweeks.number = ?
               AND {observation_filter}
+        ),
+        ranked_season_stats AS (
+            SELECT season_stats.*,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY season_stats.player_season_id
+                       ORDER BY season_stats.observed_at DESC,
+                                season_stats.id DESC
+                   ) AS stats_rank
+            FROM player_season_stats_observations season_stats
+            JOIN player_seasons stats_ps
+              ON stats_ps.id = season_stats.player_season_id
+            JOIN seasons stats_seasons ON stats_seasons.id = stats_ps.season_id
+            WHERE stats_seasons.code = ?
         )
         SELECT ps.source_player_id AS player_id, players.web_name,
                players.first_name, players.second_name,
@@ -155,20 +177,36 @@ def _players(
                snapshots.transfers_out, snapshots.status,
                snapshots.chance_of_playing_next_round, snapshots.news,
                snapshots.observed_at AS captured_at, snapshots.observed_on,
-               snapshots.timing_quality, snapshots.observation_kind
+               snapshots.timing_quality, snapshots.observation_kind,
+               season_stats.minutes, season_stats.starts,
+               season_stats.goals, season_stats.assists,
+               season_stats.clean_sheets, season_stats.bonus,
+               season_stats.bps, season_stats.defensive_contributions,
+               season_stats.expected_goals, season_stats.expected_assists,
+               season_stats.expected_goal_involvements,
+               season_stats.total_points
         FROM ranked_observations snapshots
         JOIN player_seasons ps ON ps.id = snapshots.player_season_id
         JOIN seasons ON seasons.id = ps.season_id
         JOIN players ON players.id = ps.player_id
         JOIN teams ON teams.id = ps.team_id
         LEFT JOIN teams snapshot_teams ON snapshot_teams.id = snapshots.team_id
+        LEFT JOIN ranked_season_stats season_stats
+          ON season_stats.player_season_id = ps.id
+         AND season_stats.stats_rank = 1
         JOIN gameweeks ON gameweeks.id = snapshots.gameweek_id
         WHERE snapshots.observation_rank = 1
           AND seasons.code = ? AND gameweeks.number = ?
           AND ps.identifier_namespace = 'official-fpl'
         ORDER BY players.web_name COLLATE NOCASE, ps.source_player_id
         """,
-        (season_code, gameweek_number, season_code, gameweek_number),
+        (
+            season_code,
+            gameweek_number,
+            season_code,
+            season_code,
+            gameweek_number,
+        ),
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -212,16 +250,63 @@ def _checks(
     fixtures: list[dict[str, Any]],
     summary: dict[str, int],
     ingestion: dict[str, Any],
+    gameweek: dict[str, Any],
+    captured_at: datetime,
+    observation_mode: str,
 ) -> list[VerificationCheck]:
     player_ids = [row["player_id"] for row in players]
     fixture_ids = [row["fixture_id"] for row in fixtures]
+    current_observations = database.connection.execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM player_gameweek_observations
+             WHERE provenance_run_id = ?)
+          + (SELECT COUNT(*) FROM player_season_stats_observations
+             WHERE provenance_run_id = ?)
+          + (SELECT COUNT(*) FROM player_fixture_stats
+             WHERE provenance_run_id = ?)
+        """,
+        (ingestion["id"], ingestion["id"], ingestion["id"]),
+    ).fetchone()[0]
     expected_rows = (
         summary["teams"]
-        + (summary["players"] * 3)
+        + (summary["players"] * 2)
         + summary["gameweeks"]
         + summary["fixtures"]
+        + current_observations
     )
     foreign_keys = database.connection.execute("PRAGMA foreign_key_check").fetchall()
+    fixture_history_count = database.connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM fixture_observations
+        WHERE provenance_run_id = ?
+        """,
+        (ingestion["id"],),
+    ).fetchone()[0]
+    deadline_value = gameweek["deadline_time"]
+    timing_passed = False
+    timing_detail = "Gameweek deadline is missing"
+    if deadline_value:
+        try:
+            deadline = datetime.fromisoformat(str(deadline_value).replace("Z", "+00:00"))
+            captured_utc = captured_at.astimezone(UTC)
+            deadline_utc = deadline.astimezone(UTC)
+            if observation_mode == "latest_pre_deadline":
+                timing_passed = captured_utc < deadline_utc
+                timing_detail = (
+                    f"Captured {deadline_utc - captured_utc} before deadline"
+                )
+            elif observation_mode == "latest_post_gameweek":
+                timing_passed = captured_utc >= deadline_utc
+                timing_detail = (
+                    f"Captured {captured_utc - deadline_utc} after deadline"
+                )
+            else:
+                timing_passed = True
+                timing_detail = f"Observation mode {observation_mode!r} is not time-specific"
+        except (TypeError, ValueError):
+            timing_detail = f"Invalid deadline {deadline_value!r}"
     return [
         VerificationCheck(
             "Ingestion completed",
@@ -247,6 +332,19 @@ def _checks(
             "Fixture IDs are unique",
             len(fixture_ids) == len(set(fixture_ids)),
             f"{len(set(fixture_ids))} unique IDs",
+        ),
+        VerificationCheck(
+            "Fixture history is captured",
+            fixture_history_count == summary["fixtures"],
+            (
+                f"{fixture_history_count} fixture observations for "
+                f"{summary['fixtures']} fixtures in this run"
+            ),
+        ),
+        VerificationCheck(
+            "Capture timing matches observation kind",
+            timing_passed,
+            timing_detail,
         ),
         VerificationCheck(
             "Database relationships are valid",
@@ -287,6 +385,18 @@ def _players_csv(players: list[dict[str, Any]]) -> bytes:
         "observed_on",
         "timing_quality",
         "observation_kind",
+        "minutes",
+        "starts",
+        "goals",
+        "assists",
+        "clean_sheets",
+        "bonus",
+        "bps",
+        "defensive_contributions",
+        "expected_goals",
+        "expected_assists",
+        "expected_goal_involvements",
+        "total_points",
     ]
     rows = []
     for player in players:

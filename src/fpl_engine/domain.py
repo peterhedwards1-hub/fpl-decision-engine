@@ -11,6 +11,13 @@ class Position(StrEnum):
     FWD = "FWD"
 
 
+class Chip(StrEnum):
+    WILDCARD = "wildcard"
+    FREE_HIT = "free_hit"
+    BENCH_BOOST = "bench_boost"
+    TRIPLE_CAPTAIN = "triple_captain"
+
+
 @dataclass(frozen=True)
 class Player:
     player_id: int
@@ -24,6 +31,7 @@ class Player:
 class Squad:
     players: tuple[Player, ...]
     starting_player_ids: frozenset[int] = frozenset()
+    bench_player_ids: tuple[int, ...] = ()
     captain_id: int | None = None
     vice_captain_id: int | None = None
 

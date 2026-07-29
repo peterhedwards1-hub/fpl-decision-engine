@@ -138,6 +138,33 @@ class PlayerGameweekSnapshotRecord:
 
 
 @dataclass(frozen=True)
+class PlayerSeasonStatsObservationRecord:
+    source_player_id: str
+    observed_at: datetime
+    source_observation_key: str
+    minutes: int = 0
+    starts: int = 0
+    goals: int = 0
+    assists: int = 0
+    clean_sheets: int = 0
+    goals_conceded: int = 0
+    own_goals: int = 0
+    penalties_saved: int = 0
+    penalties_missed: int = 0
+    yellow_cards: int = 0
+    red_cards: int = 0
+    saves: int = 0
+    bonus: int = 0
+    bps: int = 0
+    defensive_contributions: int = 0
+    expected_goals: float | None = None
+    expected_assists: float | None = None
+    expected_goal_involvements: float | None = None
+    expected_goals_conceded: float | None = None
+    total_points: int = 0
+
+
+@dataclass(frozen=True)
 class HistoricalBundle:
     season: SeasonRecord
     teams: tuple[TeamRecord, ...] = ()
@@ -147,3 +174,6 @@ class HistoricalBundle:
     fixtures: tuple[FixtureRecord, ...] = ()
     fixture_stats: tuple[PlayerFixtureStatsRecord, ...] = ()
     gameweek_snapshots: tuple[PlayerGameweekSnapshotRecord, ...] = ()
+    season_stats_observations: tuple[
+        PlayerSeasonStatsObservationRecord, ...
+    ] = ()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -70,6 +71,18 @@ def _bootstrap(
                 "status": "a",
                 "chance_of_playing_next_round": 100,
                 "news": "",
+                "minutes": 810,
+                "starts": 9,
+                "goals_scored": 6,
+                "assists": 3,
+                "clean_sheets": 2,
+                "bonus": 8,
+                "bps": 211,
+                "defensive_contribution": 5,
+                "expected_goals": "5.4",
+                "expected_assists": "2.1",
+                "expected_goal_involvements": "7.5",
+                "total_points": 61,
                 **({"code": code} if code is not None else {}),
                 **({"has_temporary_code": True} if temporary else {}),
                 **({"opta_code": opta_code} if opta_code is not None else {}),
@@ -114,22 +127,40 @@ def test_collects_archives_and_ingests_snapshot(tmp_path) -> None:
             "gameweeks": 2,
             "fixtures": 1,
             "fixture_stats": 0,
+            "season_stats_observations": 1,
             "gameweek_snapshots": 1,
         }
         totals = database.player_gameweek_totals("2026-27", "101", 1)
         assert totals is not None
         assert totals["price_tenths"] == 75
         assert totals["selected_by_percent"] == 12.3
+        season_stats = database.connection.execute(
+            """
+            SELECT goals, assists, defensive_contributions, expected_goals,
+                   total_points
+            FROM player_season_stats_observations
+            """
+        ).fetchone()
+        assert dict(season_stats) == {
+            "goals": 6,
+            "assists": 3,
+            "defensive_contributions": 5,
+            "expected_goals": 5.4,
+            "total_points": 61,
+        }
 
     manifest = json.loads((result.archive_directory / "manifest.json").read_text())
     expected_digest = hashlib.sha256(
         client.bootstrap.body + b"\n" + client.fixture_payload.body
     ).hexdigest()
     assert manifest["content_sha256"] == expected_digest
-    bootstrap_archive = result.archive_directory / "bootstrap-static.json"
-    assert bootstrap_archive.read_bytes() == client.bootstrap.body
-    fixtures_archive = result.archive_directory / "fixtures.json"
-    assert fixtures_archive.read_bytes() == client.fixture_payload.body
+    bootstrap_archive = result.archive_directory / "bootstrap-static.json.gz"
+    assert gzip.decompress(bootstrap_archive.read_bytes()) == client.bootstrap.body
+    fixtures_archive = result.archive_directory / "fixtures.json.gz"
+    assert gzip.decompress(fixtures_archive.read_bytes()) == client.fixture_payload.body
+    assert manifest["observation_kind"] == "live_pre_deadline"
+    assert result.deadline_time == "2026-08-14T17:30:00Z"
+    assert result.observation_kind == "live_pre_deadline"
     assert result.report_index.exists()
     assert result.latest_report_index.exists()
 
@@ -317,3 +348,74 @@ def test_rejects_malformed_bootstrap_before_database_ingestion(tmp_path) -> None
         query = "SELECT COUNT(*) FROM ingestion_runs"
         count = database.connection.execute(query).fetchone()[0]
         assert count == 0
+
+
+def test_archives_rebuild_a_fresh_database_idempotently(tmp_path) -> None:
+    captured_at = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+    archive_root = tmp_path / "raw"
+    with HistoricalDatabase(tmp_path / "source.sqlite3") as database:
+        database.initialise()
+        LiveSnapshotCollector(
+            database,
+            archive_root=archive_root,
+            report_root=tmp_path / "reports",
+            client=FakeClient(_bootstrap(), _fixtures()),
+            clock=lambda: captured_at,
+        ).collect(season_code="2026-27")
+
+    with HistoricalDatabase(tmp_path / "rebuilt.sqlite3") as rebuilt:
+        rebuilt.initialise()
+        collector = LiveSnapshotCollector(
+            rebuilt,
+            archive_root=archive_root,
+            report_root=tmp_path / "rebuilt-reports",
+            client=FakeClient(_bootstrap(), _fixtures()),
+        )
+        first_replay = collector.replay_archives(season_code="2026-27")
+        second_replay = collector.replay_archives(season_code="2026-27")
+
+        assert first_replay == (1,)
+        assert second_replay == (1,)
+        assert rebuilt.season_summary("2026-27") == {
+            "teams": 2,
+            "players": 1,
+            "gameweeks": 2,
+            "fixtures": 1,
+            "fixture_stats": 0,
+            "season_stats_observations": 1,
+            "gameweek_snapshots": 1,
+        }
+        assert rebuilt.connection.execute(
+            "SELECT COUNT(*) FROM ingestion_runs"
+        ).fetchone()[0] == 1
+
+
+def test_capture_after_final_deadline_is_not_labelled_pre_deadline(tmp_path) -> None:
+    bootstrap = _bootstrap()
+    for event in bootstrap["events"]:
+        event["is_next"] = False
+        event["is_current"] = False
+
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        result = LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(bootstrap, _fixtures()),
+            clock=lambda: datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+        ).collect(season_code="2026-27")
+
+        observation = database.connection.execute(
+            """
+            SELECT observation_kind
+            FROM player_gameweek_observations
+            """
+        ).fetchone()
+
+    assert result.gameweek_number == 2
+    assert result.observation_kind == "post_gameweek"
+    assert observation["observation_kind"] == "post_gameweek"
+    assert "All checks passed" in result.latest_report_index.read_text(
+        encoding="utf-8"
+    )

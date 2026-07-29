@@ -1,7 +1,8 @@
 # Historical import foundation and hardening
 
-Milestone 2.1 prepares the SQLite store for several seasons of FPL data. It does not
-download or import the Vaastav dataset; the next milestone will provide that adapter.
+Milestone 2.1 prepares the SQLite store for several seasons of FPL data. The subsequent
+Vaastav adapter now downloads an explicitly pinned repository revision, converts its
+source-specific files into these contracts and reports import-quality counts.
 
 ## Identity model
 
@@ -66,8 +67,12 @@ fabricate a percentage. The live API continues to populate the percentage field.
 
 ## Migration
 
-The application supports schema version 4 and migrates version 2 in place through the
-version-3 identity/observation model. The v2-to-v3 migration
+The application supports schema version 8 and migrates version 2 in place through the
+version-3 identity/observation and version-4 timing models. Version 5 adds normalised
+fixture and season-stat observations, version 6 adds private manager snapshots, version 7
+adds versioned projections, and version 8 adds news and weekly decision audit records.
+The fixture observation retained for every ingestion run makes reschedules recoverable
+without relying only on raw archives. The v2-to-v3 migration
 rebuilds the affected SQLite tables transactionally with foreign-key enforcement disabled
 only for the table swap, preserves existing row IDs and copies all domain/provenance
 records. Existing snapshot rows become `live_pre_deadline` observations with their old
@@ -92,24 +97,27 @@ operational outputs and are ignored by Git. They can still be created by the col
 downloaded as workflow artifacts. Small, intentional fixtures under `tests/fixtures/`
 remain trackable.
 
-## Next adapter interface
+## Vaastav adapter
 
-The next milestone can expose a source-specific command such as:
+Import one or more seasons from an immutable Vaastav commit:
 
 ```text
-fpl-history import-vaastav \
-  --database data/fpl.sqlite3 \
+fpl-history --database data/fpl.sqlite3 import-vaastav \
   --source-ref <commit-sha> \
   --seasons 2022-23 2023-24 2024-25 2025-26
 ```
 
-That adapter should emit the normalised typed records, set `identifier_namespace=official-fpl`,
-record the dataset commit in `source_revision`, and use `historical_reconstruction`
-observations where a precise capture time is unavailable. It should validate every
-fixture-stat and observation reference against `player_seasons.csv`, and use
+The adapter emits normalised typed records, sets `identifier_namespace=official-fpl`,
+records the dataset commit in `source_revision`, and uses `historical_reconstruction`
+observations where a precise capture time is unavailable. It validates every
+fixture-stat and observation reference against the season's player identities, and uses
 `selected_count` without deriving `selected_by_percent` unless manager totals are known.
 
-Deliberate limitations for the next milestone are the absence of the Vaastav downloader,
-automated cross-source fuzzy identity matching, and any private manager data. Temporary
+Rows left in an original Gameweek file after a fixture was rescheduled still contribute a
+Gameweek observation, but only the row matching the fixture's final assigned Gameweek is
+stored as performance. The command reports this as `skipped_rescheduled_rows`.
+
+Deliberate limitations are the absence of automated cross-source fuzzy identity matching
+and any private manager data. Temporary
 official FPL player codes from live payloads are intentionally ignored until a permanent
 code is available; an Opta code remains usable when present.

@@ -19,6 +19,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--season-code", required=True, help="For example 2026-27")
     parser.add_argument("--season-name", help="Human-readable name; defaults to season code")
     parser.add_argument(
+        "--rebuild-from-archives",
+        action="store_true",
+        help="Replay immutable archives before fetching the new snapshot",
+    )
+    parser.add_argument(
         "--open-report",
         action="store_true",
         help="Open the latest verification report in the default browser",
@@ -31,11 +36,18 @@ def main(argv: list[str] | None = None) -> int:
     args.database.parent.mkdir(parents=True, exist_ok=True)
     with HistoricalDatabase(args.database) as database:
         database.initialise()
-        result = LiveSnapshotCollector(
+        collector = LiveSnapshotCollector(
             database,
             archive_root=args.archive_root,
             report_root=args.report_root,
-        ).collect(
+        )
+        if args.rebuild_from_archives:
+            replayed = collector.replay_archives(
+                season_code=args.season_code,
+                season_name=args.season_name,
+            )
+            print(f"Replayed {len(replayed)} archived captures.")
+        result = collector.collect(
             season_code=args.season_code,
             season_name=args.season_name,
         )
@@ -44,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{result.fixtures} fixtures for GW{result.gameweek_number}."
     )
     print(f"Ingestion run: {result.ingestion_run_id}")
+    print(
+        f"Observation: {result.observation_kind} "
+        f"(deadline {result.deadline_time})"
+    )
     print(f"Raw archive: {result.archive_directory}")
     print(f"Verification report: {result.latest_report_index.resolve()}")
     print(f"Excel exports: {result.report_directory.resolve()}")

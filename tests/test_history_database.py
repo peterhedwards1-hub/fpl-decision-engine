@@ -81,7 +81,7 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
 
-        assert database.schema_version == 4
+        assert database.schema_version == 8
         table_names = {
             row[0]
             for row in database.connection.execute(
@@ -90,6 +90,15 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
         }
         assert "player_fixture_stats" in table_names
         assert "player_gameweek_observations" in table_names
+        assert "fixture_observations" in table_names
+        assert "manager_snapshots" in table_names
+        assert "manager_squad_entries" in table_names
+        assert "projection_runs" in table_names
+        assert "player_gameweek_projections" in table_names
+        assert "news_evidence" in table_names
+        assert "weekly_decision_runs" in table_names
+        assert "actual_actions" in table_names
+        assert "weekly_evaluations" in table_names
         view_names = {
             row[0]
             for row in database.connection.execute(
@@ -117,6 +126,7 @@ def test_bundle_ingestion_preserves_double_gameweek_fixtures(tmp_path) -> None:
             "gameweeks": 1,
             "fixtures": 2,
             "fixture_stats": 2,
+            "season_stats_observations": 0,
             "gameweek_snapshots": 1,
         }
         assert totals is not None
@@ -127,6 +137,40 @@ def test_bundle_ingestion_preserves_double_gameweek_fixtures(tmp_path) -> None:
         assert run["status"] == "completed"
         assert run["row_count"] == 10
         assert run["content_sha256"] == "abc123"
+
+
+def test_fixture_reschedules_preserve_each_ingested_state(tmp_path) -> None:
+    original = make_bundle()
+    rescheduled = replace(
+        original,
+        fixtures=(
+            replace(
+                original.fixtures[0],
+                kickoff_time="2025-09-20T14:00:00+00:00",
+            ),
+            original.fixtures[1],
+        ),
+    )
+
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, original)
+        database.ingest_bundle(SOURCE, rescheduled)
+
+        rows = database.connection.execute(
+            """
+            SELECT observations.kickoff_time
+            FROM fixture_observations observations
+            JOIN fixtures ON fixtures.id = observations.fixture_id
+            WHERE fixtures.source_fixture_id = '5001'
+            ORDER BY observations.provenance_run_id
+            """
+        ).fetchall()
+
+        assert [row["kickoff_time"] for row in rows] == [
+            None,
+            "2025-09-20T14:00:00+00:00",
+        ]
 
 
 def test_reingestion_is_idempotent_and_updates_values(tmp_path) -> None:
