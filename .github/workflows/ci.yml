@@ -29,7 +29,7 @@ jobs:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         run: |
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet -e ".[dev,optimize]"
+          python -m pip install --quiet -e ".[dev,optimize,modeling]"
 
       - name: Lint
         run: python -m ruff check . --output-format=concise

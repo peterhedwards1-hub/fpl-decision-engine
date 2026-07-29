@@ -29,6 +29,9 @@ ui = [
 optimize = [
   "pulp>=3.2,<4",
 ]
+modeling = [
+  "optuna>=4.5,<5",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fpl_engine"]

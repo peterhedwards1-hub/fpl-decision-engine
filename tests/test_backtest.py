@@ -24,6 +24,7 @@ from fpl_engine.history.records import (
     TeamRecord,
 )
 from fpl_engine.projections import RatesProjectionModel
+from fpl_engine.tuning import tune_projection_model, tuning_objective
 
 RULES = load_season_rules(Path("config/seasons/2025-26.json"))
 SOURCE = IngestionSource(
@@ -211,6 +212,17 @@ def test_walk_forward_backtest_persists_predictions_and_metrics(tmp_path) -> Non
         )
         assert report.by_position[0].value == "FWD"
         assert report.by_horizon[0].value == "1"
+        assert {metric.value for metric in report.by_participation} == {
+            "played"
+        }
+        assert report.by_fixture_count[0].value == "1"
+        assert {metric.value for metric in report.top_n} == {
+            "15",
+            "50",
+            "100",
+        }
+        assert report.regulation_minutes_per_match == 1980
+        assert tuning_objective(report) > 0
         assert [row["actual_points"] for row in rows] == [5, 1]
         assert [row["actual_minutes"] for row in rows] == [60, 20]
         assert database.connection.execute(
@@ -316,6 +328,60 @@ def test_strict_pre_deadline_policy_rejects_reconstructed_snapshots(
         ).fetchone()
         assert failed["status"] == "failed"
         assert "no scorable predictions" in failed["error_message"]
+
+
+def test_failed_backtest_removes_predictions_from_earlier_origins(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            SCHEDULE_SOURCE,
+            _schedule_bundle(_historical_bundle()),
+        )
+        database.ingest_bundle(SOURCE, _historical_bundle())
+        original_project = RatesProjectionModel.project
+        calls = 0
+
+        def fail_on_second_origin(model, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("synthetic projection failure")
+            return original_project(model, **kwargs)
+
+        monkeypatch.setattr(
+            RatesProjectionModel,
+            "project",
+            fail_on_second_origin,
+        )
+
+        with pytest.raises(RuntimeError, match="synthetic projection failure"):
+            ProjectionBacktester(database, RULES).run(
+                season_code="2025-26",
+                origin_gameweek_start=2,
+                origin_gameweek_end=3,
+            )
+
+        failed = database.connection.execute(
+            """
+            SELECT id, status, prediction_count
+            FROM projection_backtest_runs
+            ORDER BY id DESC LIMIT 1
+            """
+        ).fetchone()
+        stored_predictions = database.connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM projection_backtest_predictions
+            WHERE backtest_run_id = ?
+            """,
+            (failed["id"],),
+        ).fetchone()[0]
+        assert failed["status"] == "failed"
+        assert failed["prediction_count"] == 0
+        assert stored_predictions == 0
 
 
 def test_fixture_slate_is_replayed_from_observations_known_at_origin(
@@ -540,3 +606,41 @@ def test_missing_outcomes_are_excluded_but_explicit_zero_is_scored(
             ("101", 60, 5),
             ("102", 0, 0),
         ]
+
+
+def test_tuning_uses_development_then_separate_validation_window(
+    tmp_path,
+) -> None:
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            SCHEDULE_SOURCE,
+            _schedule_bundle(_historical_bundle()),
+        )
+        database.ingest_bundle(SOURCE, _historical_bundle())
+
+        result = tune_projection_model(
+            database,
+            RULES,
+            season_code="2025-26",
+            development_start=2,
+            development_end=2,
+            validation_start=3,
+            validation_end=3,
+            trials=1,
+            study_name="test-two-stage",
+            storage_url=None,
+            seed=1,
+        )
+
+        assert result.best_trial_number == 0
+        assert result.best_score > 0
+        assert result.best_config.minutes_model == "two_stage"
+        assert result.development_backtest_run_id != (
+            result.validation_report.backtest_run_id
+        )
+        assert result.baseline_validation_report.backtest_run_id != (
+            result.validation_report.backtest_run_id
+        )
+        assert result.validation_report.origin_gameweek_start == 3
+        assert "validation_change" in result.as_dict()

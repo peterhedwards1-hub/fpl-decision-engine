@@ -1323,6 +1323,13 @@ def _data_health(
             f"{report.origin_gameweek_end} · "
             f"{report.horizon_gameweeks}-Gameweek horizon"
         )
+        st.caption(
+            "Expected player-minutes per match: "
+            f"{report.expected_minutes_per_match:.1f} / "
+            f"{report.regulation_minutes_per_match:.0f} regulation target · "
+            "actual "
+            f"{report.actual_minutes_per_match:.1f}"
+        )
         score_rows = [
             {
                 "Breakdown": metric.group,
@@ -1333,7 +1340,13 @@ def _data_health(
                 "Points RMSE": metric.points_rmse,
                 "Minutes MAE": metric.minutes_mae,
             }
-            for metric in (*report.by_position, *report.by_horizon)
+            for metric in (
+                *report.by_position,
+                *report.by_horizon,
+                *report.by_participation,
+                *report.by_fixture_count,
+                *report.top_n,
+            )
         ]
         st.dataframe(
             pd.DataFrame(score_rows),

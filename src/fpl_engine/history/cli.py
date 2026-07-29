@@ -11,6 +11,7 @@ from pathlib import Path
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..config import load_season_rules
 from ..projections import MODEL_VERSION, ProjectionModelConfig
+from ..tuning import tune_projection_model
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
 from .records import IngestionSource, SeasonRecord
@@ -90,6 +91,54 @@ def main() -> None:
     backtest_parser.add_argument(
         "--away-attack-multiplier", type=float, default=0.92
     )
+    backtest_parser.add_argument(
+        "--minutes-model",
+        choices=("legacy", "two_stage"),
+        default="two_stage",
+    )
+    backtest_parser.add_argument("--recent-gameweeks", type=int, default=3)
+    backtest_parser.add_argument(
+        "--recent-evidence-weight", type=float, default=4.0
+    )
+    backtest_parser.add_argument(
+        "--appearance-prior-matches", type=float, default=1.0
+    )
+    backtest_parser.add_argument(
+        "--appearance-prior-probability", type=float, default=0.40
+    )
+    backtest_parser.add_argument(
+        "--conditional-minutes-prior-appearances",
+        type=float,
+        default=2.0,
+    )
+    backtest_parser.add_argument(
+        "--no-team-minute-constraint",
+        action="store_true",
+    )
+
+    tune_parser = subparsers.add_parser(
+        "tune-projections",
+        help="Tune the two-stage projection model on a development window",
+    )
+    tune_parser.add_argument("season_code")
+    tune_parser.add_argument(
+        "--rules",
+        help="Season rules JSON (defaults to config/seasons/<season>.json)",
+    )
+    tune_parser.add_argument("--development-start", type=int, default=2)
+    tune_parser.add_argument("--development-end", type=int, default=25)
+    tune_parser.add_argument("--validation-start", type=int, default=26)
+    tune_parser.add_argument("--validation-end", type=int, default=38)
+    tune_parser.add_argument("--horizon", type=int, default=1)
+    tune_parser.add_argument("--trials", type=int, default=30)
+    tune_parser.add_argument(
+        "--study-name", default="fpl-rates-two-stage-v2"
+    )
+    tune_parser.add_argument(
+        "--study-storage",
+        default="sqlite:///data/fpl_tuning.sqlite3",
+    )
+    tune_parser.add_argument("--seed", type=int, default=20260729)
 
     report_parser = subparsers.add_parser(
         "backtest-report", help="Show a completed persisted backtest scorecard"
@@ -135,6 +184,19 @@ def main() -> None:
                 team_prior_matches=args.team_prior_matches,
                 home_attack_multiplier=args.home_attack_multiplier,
                 away_attack_multiplier=args.away_attack_multiplier,
+                minutes_model=args.minutes_model,
+                recent_gameweeks=args.recent_gameweeks,
+                recent_evidence_weight=args.recent_evidence_weight,
+                appearance_prior_matches=args.appearance_prior_matches,
+                appearance_prior_probability=(
+                    args.appearance_prior_probability
+                ),
+                conditional_minutes_prior_appearances=(
+                    args.conditional_minutes_prior_appearances
+                ),
+                enforce_team_minutes=(
+                    not args.no_team_minute_constraint
+                ),
             )
             report = ProjectionBacktester(
                 database,
@@ -149,6 +211,34 @@ def main() -> None:
                 evidence_policy=args.evidence_policy,
             )
             print(json.dumps(report.as_dict(), indent=2))
+            return
+
+        if args.command == "tune-projections":
+            rules_path = Path(
+                args.rules or f"config/seasons/{args.season_code}.json"
+            )
+            rules = load_season_rules(rules_path)
+            if rules.season != args.season_code:
+                raise ValueError(
+                    f"Rules season {rules.season!r} does not match "
+                    f"tuning season {args.season_code!r}"
+                )
+            Path("data").mkdir(parents=True, exist_ok=True)
+            result = tune_projection_model(
+                database,
+                rules,
+                season_code=args.season_code,
+                development_start=args.development_start,
+                development_end=args.development_end,
+                validation_start=args.validation_start,
+                validation_end=args.validation_end,
+                horizon_gameweeks=args.horizon,
+                trials=args.trials,
+                study_name=args.study_name,
+                storage_url=args.study_storage,
+                seed=args.seed,
+            )
+            print(json.dumps(result.as_dict(), indent=2))
             return
 
         if args.command == "import-vaastav":

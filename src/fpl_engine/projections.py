@@ -12,7 +12,8 @@ from .config import SeasonRules
 from .domain import Position
 from .history.database import HistoricalDatabase
 
-MODEL_VERSION = "rates-baseline-v1"
+MODEL_VERSION = "rates-two-stage-v2"
+LEGACY_MODEL_VERSION = "rates-baseline-v1"
 POSITION_PRIORS: dict[Position, dict[str, float]] = {
     Position.GK: {
         "minutes": 78.0,
@@ -64,6 +65,25 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
     },
 }
 
+MINUTES_PRIORS: dict[Position, dict[str, float]] = {
+    Position.GK: {
+        "conditional_minutes": 88.0,
+        "sixty_probability_given_appearance": 0.96,
+    },
+    Position.DEF: {
+        "conditional_minutes": 72.0,
+        "sixty_probability_given_appearance": 0.72,
+    },
+    Position.MID: {
+        "conditional_minutes": 69.0,
+        "sixty_probability_given_appearance": 0.68,
+    },
+    Position.FWD: {
+        "conditional_minutes": 67.0,
+        "sixty_probability_given_appearance": 0.64,
+    },
+}
+
 
 @dataclass(frozen=True)
 class ProjectionModelConfig:
@@ -74,6 +94,14 @@ class ProjectionModelConfig:
     away_attack_multiplier: float = 0.92
     minimum_team_multiplier: float = 0.60
     maximum_team_multiplier: float = 1.50
+    minutes_model: str = "two_stage"
+    recent_gameweeks: int = 3
+    recent_evidence_weight: float = 4.0
+    appearance_prior_matches: float = 1.0
+    appearance_prior_probability: float = 0.40
+    conditional_minutes_prior_appearances: float = 2.0
+    team_minutes_per_fixture: float = 990.0
+    enforce_team_minutes: bool = True
 
     def __post_init__(self) -> None:
         if self.player_rate_prior_minutes <= 0:
@@ -92,6 +120,22 @@ class ProjectionModelConfig:
             raise ValueError(
                 "Maximum team multiplier cannot be below the minimum"
             )
+        if self.minutes_model not in {"legacy", "two_stage"}:
+            raise ValueError("Minutes model must be 'legacy' or 'two_stage'")
+        if self.recent_gameweeks <= 0:
+            raise ValueError("Recent Gameweeks must be positive")
+        if self.recent_evidence_weight < 1:
+            raise ValueError("Recent evidence weight cannot be below one")
+        if self.appearance_prior_matches <= 0:
+            raise ValueError("Appearance prior matches must be positive")
+        if not 0 < self.appearance_prior_probability < 1:
+            raise ValueError("Appearance prior probability must be between zero and one")
+        if self.conditional_minutes_prior_appearances <= 0:
+            raise ValueError(
+                "Conditional-minutes prior appearances must be positive"
+            )
+        if self.team_minutes_per_fixture <= 0:
+            raise ValueError("Team minutes per fixture must be positive")
 
 
 DEFAULT_MODEL_CONFIG = ProjectionModelConfig()
@@ -197,6 +241,7 @@ class RatesProjectionModel:
             start_gameweek,
             observation_mode=observation_mode,
         )
+        self._prepare_minutes(players, use_availability=use_availability)
         fixtures = self._fixtures(
             season_code,
             start_gameweek,
@@ -225,7 +270,6 @@ class RatesProjectionModel:
                 start_gameweek,
                 horizon_gameweeks,
                 override_lookup,
-                use_availability,
             )
         )
         run_id = (
@@ -303,6 +347,9 @@ class RatesProjectionModel:
             career AS (
                 SELECT current_ps.id AS current_player_season_id,
                        COUNT(stats.id) AS matches,
+                       COALESCE(SUM(stats.minutes > 0), 0) AS appearances,
+                       COALESCE(SUM(stats.minutes >= 60), 0)
+                           AS sixty_appearances,
                        COALESCE(SUM(stats.minutes), 0) AS minutes,
                        COALESCE(SUM(stats.goals), 0) AS goals,
                        COALESCE(SUM(stats.assists), 0) AS assists,
@@ -331,7 +378,31 @@ class RatesProjectionModel:
                             historical_seasons.code = ?
                             AND historical_gameweeks.number < ?
                         )
+                )
+                GROUP BY current_ps.id
+            ),
+            recent AS (
+                SELECT current_ps.id AS current_player_season_id,
+                       COUNT(stats.id) AS recent_matches,
+                       COALESCE(SUM(stats.minutes > 0), 0)
+                           AS recent_appearances,
+                       COALESCE(SUM(stats.minutes >= 60), 0)
+                           AS recent_sixty_appearances,
+                       COALESCE(SUM(stats.minutes), 0) AS recent_minutes
+                FROM player_seasons current_ps
+                JOIN seasons current_seasons
+                  ON current_seasons.id = current_ps.season_id
+                LEFT JOIN player_fixture_stats stats
+                  ON stats.player_season_id = current_ps.id
+                 AND stats.fixture_id IN (
+                     SELECT recent_fixtures.id
+                     FROM fixtures recent_fixtures
+                     JOIN gameweeks recent_gameweeks
+                       ON recent_gameweeks.id = recent_fixtures.gameweek_id
+                     WHERE recent_fixtures.season_id = current_ps.season_id
+                       AND recent_gameweeks.number BETWEEN ? AND ?
                  )
+                WHERE current_seasons.code = ?
                 GROUP BY current_ps.id
             )
             SELECT ps.id AS player_season_id, ps.source_player_id,
@@ -339,7 +410,11 @@ class RatesProjectionModel:
                    teams.source_team_id, teams.short_name AS team_short_name,
                    observations.price_tenths, observations.status,
                    observations.chance_of_playing_next_round,
-                   career.matches, career.minutes, career.goals, career.assists,
+                   career.matches, career.appearances,
+                   career.sixty_appearances, career.minutes,
+                   recent.recent_matches, recent.recent_appearances,
+                   recent.recent_sixty_appearances, recent.recent_minutes,
+                   career.goals, career.assists,
                    career.clean_sheets, career.saves, career.bonus,
                    career.defensive_contributions, career.yellow_cards,
                    career.red_cards, career.own_goals
@@ -351,6 +426,7 @@ class RatesProjectionModel:
              AND observations.observation_rank = 1
             JOIN teams ON teams.id = COALESCE(observations.team_id, ps.team_id)
             JOIN career ON career.current_player_season_id = ps.id
+            JOIN recent ON recent.current_player_season_id = ps.id
             WHERE seasons.code = ?
               AND ps.identifier_namespace = 'official-fpl'
             ORDER BY ps.source_player_id
@@ -361,6 +437,9 @@ class RatesProjectionModel:
                 season_code,
                 season_code,
                 start_gameweek,
+                max(1, start_gameweek - self.config.recent_gameweeks),
+                start_gameweek - 1,
+                season_code,
                 season_code,
             ),
         ).fetchall()
@@ -595,6 +674,157 @@ class RatesProjectionModel:
             result[team_id]["overridden"] = 1.0
         return result
 
+    def _prepare_minutes(
+        self,
+        players: list[dict[str, Any]],
+        *,
+        use_availability: bool,
+    ) -> None:
+        """Estimate appearance and conditional minutes before team reconciliation."""
+
+        for player in players:
+            position = Position(player["position"])
+            availability = (
+                _availability_multiplier(
+                    player["status"],
+                    player["chance_of_playing_next_round"],
+                )
+                if use_availability
+                else 1.0
+            )
+            if self.config.minutes_model == "legacy":
+                prior_matches = self.config.minutes_prior_matches
+                expected_minutes = (
+                    float(player["minutes"])
+                    + POSITION_PRIORS[position]["minutes"] * prior_matches
+                ) / (int(player["matches"]) + prior_matches)
+                expected_minutes = _clamp(
+                    expected_minutes * availability, 0.0, 90.0
+                )
+                conditional_minutes = max(
+                    expected_minutes,
+                    MINUTES_PRIORS[position]["conditional_minutes"],
+                )
+                appearance_probability = _clamp(
+                    expected_minutes / max(conditional_minutes, 1.0),
+                    0.0,
+                    1.0,
+                )
+                sixty_given_appearance = _clamp(
+                    MINUTES_PRIORS[position][
+                        "sixty_probability_given_appearance"
+                    ],
+                    0.0,
+                    1.0,
+                )
+            else:
+                extra_recent_weight = (
+                    self.config.recent_evidence_weight - 1.0
+                )
+                weighted_matches = (
+                    float(player["matches"])
+                    + extra_recent_weight
+                    * float(player["recent_matches"])
+                )
+                weighted_appearances = (
+                    float(player["appearances"])
+                    + extra_recent_weight
+                    * float(player["recent_appearances"])
+                )
+                weighted_sixty = (
+                    float(player["sixty_appearances"])
+                    + extra_recent_weight
+                    * float(player["recent_sixty_appearances"])
+                )
+                weighted_minutes = (
+                    float(player["minutes"])
+                    + extra_recent_weight
+                    * float(player["recent_minutes"])
+                )
+                appearance_probability = (
+                    weighted_appearances
+                    + self.config.appearance_prior_matches
+                    * self.config.appearance_prior_probability
+                ) / (
+                    weighted_matches
+                    + self.config.appearance_prior_matches
+                )
+                appearance_probability = _clamp(
+                    appearance_probability * availability, 0.0, 1.0
+                )
+                conditional_prior = (
+                    self.config.conditional_minutes_prior_appearances
+                )
+                conditional_minutes = (
+                    weighted_minutes
+                    + conditional_prior
+                    * MINUTES_PRIORS[position]["conditional_minutes"]
+                ) / (weighted_appearances + conditional_prior)
+                conditional_minutes = _clamp(
+                    conditional_minutes, 1.0, 90.0
+                )
+                sixty_given_appearance = (
+                    weighted_sixty
+                    + conditional_prior
+                    * MINUTES_PRIORS[position][
+                        "sixty_probability_given_appearance"
+                    ]
+                ) / (weighted_appearances + conditional_prior)
+                sixty_given_appearance = _clamp(
+                    sixty_given_appearance, 0.0, 1.0
+                )
+                expected_minutes = (
+                    appearance_probability * conditional_minutes
+                )
+
+            player["_availability"] = availability
+            player["_conditional_minutes"] = conditional_minutes
+            player["_appearance_probability"] = appearance_probability
+            player["_sixty_given_appearance"] = sixty_given_appearance
+            player["_sixty_probability"] = (
+                appearance_probability * sixty_given_appearance
+            )
+            player["_expected_minutes_per_fixture"] = expected_minutes
+
+        if (
+            self.config.minutes_model != "two_stage"
+            or not self.config.enforce_team_minutes
+        ):
+            return
+
+        players_by_team: dict[str, list[dict[str, Any]]] = {}
+        for player in players:
+            players_by_team.setdefault(str(player["team_id"]), []).append(
+                player
+            )
+        for team_players in players_by_team.values():
+            allocations = _allocate_capped_minutes(
+                [
+                    float(player["_expected_minutes_per_fixture"])
+                    for player in team_players
+                ],
+                target=self.config.team_minutes_per_fixture,
+                cap=90.0,
+            )
+            for player, expected_minutes in zip(
+                team_players, allocations, strict=True
+            ):
+                conditional_minutes = float(
+                    player["_conditional_minutes"]
+                )
+                appearance_probability = _clamp(
+                    expected_minutes / max(conditional_minutes, 1.0),
+                    0.0,
+                    1.0,
+                )
+                player["_expected_minutes_per_fixture"] = expected_minutes
+                player["_appearance_probability"] = appearance_probability
+                player["_sixty_probability"] = min(
+                    appearance_probability,
+                    appearance_probability
+                    * float(player["_sixty_given_appearance"]),
+                )
+
     def _project_player(
         self,
         player: dict[str, Any],
@@ -603,25 +833,17 @@ class RatesProjectionModel:
         start_gameweek: int,
         horizon: int,
         overrides: dict[tuple[str, int], ProjectionOverride],
-        use_availability: bool,
     ) -> tuple[PlayerGameweekProjection, ...]:
         position = Position(player["position"])
         prior = POSITION_PRIORS[position]
         sample_minutes = float(player["minutes"])
         sample_matches = int(player["matches"])
         prior_minutes = self.config.player_rate_prior_minutes
-        prior_matches = self.config.minutes_prior_matches
-        minutes_per_fixture = (
-            float(player["minutes"]) + prior["minutes"] * prior_matches
-        ) / (sample_matches + prior_matches)
-        availability = (
-            _availability_multiplier(
-                player["status"], player["chance_of_playing_next_round"]
-            )
-            if use_availability
-            else 1.0
-        )
-        minutes_per_fixture = _clamp(minutes_per_fixture * availability, 0.0, 90.0)
+        minutes_per_fixture = float(player["_expected_minutes_per_fixture"])
+        appearance_probability = float(player["_appearance_probability"])
+        sixty_probability = float(player["_sixty_probability"])
+        conditional_minutes = float(player["_conditional_minutes"])
+        availability = float(player["_availability"])
         rate_names = (
             "goals",
             "assists",
@@ -659,6 +881,19 @@ class RatesProjectionModel:
             per_fixture_minutes = (
                 0.0 if fixture_count == 0 else expected_minutes / fixture_count
             )
+            fixture_appearance_probability = appearance_probability
+            fixture_sixty_probability = sixty_probability
+            if override is not None and self.config.minutes_model == "two_stage":
+                fixture_appearance_probability = _clamp(
+                    per_fixture_minutes / max(conditional_minutes, 1.0),
+                    0.0,
+                    1.0,
+                )
+                fixture_sixty_probability = min(
+                    fixture_appearance_probability,
+                    fixture_appearance_probability
+                    * float(player["_sixty_given_appearance"]),
+                )
             components = {
                 "appearance": 0.0,
                 "goal": 0.0,
@@ -698,8 +933,19 @@ class RatesProjectionModel:
                     )
                 )
                 minute_factor = per_fixture_minutes / 90.0
-                sixty_factor = _clamp(per_fixture_minutes / 60.0, 0.0, 1.0)
-                components["appearance"] += min(per_fixture_minutes / 30.0, 2.0)
+                if self.config.minutes_model == "legacy":
+                    sixty_factor = _clamp(
+                        per_fixture_minutes / 60.0, 0.0, 1.0
+                    )
+                    components["appearance"] += min(
+                        per_fixture_minutes / 30.0, 2.0
+                    )
+                else:
+                    sixty_factor = fixture_sixty_probability
+                    components["appearance"] += (
+                        fixture_appearance_probability
+                        + fixture_sixty_probability
+                    )
                 components["goal"] += (
                     rates["goals"]
                     * minute_factor
@@ -749,6 +995,8 @@ class RatesProjectionModel:
             assumptions = (
                 f"Rates shrunk by {prior_minutes:.0f} prior minutes",
                 f"Expected minutes per fixture {minutes_per_fixture:.1f}",
+                f"Appearance probability {fixture_appearance_probability:.2f}",
+                f"60-minute probability {fixture_sixty_probability:.2f}",
                 f"Availability multiplier {availability:.2f}",
                 *fixture_notes,
             )
@@ -913,6 +1161,42 @@ def _availability_multiplier(status: str | None, chance: int | None) -> float:
         "s": 0.0,
         "u": 0.0,
     }.get(status or "a", 1.0)
+
+
+def _allocate_capped_minutes(
+    raw_values: list[float],
+    *,
+    target: float,
+    cap: float,
+) -> list[float]:
+    """Scale positive estimates to a team budget without exceeding player caps."""
+
+    if not raw_values:
+        return []
+    feasible_target = min(target, cap * len(raw_values))
+    allocations = [0.0] * len(raw_values)
+    active = set(range(len(raw_values)))
+    remaining = feasible_target
+    while active and remaining > 1e-9:
+        total_weight = sum(max(raw_values[index], 1e-9) for index in active)
+        scale = remaining / total_weight
+        capped = {
+            index
+            for index in active
+            if max(raw_values[index], 1e-9) * scale >= cap
+        }
+        if not capped:
+            for index in active:
+                allocations[index] = (
+                    max(raw_values[index], 1e-9) * scale
+                )
+            remaining = 0.0
+            break
+        for index in capped:
+            allocations[index] = cap
+            remaining -= cap
+        active -= capped
+    return allocations
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:

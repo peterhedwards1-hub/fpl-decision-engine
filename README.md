@@ -84,7 +84,7 @@ Requires Python 3.12 or newer.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev,optimize]'
+python -m pip install -e '.[dev,optimize,modeling]'
 pytest
 ruff check .
 ```
@@ -200,11 +200,13 @@ fpl-history --database data/fpl_history.sqlite3 backtest-projections 2025-26 \
 ```
 
 The command recreates each forecast using only results from earlier seasons or earlier
-Gameweeks and the latest fixture slate ingested before that origin. Predictions without
-explicit player-fixture outcome rows are excluded rather than scored as zero. The run
+Gameweeks. Timestamped pre-deadline runs replay the fixture slate known at that origin;
+reconstructed historical runs explicitly disclose that they use the final fixture slate.
+Predictions without explicit player-fixture outcome rows are excluded rather than scored as zero. The run
 persists generated, scored and missing-outcome counts, the maximum source ingestion run,
 a data fingerprint, and point/minute MAE, bias and RMSE overall, by position and by
-forecast horizon. `performance_only` is the honest mode for reconstructed
+forecast horizon. It also reports DNP/played, single/double-fixture and top-N breakdowns,
+plus expected versus regulation player-minutes per match. `performance_only` is the honest mode for reconstructed
 historical datasets: it ignores availability fields whose capture time is unknown.
 `pre_deadline_only` is stricter and requires exact `live_pre_deadline` observations
 captured before their recorded deadlines.
@@ -212,7 +214,10 @@ captured before their recorded deadlines.
 Model constants are command options, so variants can be given distinct
 `--model-version` labels and compared on an untouched validation period. For example,
 `--player-prior-minutes` controls shrinkage of scoring rates and
-`--minutes-prior-matches` controls shrinkage of expected minutes. A completed report can
+the appearance/recent-evidence options control the two-stage expected-minutes model.
+The model estimates appearance probability separately from minutes conditional on
+appearing, then reconciles every team to 990 expected player-minutes per fixture.
+A completed report can
 be printed again with:
 
 ```bash
@@ -221,6 +226,33 @@ fpl-history --database data/fpl_history.sqlite3 backtest-report <run-id>
 
 The latest completed scorecard also appears in the app's Data Health view. Backtest runs
 do not create ordinary production projection runs.
+
+Install the `modeling` extra and tune only on the development period, with the selected
+configuration evaluated separately on GW26–38:
+
+```bash
+fpl-history --database data/fpl.sqlite3 tune-projections 2025-26 \
+  --development-start 2 \
+  --development-end 25 \
+  --validation-start 26 \
+  --validation-end 38 \
+  --trials 30
+```
+
+Optuna stores the study in `data/fpl_tuning.sqlite3`, while every trial's forecasts,
+configuration, source-ingestion revision and data fingerprint remain auditable in the
+main historical database. The objective prioritises top-100 points MAE and penalises
+top-100 bias, overall error, minutes error and violations of the regulation match-minute
+budget. The final output evaluates both the untuned v2 baseline and the selected
+configuration on the same validation window and reports signed changes, where negative
+error changes are improvements. Reusing the same study name resumes the study and adds
+the requested number of trials.
+
+The completed 2025/26 study, its selected trial, held-out results, data scope and
+limitations are recorded in
+[the projection tuning record](docs/05_ProjectionTuningRecord.md). It used three imported
+seasons as potential historical evidence but evaluated model selection only on 2025/26;
+it was not a five-season test.
 
 The required core CSV files are:
 

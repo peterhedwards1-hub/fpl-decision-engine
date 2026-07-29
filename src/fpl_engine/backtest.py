@@ -14,6 +14,7 @@ from .domain import Position
 from .history.database import HistoricalDatabase
 from .projections import (
     DEFAULT_MODEL_CONFIG,
+    LEGACY_MODEL_VERSION,
     MODEL_VERSION,
     ProjectionModelConfig,
     RatesProjectionModel,
@@ -54,6 +55,12 @@ class BacktestReport:
     overall: BacktestMetrics
     by_position: tuple[BacktestMetrics, ...]
     by_horizon: tuple[BacktestMetrics, ...]
+    by_participation: tuple[BacktestMetrics, ...]
+    by_fixture_count: tuple[BacktestMetrics, ...]
+    top_n: tuple[BacktestMetrics, ...]
+    expected_minutes_per_match: float
+    actual_minutes_per_match: float
+    regulation_minutes_per_match: float
     limitations: tuple[str, ...]
     model_config: ProjectionModelConfig
 
@@ -74,6 +81,18 @@ class BacktestReport:
             "overall": asdict(self.overall),
             "by_position": [asdict(metric) for metric in self.by_position],
             "by_horizon": [asdict(metric) for metric in self.by_horizon],
+            "by_participation": [
+                asdict(metric) for metric in self.by_participation
+            ],
+            "by_fixture_count": [
+                asdict(metric) for metric in self.by_fixture_count
+            ],
+            "top_n": [asdict(metric) for metric in self.top_n],
+            "expected_minutes_per_match": self.expected_minutes_per_match,
+            "actual_minutes_per_match": self.actual_minutes_per_match,
+            "regulation_minutes_per_match": (
+                self.regulation_minutes_per_match
+            ),
             "limitations": list(self.limitations),
             "model_config": asdict(self.model_config),
         }
@@ -143,9 +162,10 @@ class ProjectionBacktester:
             for gameweek in origins
             if available_gameweeks[gameweek] is None
         ]
-        if origins_without_deadlines:
+        if origins_without_deadlines and evidence_policy == "pre_deadline_only":
             raise ValueError(
-                "Backtest origins require recorded deadline times; missing for "
+                "Pre-deadline backtest origins require recorded deadline "
+                "times; missing for "
                 + ", ".join(f"GW{gameweek}" for gameweek in origins_without_deadlines)
             )
 
@@ -227,7 +247,8 @@ class ProjectionBacktester:
         try:
             for origin in origins:
                 generated_at = _historical_generation_time(
-                    available_gameweeks[origin]
+                    available_gameweeks[origin],
+                    fallback=created,
                 )
                 projection_result = model.project(
                     season_code=season_code,
@@ -236,8 +257,16 @@ class ProjectionBacktester:
                     generated_at=generated_at,
                     observation_mode=evidence_policy,
                     use_availability=evidence_policy == "pre_deadline_only",
-                    fixture_as_of=generated_at,
-                    fixture_max_ingestion_run_id=source_ingestion_run_id,
+                    fixture_as_of=(
+                        generated_at
+                        if evidence_policy == "pre_deadline_only"
+                        else None
+                    ),
+                    fixture_max_ingestion_run_id=(
+                        source_ingestion_run_id
+                        if evidence_policy == "pre_deadline_only"
+                        else None
+                    ),
                     persist=False,
                 )
                 rows = []
@@ -310,15 +339,25 @@ class ProjectionBacktester:
             self.database.connection.commit()
         except Exception as error:
             self.database.connection.rollback()
-            self.database.connection.execute(
-                """
-                UPDATE projection_backtest_runs
-                SET status = 'failed', error_message = ?
-                WHERE id = ?
-                """,
-                (str(error), run_id),
-            )
-            self.database.connection.commit()
+            with self.database.transaction():
+                self.database.connection.execute(
+                    """
+                    DELETE FROM projection_backtest_predictions
+                    WHERE backtest_run_id = ?
+                    """,
+                    (run_id,),
+                )
+                self.database.connection.execute(
+                    """
+                    UPDATE projection_backtest_runs
+                    SET status = 'failed', error_message = ?,
+                        generated_prediction_count = 0,
+                        prediction_count = 0,
+                        missing_outcome_count = 0
+                    WHERE id = ?
+                    """,
+                    (str(error), run_id),
+                )
             raise
         return load_backtest_report(self.database, run_id)
 
@@ -406,6 +445,94 @@ def load_backtest_report(
         )
         for step in horizon_steps
     )
+    by_participation = tuple(
+        _metrics(
+            "participation",
+            value,
+            [
+                row
+                for row in rows
+                if (int(row["actual_minutes"]) == 0) == is_dnp
+            ],
+        )
+        for value, is_dnp in (("DNP", True), ("played", False))
+        if any(
+            (int(row["actual_minutes"]) == 0) == is_dnp for row in rows
+        )
+    )
+    fixture_counts = sorted({int(row["fixture_count"]) for row in rows})
+    by_fixture_count = tuple(
+        _metrics(
+            "fixture_count",
+            str(fixture_count),
+            [
+                row
+                for row in rows
+                if int(row["fixture_count"]) == fixture_count
+            ],
+        )
+        for fixture_count in fixture_counts
+    )
+    ranked_groups: dict[tuple[int, int], list[object]] = {}
+    for row in rows:
+        ranked_groups.setdefault(
+            (int(row["origin_gameweek"]), int(row["target_gameweek"])),
+            [],
+        ).append(row)
+    top_n = tuple(
+        _metrics(
+            "top_n",
+            str(cutoff),
+            [
+                row
+                for group_rows in ranked_groups.values()
+                for row in sorted(
+                    group_rows,
+                    key=lambda item: (
+                        -float(item["expected_points"]),
+                        int(item["player_season_id"]),
+                    ),
+                )[:cutoff]
+            ],
+        )
+        for cutoff in (15, 50, 100)
+    )
+    evaluated_origin_targets = {
+        (int(row["origin_gameweek"]), int(row["target_gameweek"]))
+        for row in rows
+    }
+    match_count = sum(
+        int(
+            database.connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM fixtures
+                JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                JOIN seasons ON seasons.id = fixtures.season_id
+                WHERE seasons.code = ? AND gameweeks.number = ?
+                """,
+                (run["season_code"], target_gameweek),
+            ).fetchone()[0]
+        )
+        for _, target_gameweek in evaluated_origin_targets
+    )
+    expected_minutes_per_match = (
+        sum(float(row["expected_minutes"]) for row in rows) / match_count
+        if match_count
+        else 0.0
+    )
+    actual_minutes_per_match = (
+        sum(float(row["actual_minutes"]) for row in rows) / match_count
+        if match_count
+        else 0.0
+    )
+    model_config_values = json.loads(run["model_config_json"])
+    if (
+        run["model_version"] == LEGACY_MODEL_VERSION
+        and "minutes_model" not in model_config_values
+    ):
+        model_config_values["minutes_model"] = "legacy"
+        model_config_values["enforce_team_minutes"] = False
     return BacktestReport(
         backtest_run_id=run_id,
         season_code=run["season_code"],
@@ -422,10 +549,16 @@ def load_backtest_report(
         overall=overall,
         by_position=by_position,
         by_horizon=by_horizon,
-        limitations=tuple(json.loads(run["limitations_json"])),
-        model_config=ProjectionModelConfig(
-            **json.loads(run["model_config_json"])
+        by_participation=by_participation,
+        by_fixture_count=by_fixture_count,
+        top_n=top_n,
+        expected_minutes_per_match=round(
+            expected_minutes_per_match, 4
         ),
+        actual_minutes_per_match=round(actual_minutes_per_match, 4),
+        regulation_minutes_per_match=1980.0,
+        limitations=tuple(json.loads(run["limitations_json"])),
+        model_config=ProjectionModelConfig(**model_config_values),
     )
 
 
@@ -466,9 +599,13 @@ def _metrics(group: str, value: str, rows: list[object]) -> BacktestMetrics:
     )
 
 
-def _historical_generation_time(deadline_time: str | None) -> datetime:
+def _historical_generation_time(
+    deadline_time: str | None,
+    *,
+    fallback: datetime,
+) -> datetime:
     if deadline_time is None:
-        raise ValueError("Historical generation time requires a deadline")
+        return fallback
     deadline = datetime.fromisoformat(deadline_time.replace("Z", "+00:00"))
     return deadline.astimezone(UTC) - timedelta(seconds=1)
 
@@ -478,9 +615,6 @@ def _limitations(evidence_policy: EvidencePolicy) -> tuple[str, ...]:
         "Only structured database fields are replayed; press conferences, "
         "predicted lineups and manual role judgements are unavailable unless "
         "they were captured separately.",
-        "Fixture assignments, kickoff times and completed results are replayed "
-        "from the latest fixture observation ingested before each forecast "
-        "origin.",
         "Predictions without an explicit player-fixture outcome row are "
         "excluded from scoring and reported as missing outcomes.",
         "Team-strength estimates use only the target season, so early-season "
@@ -489,11 +623,17 @@ def _limitations(evidence_policy: EvidencePolicy) -> tuple[str, ...]:
     if evidence_policy == "pre_deadline_only":
         return (
             *common,
+            "Fixture assignments, kickoff times and completed results are "
+            "replayed from the latest fixture observation ingested before "
+            "each forecast origin.",
             "Availability uses only exact live_pre_deadline observations whose "
             "capture time precedes the recorded deadline.",
         )
     return (
         *common,
+        "The final reconstructed fixture slate is used because the historical "
+        "source has no timestamped schedule archive; later reschedules may "
+        "therefore be known to the replay.",
         "Historical reconstructed snapshots have unknown capture times, so "
         "status and chance-of-playing fields are ignored.",
         "Historical team membership is used to attach the player to fixtures; "
