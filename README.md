@@ -17,7 +17,7 @@ Exact completion evidence and remaining qualifications are tracked in
 
 Implemented:
 
-- versioned 2026/27 season configuration;
+- versioned 2025/26 and 2026/27 season configuration;
 - typed player, squad and Gameweek-stat domain objects;
 - complete squad and starting-XI validation;
 - deterministic player-points calculation;
@@ -37,11 +37,12 @@ Implemented:
 - exact XI, full-squad, opening-squad and transfer optimisation;
 - bench, autosub, captaincy and chip-specific decision support;
 - provisional/final weekly audit records and model-health scoring;
+- leakage-aware walk-forward projection backtesting with persisted scorecards;
 - automated tests and GitHub Actions CI.
 
-Schema version 8 includes the hardened identity and observation foundation, fixture-state
-history, manager state, projections and weekly decision records. The database supports
-in-place version-2 migration, stable player
+Schema version 9 includes the hardened identity and observation foundation, fixture-state
+history, manager state, projections, weekly decision records and historical backtests. The
+database supports in-place version-2 migration, stable player
 identity links, explicit identifier namespaces and delivery-source provenance, timestamped
 multi-observation Gameweek history, selected-manager counts, and strict CSV contract
 validation. See [the historical import foundation design](docs/historical-import-foundation.md).
@@ -83,7 +84,7 @@ Requires Python 3.12 or newer.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,optimize]'
 pytest
 ruff check .
 ```
@@ -187,6 +188,36 @@ Inspect row counts:
 ```bash
 fpl-history --database data/fpl_history.sqlite3 summary 2025-26
 ```
+
+Run a one-Gameweek-ahead walk-forward projection backtest:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 backtest-projections 2025-26 \
+  --origin-start 2 \
+  --origin-end 38 \
+  --horizon 1 \
+  --evidence-policy performance_only
+```
+
+The command recreates each forecast using only results from earlier seasons or earlier
+Gameweeks, then persists and prints point/minute MAE, bias and RMSE overall, by position
+and by forecast horizon. `performance_only` is the honest mode for reconstructed
+historical datasets: it ignores availability fields whose capture time is unknown.
+`pre_deadline_only` is stricter and requires exact `live_pre_deadline` observations
+captured before their recorded deadlines.
+
+Model constants are command options, so variants can be given distinct
+`--model-version` labels and compared on an untouched validation period. For example,
+`--player-prior-minutes` controls shrinkage of scoring rates and
+`--minutes-prior-matches` controls shrinkage of expected minutes. A completed report can
+be printed again with:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 backtest-report <run-id>
+```
+
+The latest completed scorecard also appears in the app's Data Health view. Backtest runs
+do not create ordinary production projection runs.
 
 The required core CSV files are:
 

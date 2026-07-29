@@ -66,6 +66,38 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
 
 
 @dataclass(frozen=True)
+class ProjectionModelConfig:
+    player_rate_prior_minutes: float = 900.0
+    minutes_prior_matches: float = 6.0
+    team_prior_matches: float = 6.0
+    home_attack_multiplier: float = 1.08
+    away_attack_multiplier: float = 0.92
+    minimum_team_multiplier: float = 0.60
+    maximum_team_multiplier: float = 1.50
+
+    def __post_init__(self) -> None:
+        if self.player_rate_prior_minutes <= 0:
+            raise ValueError("Player-rate prior minutes must be positive")
+        if self.minutes_prior_matches <= 0:
+            raise ValueError("Minutes prior matches must be positive")
+        if self.team_prior_matches <= 0:
+            raise ValueError("Team prior matches must be positive")
+        if self.home_attack_multiplier <= 0:
+            raise ValueError("Home attack multiplier must be positive")
+        if self.away_attack_multiplier <= 0:
+            raise ValueError("Away attack multiplier must be positive")
+        if self.minimum_team_multiplier <= 0:
+            raise ValueError("Minimum team multiplier must be positive")
+        if self.maximum_team_multiplier < self.minimum_team_multiplier:
+            raise ValueError(
+                "Maximum team multiplier cannot be below the minimum"
+            )
+
+
+DEFAULT_MODEL_CONFIG = ProjectionModelConfig()
+
+
+@dataclass(frozen=True)
 class ProjectionOverride:
     source_player_id: str
     gameweek_number: int
@@ -106,21 +138,31 @@ class PlayerGameweekProjection:
 
 @dataclass(frozen=True)
 class ProjectionResult:
-    projection_run_id: int
+    projection_run_id: int | None
     model_version: str
     generated_at: datetime
     start_gameweek: int
     horizon_gameweeks: int
     projections: tuple[PlayerGameweekProjection, ...]
     team_strengths: dict[str, dict[str, float]]
+    model_config: ProjectionModelConfig
 
 
 class RatesProjectionModel:
     """Bayesian-shrunk per-90 baseline with explicit fixture adjustments."""
 
-    def __init__(self, database: HistoricalDatabase, rules: SeasonRules) -> None:
+    def __init__(
+        self,
+        database: HistoricalDatabase,
+        rules: SeasonRules,
+        *,
+        config: ProjectionModelConfig = DEFAULT_MODEL_CONFIG,
+        model_version: str = MODEL_VERSION,
+    ) -> None:
         self.database = database
         self.rules = rules
+        self.config = config
+        self.model_version = model_version
 
     def project(
         self,
@@ -131,6 +173,9 @@ class RatesProjectionModel:
         overrides: tuple[ProjectionOverride, ...] = (),
         team_overrides: tuple[TeamStrengthOverride, ...] = (),
         generated_at: datetime | None = None,
+        observation_mode: str = "latest_available",
+        use_availability: bool = True,
+        persist: bool = True,
     ) -> ProjectionResult:
         if horizon_gameweeks <= 0:
             raise ValueError("Projection horizon must be positive")
@@ -143,7 +188,11 @@ class RatesProjectionModel:
         ).fetchone()
         if season is None:
             raise ValueError(f"Season {season_code!r} is not available")
-        players = self._players(season_code, start_gameweek)
+        players = self._players(
+            season_code,
+            start_gameweek,
+            observation_mode=observation_mode,
+        )
         fixtures = self._fixtures(
             season_code, start_gameweek, horizon_gameweeks
         )
@@ -164,31 +213,60 @@ class RatesProjectionModel:
                 start_gameweek,
                 horizon_gameweeks,
                 override_lookup,
+                use_availability,
             )
         )
-        run_id = self._persist(
-            season_id=int(season["id"]),
-            generated_at=generated,
-            start_gameweek=start_gameweek,
-            horizon_gameweeks=horizon_gameweeks,
-            projections=projections,
-            strengths=strengths,
+        run_id = (
+            self._persist(
+                season_id=int(season["id"]),
+                generated_at=generated,
+                start_gameweek=start_gameweek,
+                horizon_gameweeks=horizon_gameweeks,
+                projections=projections,
+                strengths=strengths,
+                observation_mode=observation_mode,
+            )
+            if persist
+            else None
         )
         return ProjectionResult(
             projection_run_id=run_id,
-            model_version=MODEL_VERSION,
+            model_version=self.model_version,
             generated_at=generated,
             start_gameweek=start_gameweek,
             horizon_gameweeks=horizon_gameweeks,
             projections=projections,
             team_strengths=strengths,
+            model_config=self.config,
         )
 
     def _players(
-        self, season_code: str, start_gameweek: int
+        self,
+        season_code: str,
+        start_gameweek: int,
+        *,
+        observation_mode: str,
     ) -> list[dict[str, Any]]:
+        observation_filter = {
+            "latest_available": "1 = 1",
+            "latest_pre_deadline": (
+                "observations.observation_kind = 'live_pre_deadline' "
+                "AND observations.timing_quality = 'exact' "
+                "AND datetime(observations.observed_at) "
+                "< datetime(gameweeks.deadline_time)"
+            ),
+            "pre_deadline_only": (
+                "observations.observation_kind = 'live_pre_deadline' "
+                "AND observations.timing_quality = 'exact' "
+                "AND datetime(observations.observed_at) "
+                "< datetime(gameweeks.deadline_time)"
+            ),
+            "performance_only": "1 = 1",
+        }.get(observation_mode)
+        if observation_filter is None:
+            raise ValueError(f"Unknown projection observation mode {observation_mode!r}")
         rows = self.database.connection.execute(
-            """
+            f"""
             WITH ranked_observations AS (
                 SELECT observations.*,
                        ROW_NUMBER() OVER (
@@ -207,6 +285,7 @@ class RatesProjectionModel:
                 JOIN gameweeks ON gameweeks.id = observations.gameweek_id
                 JOIN seasons ON seasons.id = gameweeks.season_id
                 WHERE seasons.code = ? AND gameweeks.number <= ?
+                  AND {observation_filter}
             ),
             career AS (
                 SELECT current_ps.id AS current_player_season_id,
@@ -234,8 +313,11 @@ class RatesProjectionModel:
                        ON historical_seasons.id = historical_fixtures.season_id
                      LEFT JOIN gameweeks historical_gameweeks
                        ON historical_gameweeks.id = historical_fixtures.gameweek_id
-                     WHERE historical_seasons.code <> ?
-                        OR historical_gameweeks.number < ?
+                     WHERE historical_seasons.code < ?
+                        OR (
+                            historical_seasons.code = ?
+                            AND historical_gameweeks.number < ?
+                        )
                  )
                 GROUP BY current_ps.id
             )
@@ -251,10 +333,10 @@ class RatesProjectionModel:
             FROM player_seasons ps
             JOIN seasons ON seasons.id = ps.season_id
             JOIN players ON players.id = ps.player_id
-            JOIN teams ON teams.id = ps.team_id
             JOIN ranked_observations observations
               ON observations.player_season_id = ps.id
              AND observations.observation_rank = 1
+            JOIN teams ON teams.id = COALESCE(observations.team_id, ps.team_id)
             JOIN career ON career.current_player_season_id = ps.id
             WHERE seasons.code = ?
               AND ps.identifier_namespace = 'official-fpl'
@@ -263,6 +345,7 @@ class RatesProjectionModel:
             (
                 season_code,
                 start_gameweek,
+                season_code,
                 season_code,
                 start_gameweek,
                 season_code,
@@ -340,7 +423,7 @@ class RatesProjectionModel:
         total_matches = sum(int(row["matches"]) for row in aggregate)
         total_goals = sum(int(row["goals_for"]) for row in aggregate)
         league_average = total_goals / total_matches if total_matches else 1.4
-        prior_matches = 6.0
+        prior_matches = self.config.team_prior_matches
         result: dict[str, dict[str, float]] = {}
         for row in aggregate:
             matches = int(row["matches"])
@@ -351,8 +434,16 @@ class RatesProjectionModel:
                 float(row["goals_against"]) + prior_matches * league_average
             ) / (matches + prior_matches)
             result[str(row["team_id"])] = {
-                "attack": _clamp(attack_rate / league_average, 0.60, 1.50),
-                "defence": _clamp(defence_rate / league_average, 0.60, 1.50),
+                "attack": _clamp(
+                    attack_rate / league_average,
+                    self.config.minimum_team_multiplier,
+                    self.config.maximum_team_multiplier,
+                ),
+                "defence": _clamp(
+                    defence_rate / league_average,
+                    self.config.minimum_team_multiplier,
+                    self.config.maximum_team_multiplier,
+                ),
                 "matches": float(matches),
                 "league_average_goals": league_average,
             }
@@ -378,17 +469,23 @@ class RatesProjectionModel:
         start_gameweek: int,
         horizon: int,
         overrides: dict[tuple[str, int], ProjectionOverride],
+        use_availability: bool,
     ) -> tuple[PlayerGameweekProjection, ...]:
         position = Position(player["position"])
         prior = POSITION_PRIORS[position]
         sample_minutes = float(player["minutes"])
         sample_matches = int(player["matches"])
-        prior_minutes = 900.0
+        prior_minutes = self.config.player_rate_prior_minutes
+        prior_matches = self.config.minutes_prior_matches
         minutes_per_fixture = (
-            float(player["minutes"]) + prior["minutes"] * 6.0
-        ) / (sample_matches + 6.0)
-        availability = _availability_multiplier(
-            player["status"], player["chance_of_playing_next_round"]
+            float(player["minutes"]) + prior["minutes"] * prior_matches
+        ) / (sample_matches + prior_matches)
+        availability = (
+            _availability_multiplier(
+                player["status"], player["chance_of_playing_next_round"]
+            )
+            if use_availability
+            else 1.0
         )
         minutes_per_fixture = _clamp(minutes_per_fixture * availability, 0.0, 90.0)
         rate_names = (
@@ -446,7 +543,11 @@ class RatesProjectionModel:
                 )
                 team_strength = strengths[str(player["team_id"])]
                 opponent_strength = strengths[opponent_id]
-                venue_attack = 1.08 if is_home else 0.92
+                venue_attack = (
+                    self.config.home_attack_multiplier
+                    if is_home
+                    else self.config.away_attack_multiplier
+                )
                 scoring_factor = (
                     team_strength["attack"]
                     * opponent_strength["defence"]
@@ -456,7 +557,11 @@ class RatesProjectionModel:
                     team_strength["league_average_goals"]
                     * opponent_strength["attack"]
                     * team_strength["defence"]
-                    * (0.92 if is_home else 1.08)
+                    * (
+                        self.config.away_attack_multiplier
+                        if is_home
+                        else self.config.home_attack_multiplier
+                    )
                 )
                 minute_factor = per_fixture_minutes / 90.0
                 sixty_factor = _clamp(per_fixture_minutes / 60.0, 0.0, 1.0)
@@ -549,6 +654,7 @@ class RatesProjectionModel:
         horizon_gameweeks: int,
         projections: tuple[PlayerGameweekProjection, ...],
         strengths: dict[str, dict[str, float]],
+        observation_mode: str,
     ) -> int:
         source_run = self.database.connection.execute(
             """
@@ -559,8 +665,7 @@ class RatesProjectionModel:
         assumptions = {
             "position_priors": POSITION_PRIORS,
             "team_strengths": strengths,
-            "player_rate_prior_minutes": 900,
-            "team_prior_matches": 6,
+            "model_config": self.config.__dict__,
         }
         with self.database.transaction():
             cursor = self.database.connection.execute(
@@ -569,7 +674,7 @@ class RatesProjectionModel:
                     season_id, generated_at, start_gameweek, horizon_gameweeks,
                     model_version, observation_mode, assumptions_json,
                     source_ingestion_run_id
-                ) VALUES (?, ?, ?, ?, ?, 'latest_available', ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """,
                 (
@@ -577,7 +682,8 @@ class RatesProjectionModel:
                     generated_at.astimezone(UTC).isoformat(),
                     start_gameweek,
                     horizon_gameweeks,
-                    MODEL_VERSION,
+                    self.model_version,
+                    observation_mode,
                     json.dumps(assumptions, sort_keys=True, default=str),
                     None if source_run is None else source_run["id"],
                 ),

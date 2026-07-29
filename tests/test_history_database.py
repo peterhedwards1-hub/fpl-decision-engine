@@ -81,7 +81,7 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
 
-        assert database.schema_version == 8
+        assert database.schema_version == 9
         table_names = {
             row[0]
             for row in database.connection.execute(
@@ -99,6 +99,8 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
         assert "weekly_decision_runs" in table_names
         assert "actual_actions" in table_names
         assert "weekly_evaluations" in table_names
+        assert "projection_backtest_runs" in table_names
+        assert "projection_backtest_predictions" in table_names
         view_names = {
             row[0]
             for row in database.connection.execute(

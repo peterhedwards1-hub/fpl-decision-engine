@@ -8,6 +8,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..backtest import ProjectionBacktester, load_backtest_report
+from ..config import load_season_rules
+from ..projections import MODEL_VERSION, ProjectionModelConfig
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
 from .records import IngestionSource, SeasonRecord
@@ -54,6 +57,45 @@ def main() -> None:
     summary_parser = subparsers.add_parser("summary", help="Show season row counts")
     summary_parser.add_argument("season_code")
 
+    backtest_parser = subparsers.add_parser(
+        "backtest-projections",
+        help="Walk historical Gameweeks forward and score projection accuracy",
+    )
+    backtest_parser.add_argument("season_code")
+    backtest_parser.add_argument(
+        "--rules",
+        help="Season rules JSON (defaults to config/seasons/<season>.json)",
+    )
+    backtest_parser.add_argument("--origin-start", type=int, default=2)
+    backtest_parser.add_argument("--origin-end", type=int, default=38)
+    backtest_parser.add_argument("--horizon", type=int, default=1)
+    backtest_parser.add_argument(
+        "--evidence-policy",
+        choices=("performance_only", "pre_deadline_only"),
+        default="performance_only",
+    )
+    backtest_parser.add_argument("--model-version", default=MODEL_VERSION)
+    backtest_parser.add_argument(
+        "--player-prior-minutes", type=float, default=900.0
+    )
+    backtest_parser.add_argument(
+        "--minutes-prior-matches", type=float, default=6.0
+    )
+    backtest_parser.add_argument(
+        "--team-prior-matches", type=float, default=6.0
+    )
+    backtest_parser.add_argument(
+        "--home-attack-multiplier", type=float, default=1.08
+    )
+    backtest_parser.add_argument(
+        "--away-attack-multiplier", type=float, default=0.92
+    )
+
+    report_parser = subparsers.add_parser(
+        "backtest-report", help="Show a completed persisted backtest scorecard"
+    )
+    report_parser.add_argument("run_id", type=int)
+
     args = parser.parse_args()
     database_path = Path(args.database)
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,6 +108,47 @@ def main() -> None:
 
         if args.command == "summary":
             print(json.dumps(database.season_summary(args.season_code), indent=2))
+            return
+
+        if args.command == "backtest-report":
+            print(
+                json.dumps(
+                    load_backtest_report(database, args.run_id).as_dict(),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "backtest-projections":
+            rules_path = Path(
+                args.rules or f"config/seasons/{args.season_code}.json"
+            )
+            rules = load_season_rules(rules_path)
+            if rules.season != args.season_code:
+                raise ValueError(
+                    f"Rules season {rules.season!r} does not match "
+                    f"backtest season {args.season_code!r}"
+                )
+            config = ProjectionModelConfig(
+                player_rate_prior_minutes=args.player_prior_minutes,
+                minutes_prior_matches=args.minutes_prior_matches,
+                team_prior_matches=args.team_prior_matches,
+                home_attack_multiplier=args.home_attack_multiplier,
+                away_attack_multiplier=args.away_attack_multiplier,
+            )
+            report = ProjectionBacktester(
+                database,
+                rules,
+                config=config,
+                model_version=args.model_version,
+            ).run(
+                season_code=args.season_code,
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                evidence_policy=args.evidence_policy,
+            )
+            print(json.dumps(report.as_dict(), indent=2))
             return
 
         if args.command == "import-vaastav":

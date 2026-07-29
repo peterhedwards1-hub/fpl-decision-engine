@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from fpl_engine.backtest import load_backtest_report
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
 from fpl_engine.history.database import HistoricalDatabase
@@ -1280,6 +1281,66 @@ def _data_health(
         f"Weekly decisions scored: {health.weekly_decisions_scored} · "
         f"MAE: {health.weekly_mean_absolute_error} · Bias: {health.weekly_bias}"
     )
+    latest_backtest = database.connection.execute(
+        """
+        SELECT backtests.id
+        FROM projection_backtest_runs backtests
+        JOIN seasons ON seasons.id = backtests.season_id
+        WHERE seasons.code = ? AND backtests.status = 'completed'
+        ORDER BY backtests.created_at DESC, backtests.id DESC
+        LIMIT 1
+        """,
+        (season_code,),
+    ).fetchone()
+    st.write("Historical walk-forward validation")
+    if latest_backtest is None:
+        st.caption(
+            "No completed historical projection backtest is available for "
+            "this season. Run `fpl-history backtest-projections` first."
+        )
+    else:
+        report = load_backtest_report(database, int(latest_backtest["id"]))
+        score_columns = st.columns(4)
+        score_columns[0].metric("Predictions", report.prediction_count)
+        score_columns[1].metric(
+            "Points MAE", f"{report.overall.points_mae:.3f}"
+        )
+        score_columns[2].metric(
+            "Points bias", f"{report.overall.points_bias:+.3f}"
+        )
+        score_columns[3].metric(
+            "Minutes MAE", f"{report.overall.minutes_mae:.2f}"
+        )
+        st.caption(
+            f"{report.model_version} · {report.evidence_policy} · "
+            f"origins GW{report.origin_gameweek_start}–"
+            f"{report.origin_gameweek_end} · "
+            f"{report.horizon_gameweeks}-Gameweek horizon"
+        )
+        score_rows = [
+            {
+                "Breakdown": metric.group,
+                "Value": metric.value,
+                "Samples": metric.samples,
+                "Points MAE": metric.points_mae,
+                "Points bias": metric.points_bias,
+                "Points RMSE": metric.points_rmse,
+                "Minutes MAE": metric.minutes_mae,
+            }
+            for metric in (*report.by_position, *report.by_horizon)
+        ]
+        st.dataframe(
+            pd.DataFrame(score_rows),
+            hide_index=True,
+            use_container_width=True,
+        )
+        with st.expander("Backtest assumptions and limitations"):
+            st.json(
+                {
+                    "model_config": report.as_dict()["model_config"],
+                    "limitations": report.limitations,
+                }
+            )
     _refresh_button(database, season_code, season_code.replace("-", "/"))
 
 

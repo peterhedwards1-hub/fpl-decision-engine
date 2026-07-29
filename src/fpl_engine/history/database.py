@@ -30,6 +30,7 @@ from .schema import (
     MIGRATE_V5_TO_V6_SQL,
     MIGRATE_V6_TO_V7_SQL,
     MIGRATE_V7_TO_V8_SQL,
+    MIGRATE_V8_TO_V9_SQL,
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
@@ -104,6 +105,9 @@ class HistoricalDatabase:
             current_version = 7
         if current_version == 7:
             self._migrate_v7_to_v8()
+            current_version = 8
+        if current_version == 8:
+            self._migrate_v8_to_v9()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
@@ -234,6 +238,22 @@ class HistoricalDatabase:
         except Exception as error:
             self.connection.rollback()
             raise RuntimeError(f"Version 7 to 8 migration failed safely: {error}") from error
+
+    def _migrate_v8_to_v9(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V8_TO_V9_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 8 to 9 migration produced {len(foreign_key_issues)} "
+                    "foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 8 to 9 migration failed safely: {error}") from error
 
     def _validate_v3_timing_rows(self) -> dict[int, str | None]:
         rows = self.connection.execute(

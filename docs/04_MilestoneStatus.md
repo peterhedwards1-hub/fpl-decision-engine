@@ -2,7 +2,7 @@
 
 **Roadmap:** `02_ImplementationRoadmap.md`  
 **Status date:** 2026-07-29  
-**Database schema:** 8
+**Database schema:** 9
 
 This is the implementation-status companion to the canonical roadmap. It does not redefine
 milestone scope or acceptance criteria.
@@ -19,15 +19,24 @@ milestone scope or acceptance criteria.
 | 7 — Opening squad | Complete baseline | Eight-Gameweek robust objective, uncertainty and residual value, alternatives, rerun triggers and browser report | Calibrate robustness weights on realised 2026/27 data |
 | 8 — Transfer recommender | Complete initial scope | Ranked roll, exact one- and two-transfer routes, hits, selling prices, bank, future free transfers, post-route lineup and browser comparison | Extend beyond two simultaneous transfers where useful |
 | 9 — Two-pass workflow | Substantially complete | News review queue, provisional/final modes, reviewed overrides, immutable final runs, actual-action/deviation capture, evaluation and browser workflow | Automate public post-deadline action reconciliation and scheduled scoring |
-| 10 — Full system | In progress | Strict structured-news JSON contract, human review, two-transfer search, dynamic 1–8 GW horizon, blanks/doubles, chip-specific optimisation, replay and model-health/version comparison | Richer expected-minutes and uncertainty distributions, deeper transfer/chip planning, external news acquisition, calibrated backtests and justified private hosting |
+| 10 — Full system | In progress | Strict structured-news JSON contract, human review, two-transfer search, dynamic 1–8 GW horizon, blanks/doubles, chip-specific optimisation, replay, model-health/version comparison and persisted leakage-aware walk-forward backtesting | Use held-out results to calibrate expected minutes/rates/uncertainty, deepen transfer/chip planning, add external news acquisition and justify private hosting |
 
 ## Current delivery gate
 
-Milestones 0–8 are ready for use as a connected baseline. Milestone 9 can run the complete
-manual weekly cycle without rewriting historical inputs, but its post-deadline reconciliation
-is not yet automatic. Milestone 10 is intentionally not marked complete: its remaining work
-depends on current-season observations, model calibration and deployment choices rather than
-missing FPL rule definitions.
+Milestones 0–8 are implemented as a connected baseline, pending integration qualification
+on the updated main workflow. The qualification gate requires a reproducible install with
+the explicit optimisation dependency, clean lint and tests, database migration coverage, a
+database initialisation smoke run, and a basic UI launch check. Restore the stronger
+“ready for use” wording only after that workflow passes. Milestone 9 can run the complete
+manual weekly cycle without rewriting historical inputs, but its post-deadline
+reconciliation is not yet automatic. Milestone 10 is intentionally not marked complete:
+its remaining work depends on current-season observations, model calibration and deployment
+choices rather than missing FPL rule definitions.
+
+Local integration preflight on 2026-07-29 passed the exact
+`.[dev,optimize]` installation, Ruff, all 67 tests (including migration and exact-solver
+tests), schema-version-9 initialisation, and a headless Streamlit launch. The remaining
+qualification is a successful run of the updated GitHub Actions workflow on the repository.
 
 ## Known model limitations
 
@@ -40,3 +49,5 @@ missing FPL rule definitions.
   enumerate every near-optimal combination or longer transfer plan.
 - Chip recommendations share the legal rules and exact squad solver, but season-long chip
   timing is not yet jointly optimised.
+- Reconstructed historical snapshots have unknown capture times. Backtests therefore ignore
+  their availability fields; exact availability replay requires archived pre-deadline data.

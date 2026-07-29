@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -337,6 +337,47 @@ CREATE TABLE IF NOT EXISTS weekly_evaluations (
     review_notes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS projection_backtest_runs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    model_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    origin_gameweek_start INTEGER NOT NULL CHECK (
+        origin_gameweek_start BETWEEN 1 AND 38
+    ),
+    origin_gameweek_end INTEGER NOT NULL CHECK (
+        origin_gameweek_end BETWEEN origin_gameweek_start AND 38
+    ),
+    horizon_gameweeks INTEGER NOT NULL CHECK (horizon_gameweeks > 0),
+    evidence_policy TEXT NOT NULL CHECK (
+        evidence_policy IN ('performance_only', 'pre_deadline_only')
+    ),
+    model_config_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+    prediction_count INTEGER NOT NULL DEFAULT 0 CHECK (prediction_count >= 0),
+    error_message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS projection_backtest_predictions (
+    id INTEGER PRIMARY KEY,
+    backtest_run_id INTEGER NOT NULL
+        REFERENCES projection_backtest_runs(id) ON DELETE CASCADE,
+    origin_gameweek INTEGER NOT NULL CHECK (origin_gameweek BETWEEN 1 AND 38),
+    target_gameweek INTEGER NOT NULL CHECK (target_gameweek BETWEEN 1 AND 38),
+    horizon_step INTEGER NOT NULL CHECK (horizon_step > 0),
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    fixture_count INTEGER NOT NULL CHECK (fixture_count > 0),
+    expected_minutes REAL NOT NULL,
+    actual_minutes INTEGER NOT NULL CHECK (actual_minutes >= 0),
+    expected_points REAL NOT NULL,
+    actual_points INTEGER NOT NULL,
+    uncertainty REAL NOT NULL CHECK (uncertainty >= 0),
+    UNIQUE (
+        backtest_run_id, origin_gameweek, target_gameweek, player_season_id
+    )
+);
+
 CREATE INDEX IF NOT EXISTS idx_player_seasons_team ON player_seasons(team_id);
 CREATE INDEX IF NOT EXISTS idx_player_seasons_source
     ON player_seasons(identifier_namespace, source_player_id);
@@ -360,6 +401,10 @@ CREATE INDEX IF NOT EXISTS idx_news_review_queue
     ON news_evidence(season_id, gameweek_id, review_status);
 CREATE INDEX IF NOT EXISTS idx_weekly_runs_gameweek
     ON weekly_decision_runs(season_id, gameweek_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_backtest_runs_season
+    ON projection_backtest_runs(season_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_backtest_predictions_run
+    ON projection_backtest_predictions(backtest_run_id, horizon_step);
 
 CREATE TRIGGER IF NOT EXISTS prevent_final_weekly_run_update
 BEFORE UPDATE ON weekly_decision_runs
@@ -966,5 +1011,59 @@ BEGIN
 END;
 
 PRAGMA user_version = 8;
+COMMIT;
+"""
+
+MIGRATE_V8_TO_V9_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+CREATE TABLE projection_backtest_runs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    model_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    origin_gameweek_start INTEGER NOT NULL CHECK (
+        origin_gameweek_start BETWEEN 1 AND 38
+    ),
+    origin_gameweek_end INTEGER NOT NULL CHECK (
+        origin_gameweek_end BETWEEN origin_gameweek_start AND 38
+    ),
+    horizon_gameweeks INTEGER NOT NULL CHECK (horizon_gameweeks > 0),
+    evidence_policy TEXT NOT NULL CHECK (
+        evidence_policy IN ('performance_only', 'pre_deadline_only')
+    ),
+    model_config_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+    prediction_count INTEGER NOT NULL DEFAULT 0 CHECK (prediction_count >= 0),
+    error_message TEXT
+);
+
+CREATE TABLE projection_backtest_predictions (
+    id INTEGER PRIMARY KEY,
+    backtest_run_id INTEGER NOT NULL
+        REFERENCES projection_backtest_runs(id) ON DELETE CASCADE,
+    origin_gameweek INTEGER NOT NULL CHECK (origin_gameweek BETWEEN 1 AND 38),
+    target_gameweek INTEGER NOT NULL CHECK (target_gameweek BETWEEN 1 AND 38),
+    horizon_step INTEGER NOT NULL CHECK (horizon_step > 0),
+    player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
+    fixture_count INTEGER NOT NULL CHECK (fixture_count > 0),
+    expected_minutes REAL NOT NULL,
+    actual_minutes INTEGER NOT NULL CHECK (actual_minutes >= 0),
+    expected_points REAL NOT NULL,
+    actual_points INTEGER NOT NULL,
+    uncertainty REAL NOT NULL CHECK (uncertainty >= 0),
+    UNIQUE (
+        backtest_run_id, origin_gameweek, target_gameweek, player_season_id
+    )
+);
+
+CREATE INDEX idx_backtest_runs_season
+    ON projection_backtest_runs(season_id, created_at);
+CREATE INDEX idx_backtest_predictions_run
+    ON projection_backtest_predictions(backtest_run_id, horizon_step);
+
+PRAGMA user_version = 9;
 COMMIT;
 """

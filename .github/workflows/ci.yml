@@ -29,10 +29,26 @@ jobs:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         run: |
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet -e ".[dev]"
+          python -m pip install --quiet -e ".[dev,optimize]"
 
       - name: Lint
         run: python -m ruff check . --output-format=concise
 
       - name: Test
         run: python -m pytest
+
+      - name: Database initialisation smoke test
+        run: |
+          python -m fpl_engine.history.cli \
+            --database data/ci-smoke.sqlite3 init
+
+      - name: Install UI smoke-test dependencies
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        run: python -m pip install --quiet -e ".[ui]"
+
+      - name: UI launch smoke test
+        env:
+          FPL_DATABASE_PATH: data/ci-ui-smoke.sqlite3
+        run: |
+          python -c "from streamlit.testing.v1 import AppTest; app = AppTest.from_file('src/fpl_engine/ui/app.py').run(timeout=30); assert not app.exception, app.exception"
