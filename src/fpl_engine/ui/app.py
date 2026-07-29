@@ -1300,15 +1300,21 @@ def _data_health(
         )
     else:
         report = load_backtest_report(database, int(latest_backtest["id"]))
-        score_columns = st.columns(4)
-        score_columns[0].metric("Predictions", report.prediction_count)
-        score_columns[1].metric(
-            "Points MAE", f"{report.overall.points_mae:.3f}"
+        score_columns = st.columns(6)
+        score_columns[0].metric(
+            "Generated", report.generated_prediction_count
         )
+        score_columns[1].metric("Scored", report.prediction_count)
         score_columns[2].metric(
-            "Points bias", f"{report.overall.points_bias:+.3f}"
+            "Missing outcomes", report.missing_outcome_count
         )
         score_columns[3].metric(
+            "Points MAE", f"{report.overall.points_mae:.3f}"
+        )
+        score_columns[4].metric(
+            "Points bias", f"{report.overall.points_bias:+.3f}"
+        )
+        score_columns[5].metric(
             "Minutes MAE", f"{report.overall.minutes_mae:.2f}"
         )
         st.caption(
@@ -1338,6 +1344,8 @@ def _data_health(
             st.json(
                 {
                     "model_config": report.as_dict()["model_config"],
+                    "source_ingestion_run_id": report.source_ingestion_run_id,
+                    "data_fingerprint": report.data_fingerprint,
                     "limitations": report.limitations,
                 }
             )

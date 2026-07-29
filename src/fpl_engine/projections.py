@@ -175,6 +175,8 @@ class RatesProjectionModel:
         generated_at: datetime | None = None,
         observation_mode: str = "latest_available",
         use_availability: bool = True,
+        fixture_as_of: datetime | None = None,
+        fixture_max_ingestion_run_id: int | None = None,
         persist: bool = True,
     ) -> ProjectionResult:
         if horizon_gameweeks <= 0:
@@ -182,6 +184,8 @@ class RatesProjectionModel:
         generated = generated_at or datetime.now(UTC)
         if generated.tzinfo is None:
             raise ValueError("Projection generation time must be timezone-aware")
+        if fixture_as_of is not None and fixture_as_of.tzinfo is None:
+            raise ValueError("Fixture cutoff time must be timezone-aware")
 
         season = self.database.connection.execute(
             "SELECT id FROM seasons WHERE code = ?", (season_code,)
@@ -194,10 +198,18 @@ class RatesProjectionModel:
             observation_mode=observation_mode,
         )
         fixtures = self._fixtures(
-            season_code, start_gameweek, horizon_gameweeks
+            season_code,
+            start_gameweek,
+            horizon_gameweeks,
+            as_of=fixture_as_of,
+            maximum_ingestion_run_id=fixture_max_ingestion_run_id,
         )
         strengths = self._team_strengths(
-            season_code, start_gameweek, team_overrides
+            season_code,
+            start_gameweek,
+            team_overrides,
+            as_of=fixture_as_of,
+            maximum_ingestion_run_id=fixture_max_ingestion_run_id,
         )
         override_lookup = {
             (override.source_player_id, override.gameweek_number): override
@@ -272,6 +284,7 @@ class RatesProjectionModel:
                        ROW_NUMBER() OVER (
                            PARTITION BY observations.player_season_id
                            ORDER BY
+                               gameweeks.number DESC,
                                CASE observations.timing_quality
                                    WHEN 'exact' THEN 0
                                    WHEN 'date_only' THEN 1
@@ -354,23 +367,73 @@ class RatesProjectionModel:
         return [dict(row) for row in rows]
 
     def _fixtures(
-        self, season_code: str, start_gameweek: int, horizon: int
+        self,
+        season_code: str,
+        start_gameweek: int,
+        horizon: int,
+        *,
+        as_of: datetime | None = None,
+        maximum_ingestion_run_id: int | None = None,
     ) -> dict[int, list[dict[str, Any]]]:
-        rows = self.database.connection.execute(
-            """
-            SELECT gameweeks.number AS gameweek_number,
-                   home.id AS home_team_id, away.id AS away_team_id
-            FROM fixtures
-            JOIN seasons ON seasons.id = fixtures.season_id
-            JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
-            JOIN teams home ON home.id = fixtures.home_team_id
-            JOIN teams away ON away.id = fixtures.away_team_id
-            WHERE seasons.code = ?
-              AND gameweeks.number BETWEEN ? AND ?
-            ORDER BY gameweeks.number, fixtures.kickoff_time, fixtures.id
-            """,
-            (season_code, start_gameweek, start_gameweek + horizon - 1),
-        ).fetchall()
+        if as_of is None:
+            rows = self.database.connection.execute(
+                """
+                SELECT gameweeks.number AS gameweek_number,
+                       home.id AS home_team_id, away.id AS away_team_id
+                FROM fixtures
+                JOIN seasons ON seasons.id = fixtures.season_id
+                JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                JOIN teams home ON home.id = fixtures.home_team_id
+                JOIN teams away ON away.id = fixtures.away_team_id
+                WHERE seasons.code = ?
+                  AND gameweeks.number BETWEEN ? AND ?
+                ORDER BY gameweeks.number, fixtures.kickoff_time, fixtures.id
+                """,
+                (season_code, start_gameweek, start_gameweek + horizon - 1),
+            ).fetchall()
+        else:
+            rows = self.database.connection.execute(
+                """
+                WITH ranked_observations AS (
+                    SELECT observations.*,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY observations.fixture_id
+                               ORDER BY datetime(ingestion_runs.retrieved_at) DESC,
+                                        ingestion_runs.id DESC,
+                                        observations.id DESC
+                           ) AS observation_rank
+                    FROM fixture_observations observations
+                    JOIN ingestion_runs
+                      ON ingestion_runs.id = observations.provenance_run_id
+                    JOIN fixtures
+                      ON fixtures.id = observations.fixture_id
+                    JOIN seasons ON seasons.id = fixtures.season_id
+                    WHERE seasons.code = ?
+                      AND ingestion_runs.status = 'completed'
+                      AND datetime(ingestion_runs.retrieved_at) <= datetime(?)
+                      AND (? IS NULL OR ingestion_runs.id <= ?)
+                )
+                SELECT gameweeks.number AS gameweek_number,
+                       home.id AS home_team_id, away.id AS away_team_id
+                FROM ranked_observations observations
+                JOIN fixtures ON fixtures.id = observations.fixture_id
+                JOIN gameweeks ON gameweeks.id = observations.gameweek_id
+                JOIN teams home ON home.id = fixtures.home_team_id
+                JOIN teams away ON away.id = fixtures.away_team_id
+                WHERE observations.observation_rank = 1
+                  AND gameweeks.number BETWEEN ? AND ?
+                ORDER BY gameweeks.number, observations.kickoff_time,
+                         observations.fixture_id
+                """,
+                (
+                    season_code,
+                    as_of.astimezone(UTC).isoformat(),
+                    maximum_ingestion_run_id,
+                    maximum_ingestion_run_id,
+                    start_gameweek,
+                    start_gameweek + horizon - 1,
+                ),
+            ).fetchall()
         result = {gameweek: [] for gameweek in range(start_gameweek, start_gameweek + horizon)}
         for row in rows:
             result[int(row["gameweek_number"])].append(dict(row))
@@ -381,45 +444,116 @@ class RatesProjectionModel:
         season_code: str,
         start_gameweek: int,
         overrides: tuple[TeamStrengthOverride, ...],
+        *,
+        as_of: datetime | None = None,
+        maximum_ingestion_run_id: int | None = None,
     ) -> dict[str, dict[str, float]]:
-        aggregate = self.database.connection.execute(
-            """
-            WITH results AS (
-                SELECT home_team_id AS team_id, home_score AS goals_for,
-                       away_score AS goals_against
-                FROM fixtures
-                JOIN seasons ON seasons.id = fixtures.season_id
-                JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
-                WHERE seasons.code = ? AND fixtures.finished = 1
-                  AND gameweeks.number < ?
-                  AND home_score IS NOT NULL AND away_score IS NOT NULL
-                UNION ALL
-                SELECT away_team_id, away_score, home_score
-                FROM fixtures
-                JOIN seasons ON seasons.id = fixtures.season_id
-                JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
-                WHERE seasons.code = ? AND fixtures.finished = 1
-                  AND gameweeks.number < ?
-                  AND home_score IS NOT NULL AND away_score IS NOT NULL
-            )
-            SELECT teams.id AS team_id, teams.source_team_id,
-                   COUNT(results.team_id) AS matches,
-                   COALESCE(SUM(results.goals_for), 0) AS goals_for,
-                   COALESCE(SUM(results.goals_against), 0) AS goals_against
-            FROM teams
-            JOIN seasons ON seasons.id = teams.season_id
-            LEFT JOIN results ON results.team_id = teams.id
-            WHERE seasons.code = ?
-            GROUP BY teams.id
-            """,
-            (
-                season_code,
-                start_gameweek,
-                season_code,
-                start_gameweek,
-                season_code,
-            ),
-        ).fetchall()
+        if as_of is None:
+            aggregate = self.database.connection.execute(
+                """
+                WITH results AS (
+                    SELECT home_team_id AS team_id, home_score AS goals_for,
+                           away_score AS goals_against
+                    FROM fixtures
+                    JOIN seasons ON seasons.id = fixtures.season_id
+                    JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                    WHERE seasons.code = ? AND fixtures.finished = 1
+                      AND gameweeks.number < ?
+                      AND home_score IS NOT NULL AND away_score IS NOT NULL
+                    UNION ALL
+                    SELECT away_team_id, away_score, home_score
+                    FROM fixtures
+                    JOIN seasons ON seasons.id = fixtures.season_id
+                    JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                    WHERE seasons.code = ? AND fixtures.finished = 1
+                      AND gameweeks.number < ?
+                      AND home_score IS NOT NULL AND away_score IS NOT NULL
+                )
+                SELECT teams.id AS team_id, teams.source_team_id,
+                       COUNT(results.team_id) AS matches,
+                       COALESCE(SUM(results.goals_for), 0) AS goals_for,
+                       COALESCE(SUM(results.goals_against), 0) AS goals_against
+                FROM teams
+                JOIN seasons ON seasons.id = teams.season_id
+                LEFT JOIN results ON results.team_id = teams.id
+                WHERE seasons.code = ?
+                GROUP BY teams.id
+                """,
+                (
+                    season_code,
+                    start_gameweek,
+                    season_code,
+                    start_gameweek,
+                    season_code,
+                ),
+            ).fetchall()
+        else:
+            cutoff = as_of.astimezone(UTC).isoformat()
+            aggregate = self.database.connection.execute(
+                """
+                WITH ranked_observations AS (
+                    SELECT observations.*,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY observations.fixture_id
+                               ORDER BY datetime(ingestion_runs.retrieved_at) DESC,
+                                        ingestion_runs.id DESC,
+                                        observations.id DESC
+                           ) AS observation_rank
+                    FROM fixture_observations observations
+                    JOIN ingestion_runs
+                      ON ingestion_runs.id = observations.provenance_run_id
+                    JOIN fixtures
+                      ON fixtures.id = observations.fixture_id
+                    JOIN seasons ON seasons.id = fixtures.season_id
+                    WHERE seasons.code = ?
+                      AND ingestion_runs.status = 'completed'
+                      AND datetime(ingestion_runs.retrieved_at) <= datetime(?)
+                      AND (? IS NULL OR ingestion_runs.id <= ?)
+                ),
+                results AS (
+                    SELECT fixtures.home_team_id AS team_id,
+                           observations.home_score AS goals_for,
+                           observations.away_score AS goals_against
+                    FROM ranked_observations observations
+                    JOIN fixtures ON fixtures.id = observations.fixture_id
+                    JOIN gameweeks ON gameweeks.id = observations.gameweek_id
+                    WHERE observations.observation_rank = 1
+                      AND observations.finished = 1
+                      AND gameweeks.number < ?
+                      AND observations.home_score IS NOT NULL
+                      AND observations.away_score IS NOT NULL
+                    UNION ALL
+                    SELECT fixtures.away_team_id, observations.away_score,
+                           observations.home_score
+                    FROM ranked_observations observations
+                    JOIN fixtures ON fixtures.id = observations.fixture_id
+                    JOIN gameweeks ON gameweeks.id = observations.gameweek_id
+                    WHERE observations.observation_rank = 1
+                      AND observations.finished = 1
+                      AND gameweeks.number < ?
+                      AND observations.home_score IS NOT NULL
+                      AND observations.away_score IS NOT NULL
+                )
+                SELECT teams.id AS team_id, teams.source_team_id,
+                       COUNT(results.team_id) AS matches,
+                       COALESCE(SUM(results.goals_for), 0) AS goals_for,
+                       COALESCE(SUM(results.goals_against), 0) AS goals_against
+                FROM teams
+                JOIN seasons ON seasons.id = teams.season_id
+                LEFT JOIN results ON results.team_id = teams.id
+                WHERE seasons.code = ?
+                GROUP BY teams.id
+                """,
+                (
+                    season_code,
+                    cutoff,
+                    maximum_ingestion_run_id,
+                    maximum_ingestion_run_id,
+                    start_gameweek,
+                    start_gameweek,
+                    season_code,
+                ),
+            ).fetchall()
         total_matches = sum(int(row["matches"]) for row in aggregate)
         total_goals = sum(int(row["goals_for"]) for row in aggregate)
         league_average = total_goals / total_matches if total_matches else 1.4

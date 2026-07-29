@@ -37,10 +37,10 @@ Implemented:
 - exact XI, full-squad, opening-squad and transfer optimisation;
 - bench, autosub, captaincy and chip-specific decision support;
 - provisional/final weekly audit records and model-health scoring;
-- leakage-aware walk-forward projection backtesting with persisted scorecards;
+- leakage-controlled walk-forward projection backtesting with persisted scorecards;
 - automated tests and GitHub Actions CI.
 
-Schema version 9 includes the hardened identity and observation foundation, fixture-state
+Schema version 10 includes the hardened identity and observation foundation, fixture-state
 history, manager state, projections, weekly decision records and historical backtests. The
 database supports in-place version-2 migration, stable player
 identity links, explicit identifier namespaces and delivery-source provenance, timestamped
@@ -200,8 +200,11 @@ fpl-history --database data/fpl_history.sqlite3 backtest-projections 2025-26 \
 ```
 
 The command recreates each forecast using only results from earlier seasons or earlier
-Gameweeks, then persists and prints point/minute MAE, bias and RMSE overall, by position
-and by forecast horizon. `performance_only` is the honest mode for reconstructed
+Gameweeks and the latest fixture slate ingested before that origin. Predictions without
+explicit player-fixture outcome rows are excluded rather than scored as zero. The run
+persists generated, scored and missing-outcome counts, the maximum source ingestion run,
+a data fingerprint, and point/minute MAE, bias and RMSE overall, by position and by
+forecast horizon. `performance_only` is the honest mode for reconstructed
 historical datasets: it ignores availability fields whose capture time is unknown.
 `pre_deadline_only` is stricter and requires exact `live_pre_deadline` observations
 captured before their recorded deadlines.

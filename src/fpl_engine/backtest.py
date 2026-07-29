@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
@@ -45,7 +46,11 @@ class BacktestReport:
     origin_gameweek_start: int
     origin_gameweek_end: int
     horizon_gameweeks: int
+    generated_prediction_count: int
     prediction_count: int
+    missing_outcome_count: int
+    source_ingestion_run_id: int | None
+    data_fingerprint: str | None
     overall: BacktestMetrics
     by_position: tuple[BacktestMetrics, ...]
     by_horizon: tuple[BacktestMetrics, ...]
@@ -61,7 +66,11 @@ class BacktestReport:
             "origin_gameweek_start": self.origin_gameweek_start,
             "origin_gameweek_end": self.origin_gameweek_end,
             "horizon_gameweeks": self.horizon_gameweeks,
+            "generated_prediction_count": self.generated_prediction_count,
             "prediction_count": self.prediction_count,
+            "missing_outcome_count": self.missing_outcome_count,
+            "source_ingestion_run_id": self.source_ingestion_run_id,
+            "data_fingerprint": self.data_fingerprint,
             "overall": asdict(self.overall),
             "by_position": [asdict(metric) for metric in self.by_position],
             "by_horizon": [asdict(metric) for metric in self.by_horizon],
@@ -129,18 +138,44 @@ class ProjectionBacktester:
         ]
         if not origins:
             raise ValueError("No requested origin Gameweeks exist in the database")
+        origins_without_deadlines = [
+            gameweek
+            for gameweek in origins
+            if available_gameweeks[gameweek] is None
+        ]
+        if origins_without_deadlines:
+            raise ValueError(
+                "Backtest origins require recorded deadline times; missing for "
+                + ", ".join(f"GW{gameweek}" for gameweek in origins_without_deadlines)
+            )
 
         created = created_at or datetime.now(UTC)
         if created.tzinfo is None:
             raise ValueError("Backtest creation time must be timezone-aware")
         limitations = _limitations(evidence_policy)
+        source_run = self.database.connection.execute(
+            """
+            SELECT MAX(id) AS id
+            FROM ingestion_runs
+            WHERE status = 'completed'
+            """
+        ).fetchone()
+        source_ingestion_run_id = (
+            None if source_run["id"] is None else int(source_run["id"])
+        )
+        data_fingerprint = _data_fingerprint(
+            self.database,
+            season_code,
+            maximum_ingestion_run_id=source_ingestion_run_id,
+        )
         cursor = self.database.connection.execute(
             """
             INSERT INTO projection_backtest_runs (
                 season_id, model_version, created_at, origin_gameweek_start,
                 origin_gameweek_end, horizon_gameweeks, evidence_policy,
-                model_config_json, limitations_json, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
+                model_config_json, limitations_json, source_ingestion_run_id,
+                data_fingerprint, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
             RETURNING id
             """,
             (
@@ -153,6 +188,8 @@ class ProjectionBacktester:
                 evidence_policy,
                 json.dumps(asdict(self.config), sort_keys=True),
                 json.dumps(limitations),
+                source_ingestion_run_id,
+                data_fingerprint,
             ),
         )
         run_id = int(cursor.fetchone()[0])
@@ -184,11 +221,13 @@ class ProjectionBacktester:
             config=self.config,
             model_version=self.model_version,
         )
+        generated_prediction_count = 0
         prediction_count = 0
+        missing_outcome_count = 0
         try:
             for origin in origins:
                 generated_at = _historical_generation_time(
-                    available_gameweeks[origin], created
+                    available_gameweeks[origin]
                 )
                 projection_result = model.project(
                     season_code=season_code,
@@ -197,6 +236,8 @@ class ProjectionBacktester:
                     generated_at=generated_at,
                     observation_mode=evidence_policy,
                     use_availability=evidence_policy == "pre_deadline_only",
+                    fixture_as_of=generated_at,
+                    fixture_max_ingestion_run_id=source_ingestion_run_id,
                     persist=False,
                 )
                 rows = []
@@ -208,13 +249,17 @@ class ProjectionBacktester:
                     )
                     if player_season_id is None:
                         continue
-                    actual_minutes, actual_points = actual.get(
-                        (
-                            projection.source_player_id,
-                            projection.gameweek_number,
-                        ),
-                        (0, 0),
+                    generated_prediction_count += 1
+                    outcome = actual.get(
+                        (projection.source_player_id, projection.gameweek_number)
                     )
+                    if (
+                        outcome is None
+                        or outcome[0] < projection.fixture_count
+                    ):
+                        missing_outcome_count += 1
+                        continue
+                    _, actual_minutes, actual_points = outcome
                     rows.append(
                         (
                             run_id,
@@ -251,10 +296,16 @@ class ProjectionBacktester:
             self.database.connection.execute(
                 """
                 UPDATE projection_backtest_runs
-                SET status = 'completed', prediction_count = ?
+                SET status = 'completed', generated_prediction_count = ?,
+                    prediction_count = ?, missing_outcome_count = ?
                 WHERE id = ?
                 """,
-                (prediction_count, run_id),
+                (
+                    generated_prediction_count,
+                    prediction_count,
+                    missing_outcome_count,
+                    run_id,
+                ),
             )
             self.database.connection.commit()
         except Exception as error:
@@ -280,11 +331,12 @@ class ProjectionBacktester:
         *,
         minimum_gameweek: int,
         maximum_gameweek: int,
-    ) -> dict[tuple[str, int], tuple[int, int]]:
+    ) -> dict[tuple[str, int], tuple[int, int, int]]:
         rows = self.database.connection.execute(
             """
             SELECT player_seasons.source_player_id,
                    gameweeks.number AS gameweek_number,
+                   COUNT(DISTINCT stats.fixture_id) AS observed_fixture_count,
                    SUM(stats.minutes) AS actual_minutes,
                    SUM(stats.total_points) AS actual_points
             FROM player_fixture_stats stats
@@ -301,6 +353,7 @@ class ProjectionBacktester:
         ).fetchall()
         return {
             (row["source_player_id"], int(row["gameweek_number"])): (
+                int(row["observed_fixture_count"]),
                 int(row["actual_minutes"]),
                 int(row["actual_points"]),
             )
@@ -361,7 +414,11 @@ def load_backtest_report(
         origin_gameweek_start=run["origin_gameweek_start"],
         origin_gameweek_end=run["origin_gameweek_end"],
         horizon_gameweeks=run["horizon_gameweeks"],
+        generated_prediction_count=run["generated_prediction_count"],
         prediction_count=run["prediction_count"],
+        missing_outcome_count=run["missing_outcome_count"],
+        source_ingestion_run_id=run["source_ingestion_run_id"],
+        data_fingerprint=run["data_fingerprint"],
         overall=overall,
         by_position=by_position,
         by_horizon=by_horizon,
@@ -409,11 +466,9 @@ def _metrics(group: str, value: str, rows: list[object]) -> BacktestMetrics:
     )
 
 
-def _historical_generation_time(
-    deadline_time: str | None, fallback: datetime
-) -> datetime:
+def _historical_generation_time(deadline_time: str | None) -> datetime:
     if deadline_time is None:
-        return fallback
+        raise ValueError("Historical generation time requires a deadline")
     deadline = datetime.fromisoformat(deadline_time.replace("Z", "+00:00"))
     return deadline.astimezone(UTC) - timedelta(seconds=1)
 
@@ -423,8 +478,13 @@ def _limitations(evidence_policy: EvidencePolicy) -> tuple[str, ...]:
         "Only structured database fields are replayed; press conferences, "
         "predicted lineups and manual role judgements are unavailable unless "
         "they were captured separately.",
-        "Actual outcomes are used only after projections have been generated "
-        "with a strict Gameweek and season cutoff.",
+        "Fixture assignments, kickoff times and completed results are replayed "
+        "from the latest fixture observation ingested before each forecast "
+        "origin.",
+        "Predictions without an explicit player-fixture outcome row are "
+        "excluded from scoring and reported as missing outcomes.",
+        "Team-strength estimates use only the target season, so early-season "
+        "forecasts regress heavily toward a common league-average prior.",
     )
     if evidence_policy == "pre_deadline_only":
         return (
@@ -439,3 +499,114 @@ def _limitations(evidence_policy: EvidencePolicy) -> tuple[str, ...]:
         "Historical team membership is used to attach the player to fixtures; "
         "historical price is not a projection input.",
     )
+
+
+def _data_fingerprint(
+    database: HistoricalDatabase,
+    season_code: str,
+    *,
+    maximum_ingestion_run_id: int | None,
+) -> str:
+    """Hash the persisted evidence revision evaluated by a backtest run."""
+
+    digest = hashlib.sha256()
+    digest.update(season_code.encode("utf-8"))
+    digest.update(str(maximum_ingestion_run_id).encode("ascii"))
+    queries = (
+        (
+            """
+            SELECT id, source_name, identifier_namespace, retrieved_at,
+                   content_sha256, source_revision, adapter_version, row_count
+            FROM ingestion_runs
+            WHERE status = 'completed' AND (? IS NULL OR id <= ?)
+            ORDER BY id
+            """,
+            (maximum_ingestion_run_id, maximum_ingestion_run_id),
+        ),
+        (
+            """
+            SELECT gameweeks.number, gameweeks.deadline_time,
+                   gameweeks.is_finished
+            FROM gameweeks
+            JOIN seasons ON seasons.id = gameweeks.season_id
+            WHERE seasons.code = ?
+            ORDER BY gameweeks.number
+            """,
+            (season_code,),
+        ),
+        (
+            """
+            SELECT fixtures.source_fixture_id, observations.gameweek_id,
+                   observations.kickoff_time, observations.home_score,
+                   observations.away_score, observations.finished,
+                   observations.provenance_run_id
+            FROM fixture_observations observations
+            JOIN fixtures ON fixtures.id = observations.fixture_id
+            JOIN seasons ON seasons.id = fixtures.season_id
+            WHERE seasons.code = ?
+              AND (? IS NULL OR observations.provenance_run_id <= ?)
+            ORDER BY fixtures.source_fixture_id,
+                     observations.provenance_run_id, observations.id
+            """,
+            (
+                season_code,
+                maximum_ingestion_run_id,
+                maximum_ingestion_run_id,
+            ),
+        ),
+        (
+            """
+            SELECT player_seasons.source_player_id, gameweeks.number,
+                   observations.observation_kind,
+                   observations.timing_quality, observations.observed_at,
+                   observations.observed_on, teams.source_team_id,
+                   observations.price_tenths, observations.status,
+                   observations.chance_of_playing_next_round,
+                   observations.source_observation_key,
+                   observations.provenance_run_id
+            FROM player_gameweek_observations observations
+            JOIN player_seasons
+              ON player_seasons.id = observations.player_season_id
+            JOIN gameweeks ON gameweeks.id = observations.gameweek_id
+            JOIN seasons ON seasons.id = player_seasons.season_id
+            LEFT JOIN teams ON teams.id = observations.team_id
+            WHERE seasons.code = ?
+              AND (? IS NULL OR observations.provenance_run_id <= ?)
+            ORDER BY player_seasons.source_player_id, gameweeks.number,
+                     observations.id
+            """,
+            (
+                season_code,
+                maximum_ingestion_run_id,
+                maximum_ingestion_run_id,
+            ),
+        ),
+        (
+            """
+            SELECT seasons.code, player_seasons.source_player_id,
+                   fixtures.source_fixture_id, stats.minutes, stats.starts,
+                   stats.goals, stats.assists, stats.clean_sheet, stats.saves,
+                   stats.bonus, stats.defensive_contributions,
+                   stats.yellow_cards, stats.red_cards, stats.own_goals,
+                   stats.total_points, stats.provenance_run_id
+            FROM player_fixture_stats stats
+            JOIN player_seasons
+              ON player_seasons.id = stats.player_season_id
+            JOIN seasons ON seasons.id = player_seasons.season_id
+            JOIN fixtures ON fixtures.id = stats.fixture_id
+            WHERE ? IS NULL OR stats.provenance_run_id <= ?
+            ORDER BY seasons.code, player_seasons.source_player_id,
+                     fixtures.source_fixture_id
+            """,
+            (maximum_ingestion_run_id, maximum_ingestion_run_id),
+        ),
+    )
+    for sql, parameters in queries:
+        for row in database.connection.execute(sql, parameters):
+            digest.update(
+                json.dumps(tuple(row), separators=(",", ":"), default=str).encode(
+                    "utf-8"
+                )
+            )
+            digest.update(b"\n")
+    return digest.hexdigest()

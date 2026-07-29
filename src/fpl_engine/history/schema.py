@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -355,7 +355,15 @@ CREATE TABLE IF NOT EXISTS projection_backtest_runs (
     model_config_json TEXT NOT NULL,
     limitations_json TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+    generated_prediction_count INTEGER NOT NULL DEFAULT 0 CHECK (
+        generated_prediction_count >= 0
+    ),
     prediction_count INTEGER NOT NULL DEFAULT 0 CHECK (prediction_count >= 0),
+    missing_outcome_count INTEGER NOT NULL DEFAULT 0 CHECK (
+        missing_outcome_count >= 0
+    ),
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    data_fingerprint TEXT,
     error_message TEXT
 );
 
@@ -1065,5 +1073,27 @@ CREATE INDEX idx_backtest_predictions_run
     ON projection_backtest_predictions(backtest_run_id, horizon_step);
 
 PRAGMA user_version = 9;
+COMMIT;
+"""
+
+MIGRATE_V9_TO_V10_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+ALTER TABLE projection_backtest_runs
+    ADD COLUMN generated_prediction_count INTEGER NOT NULL DEFAULT 0
+    CHECK (generated_prediction_count >= 0);
+ALTER TABLE projection_backtest_runs
+    ADD COLUMN missing_outcome_count INTEGER NOT NULL DEFAULT 0
+    CHECK (missing_outcome_count >= 0);
+ALTER TABLE projection_backtest_runs
+    ADD COLUMN source_ingestion_run_id INTEGER;
+ALTER TABLE projection_backtest_runs
+    ADD COLUMN data_fingerprint TEXT;
+
+UPDATE projection_backtest_runs
+SET generated_prediction_count = prediction_count;
+
+PRAGMA user_version = 10;
 COMMIT;
 """
