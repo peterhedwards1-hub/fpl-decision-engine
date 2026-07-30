@@ -28,6 +28,7 @@ from fpl_engine.projections import (
     DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG,
     EXPECTED_EVENTS_V4_MODEL_CONFIG,
     MODEL_VERSION,
+    PRESEASON_V5_MODEL_CONFIG,
     TEAM_SHARE_XG_V5_MODEL_CONFIG,
     ProjectionModelConfig,
     ProjectionOverride,
@@ -146,6 +147,239 @@ def test_rates_model_projects_components_and_persists_versioned_run(tmp_path) ->
         assert persisted_probability["appearance_probability"] == (
             result.projections[0].appearance_probability
         )
+
+
+def _previous_season_bundle() -> HistoricalBundle:
+    """A completed 2025/26 in which North Town dominate and South City do not."""
+
+    return HistoricalBundle(
+        season=SeasonRecord(code="2025-26", name="2025/26"),
+        teams=(
+            TeamRecord("1", "North Town", "NTH"),
+            TeamRecord("2", "South City", "STH"),
+        ),
+        players=(PlayerRecord("101", "Ada", "Striker", "Ada"),),
+        player_seasons=(PlayerSeasonRecord("101", "1", Position.FWD),),
+        gameweeks=(
+            GameweekRecord(1, "2025-08-15T17:30:00Z", True),
+            GameweekRecord(2, "2025-08-22T17:30:00Z", True),
+        ),
+        fixtures=(
+            FixtureRecord(
+                "401", "1", "2", 1, "2025-08-16T14:00:00Z", 4, 0, True
+            ),
+            FixtureRecord(
+                "402", "2", "1", 2, "2025-08-23T14:00:00Z", 0, 3, True
+            ),
+        ),
+        gameweek_snapshots=(
+            PlayerGameweekSnapshotRecord(
+                source_player_id="101",
+                gameweek_number=1,
+                price_tenths=75,
+                captured_at=datetime(2025, 8, 14, 12, 0, tzinfo=UTC),
+                source_team_id="1",
+                observation_kind="live_pre_deadline",
+                timing_quality="exact",
+                status="a",
+                source_observation_key="prev-pre-gw1",
+            ),
+        ),
+    )
+
+
+def _promoted_season_bundle() -> HistoricalBundle:
+    """A 2026/27 whose third club has no previous top-flight season."""
+
+    base = _bundle()
+    return replace(
+        base,
+        teams=(*base.teams, TeamRecord("3", "New Town", "NEW")),
+    )
+
+
+def _preseason_database(database: HistoricalDatabase) -> None:
+    for index, bundle in enumerate(
+        (_previous_season_bundle(), _promoted_season_bundle())
+    ):
+        database.ingest_bundle(
+            IngestionSource(
+                name="official-fpl-api",
+                retrieved_at=CAPTURED_AT + timedelta(seconds=index),
+                identifier_namespace="official-fpl",
+            ),
+            bundle,
+        )
+
+
+def _strengths_by_short_name(
+    database: HistoricalDatabase,
+    config: ProjectionModelConfig,
+) -> dict[str, dict[str, float]]:
+    result = RatesProjectionModel(database, RULES, config=config).project(
+        season_code="2026-27",
+        start_gameweek=1,
+        horizon_gameweeks=1,
+        generated_at=CAPTURED_AT,
+        persist=False,
+    )
+    names = {
+        str(row["id"]): str(row["short_name"])
+        for row in database.connection.execute(
+            """
+            SELECT teams.id, teams.short_name
+            FROM teams
+            JOIN seasons ON seasons.id = teams.season_id
+            WHERE seasons.code = '2026-27'
+            """
+        )
+    }
+    return {
+        names[team_id]: strength
+        for team_id, strength in result.team_strengths.items()
+    }
+
+
+def test_incumbent_cannot_separate_clubs_before_the_season_starts(
+    tmp_path,
+) -> None:
+    # The defect the carry-forward option exists to fix. Guarded so the
+    # incumbent's behaviour cannot drift while it remains the default.
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        _preseason_database(database)
+        strengths = _strengths_by_short_name(database, DEFAULT_MODEL_CONFIG)
+
+    assert set(strengths) == {"NTH", "STH", "NEW"}
+    for value in strengths.values():
+        assert value["attack"] == pytest.approx(1.0)
+        assert value["defence"] == pytest.approx(1.0)
+
+
+def test_carry_forward_separates_clubs_and_prices_promoted_sides(
+    tmp_path,
+) -> None:
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        _preseason_database(database)
+        strengths = _strengths_by_short_name(
+            database, PRESEASON_V5_MODEL_CONFIG
+        )
+
+    assert strengths["NTH"]["attack"] > strengths["STH"]["attack"]
+    assert strengths["NTH"]["defence"] < strengths["STH"]["defence"]
+    # New Town played no previous top-flight football, so they take the
+    # declared promoted prior exactly rather than the league average.
+    assert strengths["NEW"]["attack"] == pytest.approx(
+        PRESEASON_V5_MODEL_CONFIG.promoted_team_attack_multiplier
+    )
+    assert strengths["NEW"]["defence"] == pytest.approx(
+        PRESEASON_V5_MODEL_CONFIG.promoted_team_defence_multiplier
+    )
+    # The previous season produced seven goals across four team-matches.
+    assert strengths["NTH"]["league_average_goals"] == pytest.approx(1.75)
+
+
+def test_carry_forward_is_regressed_toward_the_league_average(
+    tmp_path,
+) -> None:
+    # A two-match previous season is thin evidence, so the carried prior must
+    # sit well inside the raw ratio rather than reproducing it.
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        _preseason_database(database)
+        strengths = _strengths_by_short_name(
+            database, PRESEASON_V5_MODEL_CONFIG
+        )
+        heavier = _strengths_by_short_name(
+            database,
+            replace(
+                PRESEASON_V5_MODEL_CONFIG,
+                carry_forward_regression_matches=1000.0,
+            ),
+        )
+
+    raw_ratio = 3.5 / 1.75
+    assert 1.0 < strengths["NTH"]["attack"] < raw_ratio
+    # Heavier regression must collapse the carried prior back toward parity.
+    assert heavier["NTH"]["attack"] < strengths["NTH"]["attack"]
+    assert heavier["NTH"]["attack"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_cold_start_prior_separates_new_players_by_price(tmp_path) -> None:
+    base = _bundle()
+    expensive, cheap = "101", "102"
+    bundle = replace(
+        base,
+        players=(
+            base.players[0],
+            PlayerRecord(cheap, "Bud", "Reserve", "Bud"),
+        ),
+        player_seasons=(
+            base.player_seasons[0],
+            PlayerSeasonRecord(cheap, "1", Position.FWD),
+        ),
+        gameweek_snapshots=(
+            base.gameweek_snapshots[0],
+            replace(
+                base.gameweek_snapshots[0],
+                source_player_id=cheap,
+                price_tenths=45,
+                source_observation_key="pre-gw1-cheap",
+            ),
+        ),
+    )
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="official-fpl-api",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            bundle,
+        )
+
+        def goal_points(config: ProjectionModelConfig) -> dict[str, float]:
+            result = RatesProjectionModel(
+                database, RULES, config=config
+            ).project(
+                season_code="2026-27",
+                start_gameweek=1,
+                horizon_gameweeks=1,
+                generated_at=CAPTURED_AT,
+                persist=False,
+            )
+            return {
+                projection.source_player_id: projection.goal_points
+                for projection in result.projections
+            }
+
+        incumbent = goal_points(DEFAULT_MODEL_CONFIG)
+        challenger = goal_points(PRESEASON_V5_MODEL_CONFIG)
+
+    # Neither player has any history, so the incumbent gives a £7.5m signing
+    # and a £4.5m reserve the same attacking prior.
+    assert incumbent[expensive] == pytest.approx(incumbent[cheap])
+    assert challenger[expensive] > challenger[cheap]
+
+
+def test_cold_start_price_factor_fades_as_minutes_accumulate() -> None:
+    config = replace(PRESEASON_V5_MODEL_CONFIG, player_rate_prior_minutes=900.0)
+    model = RatesProjectionModel.__new__(RatesProjectionModel)
+    model.config = config
+    players = [
+        {"position": "FWD", "price_tenths": 120},
+        {"position": "FWD", "price_tenths": 60},
+        {"position": "FWD", "price_tenths": 40},
+    ]
+
+    model._prepare_cold_start_priors(players)
+
+    factors = [player["_cold_start_price_factor"] for player in players]
+    assert factors[0] > factors[1] > factors[2]
+    # The median-priced player is the reference and is left untouched.
+    assert factors[1] == pytest.approx(1.0)
 
 
 def test_appearance_projection_uses_configured_scoring_values(tmp_path) -> None:

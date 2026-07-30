@@ -310,6 +310,45 @@ The correct design, which `08_ModelEvaluation.md` independently reaches:
 Note that xG/xA are absent in 2021/22, so this challenger has two development folds, not
 three.
 
+### 6.1a Preseason team strength and cold starts — implemented challenger
+
+`_team_strengths` reads only completed fixtures in the target season. Before Gameweek 1
+there are none, so every club returned `attack = defence = 1.0` and the model could not
+distinguish Manchester City's attack from a promoted side's, nor penalise a defender facing
+an elite forward line. Venue effects survived, because the home and away multipliers are
+configured constants; club and opponent identity did not.
+
+`team_strength_carry_forward` seeds each club's prior from the previous season's goals for
+and against, regressed toward that season's league average by
+`carry_forward_regression_matches`. Clubs are matched across seasons by name, because the
+source reassigns team numbering annually; the join resolves 17 of 20 clubs in every season
+pair from 2021/22 onward, with the remaining three correctly identified as promoted.
+Promoted clubs take `promoted_team_attack_multiplier` and
+`promoted_team_defence_multiplier` instead. The prior decays automatically: it enters the
+existing shrinkage as pseudo-matches, so its weight falls as real fixtures accumulate. It
+reads only a season that finished before the target season began and therefore cannot leak
+into any origin within it.
+
+`cold_start_prior = "position_price"` scales the goals, assists and bonus priors by a
+player's price relative to their position's median. Disciplinary, goalkeeping and
+clean-sheet priors are unscaled, the latter because team strength now supplies that signal.
+Because it scales only the prior term, the adjustment fades as real minutes accumulate.
+
+On the 2026/27 preseason snapshot the two options separate cleanly. Carry-forward does
+almost all of the work: Haaland +1.20 and Saka +1.28 expected points at Gameweek 1, against
+−0.27 for a Newcastle defender and −0.12 for an Ipswich defender. The cold-start prior
+moves at most +0.18, because the 2026/27 cold-start pool tops out at £6.5m and contains no
+marquee signing; the mechanism matters more in a season that has one.
+
+**All parameter values are declared, not fitted.** No inspected season was used to choose
+them. The package is registered as the single candidate `preseason-priors-v1`
+(`config/model_candidates/preseason-priors-v1.json`) and is gated as one unit under §8.
+`DEFAULT_MODEL_CONFIG` is unchanged, and a regression test asserts that the incumbent still
+returns flat preseason strengths.
+
+Not covered: the `team_share_expected` scoring path has its own strength estimator
+(`_expected_goal_team_strengths`) and does not yet carry forward.
+
 ### 6.2 Team and fixture model
 
 Estimate expected home and away goals, clean-sheet probability, and attacking/defensive
@@ -549,6 +588,7 @@ machine-checkable.
 | 1 | Bootstrap intervals; oracle sensitivity; residual slices; calibration | **Complete for current components** | Regenerate diagnostics as new forward outcomes and candidate runs arrive |
 | 2 | Hurdle playing-time model; hierarchical pooling; learned decay | **Implemented; logistic candidate registered** | Beats v4 on genuinely forward forecast and decision tiers |
 | 3 | Share-of-team xG/xA; team and fixture model; components; DC by calibration | **Coherent design implemented; historical design result failed RMSE/top-player bias** | Forward gate, or redesign player allocation using oracle evidence |
+| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and registered as `preseason-priors-v1`; parameters declared, not fitted** | Both gate tiers on genuinely forward 2026/27 results |
 | 4 | Joint Monte Carlo with shared team factors; constrained ensemble | **Infrastructure implemented** | Accumulate forward CRPS, coverage, PIT and decision evidence |
 | 5 | Forward qualification on 2026/27 | **Executable and predeclared; outcomes pending** | Both gate tiers, no position regression |
 | A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented** | Accumulate actual actions to estimate option value and transfer regret |

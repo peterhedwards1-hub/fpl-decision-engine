@@ -75,6 +75,14 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
     },
 }
 
+# Price signals attacking role. It says nothing about disciplinary record,
+# goalkeeping workload or own goals, so those priors stay flat. Clean sheets
+# are excluded because they are supplied by team strength, which now has its
+# own preseason prior.
+COLD_START_SCALED_RATES: frozenset[str] = frozenset(
+    {"goals", "assists", "bonus"}
+)
+
 DEFENSIVE_CONTRIBUTION_COUNT_PRIORS: dict[Position, float] = {
     Position.GK: 0.0,
     Position.DEF: 7.0,
@@ -137,6 +145,19 @@ class ProjectionModelConfig:
     team_assist_per_goal_prior: float = 0.72
     defensive_contribution_model: str = "legacy_linear"
     include_penalty_events: bool = False
+    # Preseason capability. Team strength reads only completed fixtures in the
+    # target season, so before a ball is kicked every club sits on the league
+    # prior and the model cannot tell Manchester City from a promoted side.
+    # These options seed that prior instead. All defaults are declared, not
+    # fitted: no inspected season was used to choose them.
+    team_strength_carry_forward: bool = False
+    carry_forward_regression_matches: float = 12.0
+    promoted_team_attack_multiplier: float = 0.85
+    promoted_team_defence_multiplier: float = 1.20
+    cold_start_prior: str = "position"
+    cold_start_price_elasticity: float = 1.5
+    cold_start_minimum_factor: float = 0.35
+    cold_start_maximum_factor: float = 3.0
 
     def __post_init__(self) -> None:
         if self.player_rate_prior_minutes <= 0:
@@ -211,6 +232,26 @@ class ProjectionModelConfig:
                 "Defensive contribution model must be 'legacy_linear', "
                 "'threshold_poisson', or 'empirical_2025_minutes_band'"
             )
+        if self.carry_forward_regression_matches <= 0:
+            raise ValueError("Carry-forward regression matches must be positive")
+        if self.promoted_team_attack_multiplier <= 0:
+            raise ValueError("Promoted attack multiplier must be positive")
+        if self.promoted_team_defence_multiplier <= 0:
+            raise ValueError("Promoted defence multiplier must be positive")
+        if self.cold_start_prior not in {"position", "position_price"}:
+            raise ValueError(
+                "Cold-start prior must be 'position' or 'position_price'"
+            )
+        if self.cold_start_price_elasticity < 0:
+            raise ValueError("Cold-start price elasticity cannot be negative")
+        if not 0 < self.cold_start_minimum_factor <= 1:
+            raise ValueError(
+                "Cold-start minimum factor must be within (0, 1]"
+            )
+        if self.cold_start_maximum_factor < self.cold_start_minimum_factor:
+            raise ValueError(
+                "Cold-start maximum factor cannot be below the minimum"
+            )
 
 
 BASELINE_V2_MODEL_CONFIG = ProjectionModelConfig()
@@ -247,6 +288,11 @@ TEAM_SHARE_XG_V5_MODEL_CONFIG = replace(
 DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG = replace(
     CORRECTED_V4_MODEL_CONFIG,
     defensive_contribution_model="empirical_2025_minutes_band",
+)
+PRESEASON_V5_MODEL_CONFIG = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    team_strength_carry_forward=True,
+    cold_start_prior="position_price",
 )
 DEFAULT_MODEL_CONFIG = CORRECTED_V4_MODEL_CONFIG
 
@@ -377,6 +423,7 @@ class RatesProjectionModel:
             observation_mode=observation_mode,
             maximum_ingestion_run_id=source_ingestion_run_id,
         )
+        self._prepare_cold_start_priors(players)
         self._prepare_minutes(
             players,
             season_code=season_code,
@@ -879,15 +926,36 @@ class RatesProjectionModel:
             ).fetchall()
         total_matches = sum(int(row["matches"]) for row in aggregate)
         total_goals = sum(int(row["goals_for"]) for row in aggregate)
-        league_average = total_goals / total_matches if total_matches else 1.4
+        carry_forward, previous_league_average = (
+            self._carry_forward_team_rates(
+                season_code,
+                maximum_ingestion_run_id=maximum_ingestion_run_id,
+            )
+            if self.config.team_strength_carry_forward
+            else ({}, None)
+        )
+        if total_matches:
+            league_average = total_goals / total_matches
+        elif previous_league_average is not None:
+            # Before the season starts there is nothing to average, so the
+            # previous season's scoring rate beats a hardcoded constant.
+            league_average = previous_league_average
+        else:
+            league_average = 1.4
         prior_matches = self.config.team_prior_matches
         result: dict[str, dict[str, float]] = {}
         for row in aggregate:
             matches = int(row["matches"])
-            attack_rate = (float(row["goals_for"]) + prior_matches * league_average) / (
+            # Without carry-forward every club shrinks toward the same league
+            # average, which is why a preseason forecast cannot separate clubs.
+            prior_attack, prior_defence = carry_forward.get(
+                str(row["team_id"]),
+                (league_average, league_average),
+            )
+            attack_rate = (float(row["goals_for"]) + prior_matches * prior_attack) / (
                 matches + prior_matches
             )
-            defence_rate = (float(row["goals_against"]) + prior_matches * league_average) / (
+            defence_rate = (float(row["goals_against"]) + prior_matches * prior_defence) / (
                 matches + prior_matches
             )
             result[str(row["team_id"])] = {
@@ -913,6 +981,124 @@ class RatesProjectionModel:
             result[team_id]["defence"] = override.defence_susceptibility
             result[team_id]["overridden"] = 1.0
         return result
+
+    def _carry_forward_team_rates(
+        self,
+        season_code: str,
+        *,
+        maximum_ingestion_run_id: int | None,
+    ) -> tuple[dict[str, tuple[float, float]], float | None]:
+        """Seed each club's prior from the previous season's goal rates.
+
+        Returns per-team expected goals for and against per match, keyed by
+        the *current* season's team id, plus the previous season's league
+        average. Clubs are matched across seasons by name because the source's
+        team numbering is reassigned every year.
+
+        This reads only a season that finished before the target season began,
+        so it cannot leak into any origin within the target season. Promoted
+        clubs have nothing to carry and take the declared promoted prior
+        instead.
+        """
+
+        previous = self.database.connection.execute(
+            """
+            SELECT code FROM seasons
+            WHERE code < ?
+            ORDER BY code DESC
+            LIMIT 1
+            """,
+            (season_code,),
+        ).fetchone()
+        if previous is None:
+            return {}, None
+        rows = self.database.connection.execute(
+            """
+            WITH results AS (
+                SELECT home_team_id AS team_id, home_score AS goals_for,
+                       away_score AS goals_against
+                FROM fixtures
+                JOIN seasons ON seasons.id = fixtures.season_id
+                WHERE seasons.code = ? AND fixtures.finished = 1
+                  AND home_score IS NOT NULL AND away_score IS NOT NULL
+                  AND (? IS NULL OR fixtures.provenance_run_id <= ?)
+                UNION ALL
+                SELECT away_team_id, away_score, home_score
+                FROM fixtures
+                JOIN seasons ON seasons.id = fixtures.season_id
+                WHERE seasons.code = ? AND fixtures.finished = 1
+                  AND home_score IS NOT NULL AND away_score IS NOT NULL
+                  AND (? IS NULL OR fixtures.provenance_run_id <= ?)
+            )
+            SELECT teams.name AS name,
+                   COUNT(results.team_id) AS matches,
+                   COALESCE(SUM(results.goals_for), 0) AS goals_for,
+                   COALESCE(SUM(results.goals_against), 0) AS goals_against
+            FROM teams
+            JOIN seasons ON seasons.id = teams.season_id
+            LEFT JOIN results ON results.team_id = teams.id
+            WHERE seasons.code = ?
+            GROUP BY teams.id
+            """,
+            (
+                previous["code"],
+                maximum_ingestion_run_id,
+                maximum_ingestion_run_id,
+                previous["code"],
+                maximum_ingestion_run_id,
+                maximum_ingestion_run_id,
+                previous["code"],
+            ),
+        ).fetchall()
+        total_matches = sum(int(row["matches"]) for row in rows)
+        if not total_matches:
+            return {}, None
+        previous_league_average = (
+            sum(float(row["goals_for"]) for row in rows) / total_matches
+        )
+        regression = self.config.carry_forward_regression_matches
+        by_name = {
+            str(row["name"]): (
+                (
+                    float(row["goals_for"])
+                    + regression * previous_league_average
+                )
+                / (int(row["matches"]) + regression),
+                (
+                    float(row["goals_against"])
+                    + regression * previous_league_average
+                )
+                / (int(row["matches"]) + regression),
+            )
+            for row in rows
+            if int(row["matches"]) > 0
+        }
+        current = self.database.connection.execute(
+            """
+            SELECT teams.id AS team_id, teams.name AS name
+            FROM teams
+            JOIN seasons ON seasons.id = teams.season_id
+            WHERE seasons.code = ?
+            """,
+            (season_code,),
+        ).fetchall()
+        promoted_attack = (
+            previous_league_average * self.config.promoted_team_attack_multiplier
+        )
+        promoted_defence = (
+            previous_league_average
+            * self.config.promoted_team_defence_multiplier
+        )
+        return (
+            {
+                str(row["team_id"]): by_name.get(
+                    str(row["name"]),
+                    (promoted_attack, promoted_defence),
+                )
+                for row in current
+            },
+            previous_league_average,
+        )
 
     def _expected_goal_team_strengths(
         self,
@@ -1095,6 +1281,42 @@ class RatesProjectionModel:
                 player["_assist_share"] = (
                     assist_weight / total_assists if total_assists > 0 else 0.0
                 )
+
+    def _prepare_cold_start_priors(
+        self,
+        players: list[dict[str, Any]],
+    ) -> None:
+        """Scale each player's attacking prior by their price within position.
+
+        The reference is the position's median price in the current pool, so
+        the factor is one for a typical player and the adjustment is relative
+        rather than absolute. Positions are kept separate because a £5.5m
+        defender and a £5.5m forward carry very different expectations.
+        """
+
+        for player in players:
+            player["_cold_start_price_factor"] = 1.0
+        if self.config.cold_start_prior != "position_price":
+            return
+        by_position: dict[str, list[int]] = {}
+        for player in players:
+            by_position.setdefault(str(player["position"]), []).append(
+                int(player["price_tenths"])
+            )
+        medians = {
+            position: sorted(prices)[len(prices) // 2]
+            for position, prices in by_position.items()
+        }
+        for player in players:
+            reference = medians[str(player["position"])]
+            if reference <= 0:
+                continue
+            player["_cold_start_price_factor"] = _clamp(
+                (int(player["price_tenths"]) / reference)
+                ** self.config.cold_start_price_elasticity,
+                self.config.cold_start_minimum_factor,
+                self.config.cold_start_maximum_factor,
+            )
 
     def _prepare_minutes(
         self,
@@ -1312,6 +1534,12 @@ class RatesProjectionModel:
             if (self.config.scoring_event_source == "expected_with_actual_fallback")
             else {}
         )
+        # A player with no Premier League history falls back entirely to the
+        # position prior, so a record signing and a reserve start identical.
+        # Price is the market's own estimate of attacking role and is the only
+        # such estimate available before a ball is kicked. It scales the prior
+        # term only, so it fades automatically as real minutes accumulate.
+        price_factor = float(player.get("_cold_start_price_factor", 1.0))
         rates = {
             name: (
                 (
@@ -1327,6 +1555,7 @@ class RatesProjectionModel:
                         and self.config.defensive_contribution_model == "threshold_poisson"
                     )
                     else prior[name]
+                    * (price_factor if name in COLD_START_SCALED_RATES else 1.0)
                 )
                 * prior_minutes
             )
