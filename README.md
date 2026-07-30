@@ -34,14 +34,21 @@ Implemented:
 - a manual GitHub workflow for collecting data without local setup;
 - validated append-only manager-state snapshots and a browser team editor;
 - transparent eight-Gameweek projections with reasoned overrides;
+- the held-out trial-13 parameters with corrected scoring rules promoted as
+  `rates-rules-corrected-v4` (with v3 retained for reproducibility);
 - exact XI, full-squad, opening-squad and transfer optimisation;
 - bench, autosub, captaincy and chip-specific decision support;
 - provisional/final weekly audit records and model-health scoring;
 - leakage-controlled walk-forward projection backtesting with persisted scorecards;
+- five imported seasons, locked rolling multi-season tuning and paired news-uplift scoring;
+- a leakage-checked histogram gradient-boosting points challenger and auditable artifact;
 - automated tests and GitHub Actions CI.
 
-Schema version 10 includes the hardened identity and observation foundation, fixture-state
+Schema version 12 includes the hardened identity and observation foundation, fixture-state
 history, manager state, projections, weekly decision records and historical backtests. The
+latest schema also records versioned team-news provenance, review governance and paired
+pre/post-news projection evaluations, plus persisted appearance and 60-minute
+probabilities for optimisation. The
 database supports in-place version-2 migration, stable player
 identity links, explicit identifier namespaces and delivery-source provenance, timestamped
 multi-observation Gameweek history, selected-manager counts, and strict CSV contract
@@ -103,7 +110,8 @@ fpl-app
 ```
 
 The app provides team entry, a saved pitch view, projections, optimal XI, opening squad,
-transfer comparison, weekly evidence/review and model-health views.
+transfer comparison, structured team-news import/review, paired pre/post-news projections
+and model-health views.
 
 ## Rules usage
 
@@ -253,6 +261,24 @@ limitations are recorded in
 [the projection tuning record](docs/05_ProjectionTuningRecord.md). It used three imported
 seasons as potential historical evidence but evaluated model selection only on 2025/26;
 it was not a five-season test.
+
+The database now contains the complete 2021/22–2025/26 five-season window. The locked
+rolling evaluation command, promoted v3 incumbent and team-news integration are documented
+in [the strongest-model route](docs/06_StrongestModelRoute.md).
+
+Football assumptions can be tested without reopening the locked holdout:
+
+```bash
+fpl-history --database data/fpl.sqlite3 audit-projection-assumptions \
+  --development-seasons 2021-22 2022-23 2023-24 \
+  --origin-start 2 --origin-end 38 --horizon 1
+```
+
+The audit compares the frozen robust-v4 reference with position-aware minutes, recent
+scoring evidence, corrected threshold/penalty scoring and their combination. It also
+compares median-target and mean-target learned losses on expanding chronological folds.
+Its assumptions, metrics, gates and limitations are documented in
+[the football-assumption audit](docs/07_FootballAssumptionAudit.md).
 
 The required core CSV files are:
 

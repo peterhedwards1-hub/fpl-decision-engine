@@ -10,6 +10,7 @@ from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
 from fpl_engine.history.database import HistoricalDatabase
 from fpl_engine.history.records import (
+    FixtureRecord,
     GameweekRecord,
     HistoricalBundle,
     IngestionSource,
@@ -67,6 +68,15 @@ def _bundle() -> HistoricalBundle:
                 1,
                 deadline_time="2026-08-14T17:30:00Z",
                 is_finished=False,
+            ),
+        ),
+        fixtures=(
+            FixtureRecord(
+                "fixture-1",
+                "3",
+                "4",
+                1,
+                kickoff_time="2026-08-15T14:00:00Z",
             ),
         ),
         gameweek_snapshots=tuple(

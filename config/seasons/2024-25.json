@@ -1,0 +1,15 @@
+{
+  "extends": "historical-pre-2025.json",
+  "season": "2024-25",
+  "transfers": {
+    "maximum_free_transfers": 5
+  },
+  "chips": {
+    "banked_transfers_preserved": true
+  },
+  "validated_on": "2026-07-29",
+  "source_urls": [
+    "https://www.premierleague.com/en/news/4058895",
+    "https://www.premierleague.com/en/news/4059225"
+  ]
+}

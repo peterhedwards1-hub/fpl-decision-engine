@@ -32,6 +32,8 @@ from .schema import (
     MIGRATE_V7_TO_V8_SQL,
     MIGRATE_V8_TO_V9_SQL,
     MIGRATE_V9_TO_V10_SQL,
+    MIGRATE_V10_TO_V11_SQL,
+    MIGRATE_V11_TO_V12_SQL,
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
@@ -112,6 +114,12 @@ class HistoricalDatabase:
             current_version = 9
         if current_version == 9:
             self._migrate_v9_to_v10()
+            current_version = 10
+        if current_version == 10:
+            self._migrate_v10_to_v11()
+            current_version = 11
+        if current_version == 11:
+            self._migrate_v11_to_v12()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
@@ -275,6 +283,42 @@ class HistoricalDatabase:
             self.connection.rollback()
             raise RuntimeError(
                 f"Version 9 to 10 migration failed safely: {error}"
+            ) from error
+
+    def _migrate_v10_to_v11(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V10_TO_V11_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 10 to 11 migration produced "
+                    f"{len(foreign_key_issues)} foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(
+                f"Version 10 to 11 migration failed safely: {error}"
+            ) from error
+
+    def _migrate_v11_to_v12(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V11_TO_V12_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 11 to 12 migration produced "
+                    f"{len(foreign_key_issues)} foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(
+                f"Version 11 to 12 migration failed safely: {error}"
             ) from error
 
     def _validate_v3_timing_rows(self) -> dict[int, str | None]:

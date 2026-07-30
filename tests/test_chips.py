@@ -5,7 +5,7 @@ import pytest
 from fpl_engine.chips import recommend_chip
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Chip, Position
-from fpl_engine.optimisation import CandidatePlayer
+from fpl_engine.optimisation import CandidatePlayer, optimise_full_squad
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
 
@@ -35,7 +35,35 @@ def _candidates() -> tuple[CandidatePlayer, ...]:
 
 def test_chip_recommendations_share_season_rules_and_solver() -> None:
     candidates = _candidates()
-    current_ids = frozenset(player.source_player_id for player in candidates[:15])
+    current_ids = frozenset(
+        {
+            "1",
+            "2",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+        }
+    )
+    current = tuple(
+        player
+        for player in candidates
+        if player.source_player_id in current_ids
+    )
+    baseline = optimise_full_squad(
+        current,
+        budget_tenths=sum(player.price_tenths for player in current),
+        rules=RULES,
+    )
     triple_captain = recommend_chip(
         Chip.TRIPLE_CAPTAIN,
         candidates,
@@ -47,6 +75,9 @@ def test_chip_recommendations_share_season_rules_and_solver() -> None:
     )
     assert triple_captain.captain_id in current_ids
     assert triple_captain.expected_incremental_points > 0
+    assert triple_captain.expected_incremental_points == (
+        baseline.expected_captain_contribution
+    )
 
     free_hit = recommend_chip(
         Chip.FREE_HIT,
@@ -55,9 +86,34 @@ def test_chip_recommendations_share_season_rules_and_solver() -> None:
         previous_chip_gameweeks=(),
         budget_tenths=1000,
         rules=RULES,
+        current_player_ids=current_ids,
     )
     assert free_hit.squad is not None
     assert len(free_hit.squad.players) == 15
+    assert free_hit.expected_incremental_points == round(
+        free_hit.squad.gameweek_expected_points
+        - baseline.gameweek_expected_points,
+        3,
+    )
+
+    bench_boost = recommend_chip(
+        Chip.BENCH_BOOST,
+        candidates,
+        gameweek_number=20,
+        previous_chip_gameweeks=(),
+        budget_tenths=1000,
+        rules=RULES,
+        current_player_ids=current_ids,
+    )
+    assert bench_boost.expected_incremental_points == round(
+        sum(
+            player.gameweek_expected_points or player.expected_points
+            for player in current
+        )
+        + baseline.expected_captain_contribution
+        - baseline.gameweek_expected_points,
+        3,
+    )
 
     with pytest.raises(ValueError, match="unavailable"):
         recommend_chip(

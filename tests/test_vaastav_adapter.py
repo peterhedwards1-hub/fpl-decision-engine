@@ -35,6 +35,7 @@ def _source_files() -> dict[str, bytes]:
             b"web_name,birth_date,team,element_type,now_cost\n"
             b"101,1001,p1001,False,Ada,Striker,Ada,1998-01-02,1,4,76\n"
             b"202,2002,p2002,False,Grace,Keeper,Grace,1995-03-04,2,1,45\n"
+            b"303,3003,,True,Alex,Manager,Alex,,1,5,5\n"
         ),
         "fixtures.csv": (
             b"id,event,kickoff_time,team_h,team_a,team_h_score,team_a_score,"
@@ -52,6 +53,8 @@ def _source_files() -> dict[str, bytes]:
             b"0,0,0,3,40,5,1.20,0.10,1.30,0.20,13\n"
             b"202,501,1,GK,45,80000,50,10,False,90,1,0,0,0,2,0,0,0,"
             b"0,0,4,1,25,0,0.00,0.00,0.00,1.80,3\n"
+            b"303,501,1,AM,5,1000,0,0,True,0,0,0,0,0,0,0,0,0,"
+            b"0,0,0,0,0,0,0.00,0.00,0.00,0.00,0\n"
         ),
     }
 
@@ -71,6 +74,7 @@ def test_vaastav_adapter_builds_lossless_historical_bundle(tmp_path) -> None:
     assert len(result.content_sha256) == 64
     assert result.quality.fixture_stats == 2
     assert result.quality.skipped_rescheduled_rows == 0
+    assert result.quality.skipped_non_player_rows == 1
     assert result.quality.players_without_gameweek_rows == 0
     assert result.bundle.season.name == "2025/26"
     assert result.bundle.fixture_stats[0].defensive_contributions == 5

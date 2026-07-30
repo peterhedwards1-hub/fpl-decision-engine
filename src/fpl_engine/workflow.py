@@ -45,9 +45,26 @@ class WeeklyWorkflowRepository:
         evidence_at: datetime,
         source_player_id: str | None = None,
         source_url: str | None = None,
+        schema_version: int = 1,
+        source_name: str | None = None,
+        source_tier: str | None = None,
+        model_area: str | None = None,
+        suggested_adjustment: dict[str, Any] | None = None,
+        adjustment_basis: str | None = None,
+        requires_decision: bool = True,
+        decision_question: str | None = None,
+        expires_at: datetime | None = None,
+        prompt_version: str | None = None,
+        research_run_id: str | None = None,
     ) -> int:
         if evidence_at.tzinfo is None:
             raise WorkflowError("Evidence time must be timezone-aware")
+        if expires_at is not None and expires_at.tzinfo is None:
+            raise WorkflowError("Evidence expiry must be timezone-aware")
+        if expires_at is not None and expires_at <= evidence_at:
+            raise WorkflowError("Evidence expiry must be after its publication time")
+        if schema_version not in {1, 2}:
+            raise WorkflowError("Unsupported news evidence schema version")
         season_id, gameweek_id = self._season_gameweek(
             season_code, gameweek_number
         )
@@ -70,8 +87,13 @@ class WeeklyWorkflowRepository:
             """
             INSERT INTO news_evidence (
                 season_id, gameweek_id, player_season_id, evidence_type,
-                summary, source_url, evidence_at, confidence, review_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                summary, source_url, evidence_at, confidence, review_status,
+                schema_version, source_name, published_at, source_tier,
+                model_area, suggested_adjustment_json, adjustment_basis,
+                requires_decision, decision_question, expires_at,
+                prompt_version, research_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
             (
@@ -83,6 +105,26 @@ class WeeklyWorkflowRepository:
                 source_url,
                 evidence_at.astimezone(UTC).isoformat(),
                 confidence,
+                schema_version,
+                source_name,
+                evidence_at.astimezone(UTC).isoformat(),
+                source_tier,
+                model_area,
+                (
+                    None
+                    if suggested_adjustment is None
+                    else _json(suggested_adjustment)
+                ),
+                adjustment_basis,
+                int(requires_decision),
+                decision_question,
+                (
+                    None
+                    if expires_at is None
+                    else expires_at.astimezone(UTC).isoformat()
+                ),
+                prompt_version,
+                research_run_id,
             ),
         )
         evidence_id = int(cursor.fetchone()[0])
@@ -96,19 +138,68 @@ class WeeklyWorkflowRepository:
         status: Literal["accepted", "rejected"],
         rationale: str,
         expected_minutes_adjustment: float | None = None,
+        decision_maker: str = "user",
+        reviewed_at: datetime | None = None,
     ) -> None:
         if not rationale.strip():
             raise WorkflowError("A review rationale is required")
+        if not decision_maker.strip():
+            raise WorkflowError("A decision maker is required")
+        evidence = self.database.connection.execute(
+            """
+            SELECT review_status, suggested_adjustment_json
+            FROM news_evidence WHERE id = ?
+            """,
+            (evidence_id,),
+        ).fetchone()
+        if evidence is None or evidence["review_status"] != "pending":
+            raise WorkflowError("Evidence is missing or has already been reviewed")
+        suggested = (
+            None
+            if evidence["suggested_adjustment_json"] is None
+            else json.loads(evidence["suggested_adjustment_json"])
+        )
+        if (
+            status == "accepted"
+            and expected_minutes_adjustment is None
+            and suggested is not None
+            and suggested.get("kind") == "expected_minutes_delta"
+        ):
+            expected_minutes_adjustment = float(suggested["value"])
+        if (
+            expected_minutes_adjustment is not None
+            and not -90 <= expected_minutes_adjustment <= 90
+        ):
+            raise WorkflowError(
+                "Expected-minutes adjustment must be between -90 and 90"
+            )
+        reviewed = reviewed_at or datetime.now(UTC)
+        if reviewed.tzinfo is None:
+            raise WorkflowError("Review time must be timezone-aware")
         cursor = self.database.connection.execute(
             """
             UPDATE news_evidence
-            SET review_status = ?, expected_minutes_adjustment = ?, rationale = ?
+            SET review_status = ?, expected_minutes_adjustment = ?, rationale = ?,
+                reviewed_at = ?, decision_maker = ?, proposed_value = ?,
+                accepted_value = ?
             WHERE id = ? AND review_status = 'pending'
             """,
             (
                 status,
-                expected_minutes_adjustment,
+                (
+                    expected_minutes_adjustment
+                    if status == "accepted"
+                    else None
+                ),
                 rationale.strip(),
+                reviewed.astimezone(UTC).isoformat(),
+                decision_maker.strip(),
+                expected_minutes_adjustment,
+                (
+                    expected_minutes_adjustment
+                    if status == "accepted"
+                    else None
+                ),
                 evidence_id,
             ),
         )
@@ -157,6 +248,7 @@ class WeeklyWorkflowRepository:
             raise WorkflowError(
                 "Manager snapshot and projection run must cover the same Gameweek"
             )
+        timestamp = created.astimezone(UTC).isoformat()
         if mode == "final":
             pending = self.database.connection.execute(
                 """
@@ -170,7 +262,44 @@ class WeeklyWorkflowRepository:
                 raise WorkflowError(
                     f"Cannot freeze final run with {pending} pending evidence item(s)"
                 )
-        timestamp = created.astimezone(UTC).isoformat()
+            accepted_ids = {
+                int(row["id"])
+                for row in self.database.connection.execute(
+                    """
+                    SELECT id FROM news_evidence
+                    WHERE season_id = ? AND gameweek_id = ?
+                      AND review_status = 'accepted'
+                      AND expected_minutes_adjustment IS NOT NULL
+                      AND evidence_at <= ?
+                      AND (expires_at IS NULL OR expires_at > ?)
+                    """,
+                    (
+                        context["season_id"],
+                        context["gameweek_id"],
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            }
+            if accepted_ids:
+                pair = self.database.connection.execute(
+                    """
+                    SELECT evidence_ids_json
+                    FROM news_projection_pairs
+                    WHERE post_news_projection_run_id = ?
+                    """,
+                    (projection_run_id,),
+                ).fetchone()
+                paired_ids = (
+                    set()
+                    if pair is None
+                    else {int(value) for value in json.loads(pair[0])}
+                )
+                if not accepted_ids.issubset(paired_ids):
+                    raise WorkflowError(
+                        "Final run must use a post-news projection containing "
+                        "all current accepted adjustments"
+                    )
         cursor = self.database.connection.execute(
             """
             INSERT INTO weekly_decision_runs (

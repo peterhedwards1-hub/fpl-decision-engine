@@ -262,11 +262,7 @@ class ProjectionBacktester:
                         if evidence_policy == "pre_deadline_only"
                         else None
                     ),
-                    fixture_max_ingestion_run_id=(
-                        source_ingestion_run_id
-                        if evidence_policy == "pre_deadline_only"
-                        else None
-                    ),
+                    fixture_max_ingestion_run_id=source_ingestion_run_id,
                     persist=False,
                 )
                 rows = []

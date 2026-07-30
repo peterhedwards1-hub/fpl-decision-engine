@@ -34,7 +34,10 @@ def recommend_chip(
     budget_tenths: int,
     rules: SeasonRules,
     current_player_ids: frozenset[str] | None = None,
+    future_opportunity_cost: float = 0.0,
 ) -> ChipRecommendation:
+    if future_opportunity_cost < 0:
+        raise ValueError("Future chip opportunity cost cannot be negative")
     errors = validate_chip_use(
         chip,
         gameweek_number,
@@ -53,6 +56,11 @@ def recommend_chip(
             if gameweek_number - 1 in previous_chip_gameweeks
             else None
         ),
+        last_used_gameweek=(
+            max(previous_chip_gameweeks)
+            if previous_chip_gameweeks
+            else None
+        ),
     )
     if errors:
         raise ValueError("; ".join(error.message for error in errors))
@@ -66,23 +74,34 @@ def recommend_chip(
             for player in candidates
             if player.source_player_id in current_player_ids
         )
-    if chip == Chip.TRIPLE_CAPTAIN:
-        captain = max(
-            eligible,
-            key=lambda player: (
-                _gameweek_points(player) * player.appearance_probability,
-                -player.uncertainty,
-            ),
+    if current_player_ids is None:
+        raise ValueError(
+            "Comparable chip recommendations require the current squad"
         )
-        value = _gameweek_points(captain)
+    current = tuple(
+        player
+        for player in candidates
+        if player.source_player_id in current_player_ids
+    )
+    if len(current) != rules.squad.squad_size:
+        raise ValueError("Current squad must contain every configured squad player")
+    current_budget = sum(player.price_tenths for player in current)
+    baseline = optimise_full_squad(
+        current,
+        budget_tenths=current_budget,
+        rules=rules,
+    )
+    if chip == Chip.TRIPLE_CAPTAIN:
+        value = baseline.expected_captain_contribution - future_opportunity_cost
         return ChipRecommendation(
             chip=chip,
             gameweek_number=gameweek_number,
             expected_incremental_points=round(value, 3),
-            captain_id=captain.source_player_id,
+            captain_id=baseline.captain_id,
             explanation=(
-                f"Triple-captain {captain.web_name}; the chip adds one extra "
-                f"captain score worth {value:.2f} expected points."
+                "Triple Captain adds one expected effective captain score, "
+                "including vice-captain fallback, less the supplied future "
+                f"opportunity cost: {value:.2f} points."
             ),
         )
     if chip == Chip.WILDCARD:
@@ -92,14 +111,20 @@ def recommend_chip(
             rules=rules,
             alternative_count=0,
         ).primary
+        value = (
+            squad.horizon_expected_points
+            - baseline.horizon_expected_points
+            - future_opportunity_cost
+        )
         return ChipRecommendation(
             chip=chip,
             gameweek_number=gameweek_number,
-            expected_incremental_points=squad.horizon_expected_points,
+            expected_incremental_points=round(value, 3),
             squad=squad,
             explanation=(
-                "Wildcard rebuilds the persistent squad for the configured "
-                "projection horizon; transfer hits are not charged."
+                "Wildcard value is the persistent rebuilt squad minus the "
+                "current-squad no-chip horizon and the supplied future "
+                "opportunity cost."
             ),
         )
     weekly_candidates = tuple(
@@ -123,20 +148,29 @@ def recommend_chip(
         rules=rules,
     )
     if chip == Chip.BENCH_BOOST:
-        value = sum(
-            _gameweek_points(player)
-            for player in squad.players
-            if player.source_player_id in squad.bench_player_ids
+        all_fifteen = sum(
+            _gameweek_points(player) for player in baseline.players
+        ) + baseline.expected_captain_contribution
+        value = (
+            all_fifteen
+            - baseline.gameweek_expected_points
+            - future_opportunity_cost
         )
+        squad = baseline
         explanation = (
-            "Bench Boost adds the four ordered substitutes' expected points; "
-            "the squad is optimised for this single Gameweek."
+            "Bench Boost value is all 15 expected scores minus the normal XI "
+            "with automatic substitutions, less the supplied future "
+            "opportunity cost."
         )
     else:
-        value = squad.gameweek_expected_points
+        value = (
+            squad.gameweek_expected_points
+            - baseline.gameweek_expected_points
+            - future_opportunity_cost
+        )
         explanation = (
-            "Free Hit selects a one-Gameweek squad; the stored manager squad "
-            "remains unchanged for the following Gameweek."
+            "Free Hit value is the optimised one-Gameweek squad minus the "
+            "current no-chip squad, less the supplied future opportunity cost."
         )
     return ChipRecommendation(
         chip=chip,

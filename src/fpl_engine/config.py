@@ -98,8 +98,7 @@ def _required(data: dict[str, Any], key: str) -> Any:
 def load_season_rules(path: str | Path) -> SeasonRules:
     """Load immutable, versioned rules from a JSON file."""
     file_path = Path(path)
-    with file_path.open(encoding="utf-8") as handle:
-        raw = json.load(handle)
+    raw = _load_rule_document(file_path, seen=set())
 
     squad_raw = _required(raw, "squad")
     scoring_raw = _required(raw, "scoring")
@@ -196,6 +195,43 @@ def load_season_rules(path: str | Path) -> SeasonRules:
 
     _validate_rules(rules)
     return rules
+
+
+def _load_rule_document(
+    path: Path,
+    *,
+    seen: set[Path],
+) -> dict[str, Any]:
+    resolved = path.resolve()
+    if resolved in seen:
+        raise ValueError(f"Circular season-rule inheritance at {path}")
+    with path.open(encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if not isinstance(raw, dict):
+        raise ValueError("Season rules must be a JSON object")
+    parent_name = raw.pop("extends", None)
+    if parent_name is None:
+        return raw
+    if not isinstance(parent_name, str) or not parent_name.strip():
+        raise ValueError("Season-rule extends must name a JSON file")
+    parent = _load_rule_document(
+        path.parent / parent_name,
+        seen={*seen, resolved},
+    )
+    return _deep_merge(parent, raw)
+
+
+def _deep_merge(
+    base: dict[str, Any],
+    override: dict[str, Any],
+) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 def _validate_rules(rules: SeasonRules) -> None:

@@ -1,0 +1,8 @@
+{
+  "extends": "historical-pre-2025.json",
+  "season": "2023-24",
+  "validated_on": "2026-07-29",
+  "source_urls": [
+    "https://www.premierleague.com/en/news/3568527"
+  ]
+}

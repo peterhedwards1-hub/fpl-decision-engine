@@ -2,7 +2,11 @@
 
 **Study date:** 2026-07-29  
 **Study name:** `fpl-rates-two-stage-v2`  
-**Status:** Candidate selected for promotion; not yet the production default
+**Status:** Trial 13 promoted as `rates-two-stage-v3`
+
+`rates-two-stage-v3` remains the immutable output of this study. The production default
+later became `rates-rules-corrected-v4`, which retains trial 13's tuned parameters and
+changes only audited scoring-rule semantics.
 
 ## Purpose
 
@@ -123,3 +127,9 @@ To claim five-season evaluation, the project must:
 Until then, the accurate description is: **three seasons were available as potential
 historical evidence, while model selection was evaluated on one season with a held-out
 13-Gameweek period.**
+
+## Subsequent implementation
+
+After this study, 2021/22 and 2024/25 were imported, completing the five-season database
+window. This does not retroactively turn the study above into a five-season evaluation.
+The new holdout-locked rolling route is documented in `06_StrongestModelRoute.md`.

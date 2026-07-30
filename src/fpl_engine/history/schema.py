@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -264,6 +264,12 @@ CREATE TABLE IF NOT EXISTS player_gameweek_projections (
     player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
     gameweek_number INTEGER NOT NULL CHECK (gameweek_number BETWEEN 1 AND 38),
     expected_minutes REAL NOT NULL CHECK (expected_minutes BETWEEN 0 AND 180),
+    appearance_probability REAL NOT NULL DEFAULT 0 CHECK (
+        appearance_probability BETWEEN 0 AND 1
+    ),
+    sixty_probability REAL NOT NULL DEFAULT 0 CHECK (
+        sixty_probability BETWEEN 0 AND 1
+    ),
     appearance_points REAL NOT NULL,
     goal_points REAL NOT NULL,
     assist_points REAL NOT NULL,
@@ -293,7 +299,34 @@ CREATE TABLE IF NOT EXISTS news_evidence (
         review_status IN ('pending', 'accepted', 'rejected')
     ),
     expected_minutes_adjustment REAL,
-    rationale TEXT
+    rationale TEXT,
+    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version IN (1, 2)),
+    source_name TEXT,
+    published_at TEXT,
+    source_tier TEXT CHECK (
+        source_tier IS NULL
+        OR source_tier IN ('official', 'strong_reporting', 'predicted_lineup', 'rumour')
+    ),
+    model_area TEXT CHECK (
+        model_area IS NULL
+        OR model_area IN (
+            'minutes', 'role', 'availability', 'set_pieces', 'fixture', 'none'
+        )
+    ),
+    suggested_adjustment_json TEXT,
+    adjustment_basis TEXT,
+    requires_decision INTEGER NOT NULL DEFAULT 1 CHECK (
+        requires_decision IN (0, 1)
+    ),
+    decision_question TEXT,
+    expires_at TEXT,
+    prompt_version TEXT,
+    research_run_id TEXT,
+    reviewed_at TEXT,
+    decision_maker TEXT,
+    original_value REAL,
+    proposed_value REAL,
+    accepted_value REAL
 );
 
 CREATE TABLE IF NOT EXISTS weekly_decision_runs (
@@ -335,6 +368,33 @@ CREATE TABLE IF NOT EXISTS weekly_evaluations (
     realised_points REAL NOT NULL,
     score_error REAL NOT NULL,
     review_notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS news_projection_pairs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    pre_news_projection_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES projection_runs(id),
+    post_news_projection_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES projection_runs(id),
+    created_at TEXT NOT NULL,
+    evidence_ids_json TEXT NOT NULL,
+    CHECK (pre_news_projection_run_id <> post_news_projection_run_id)
+);
+
+CREATE TABLE IF NOT EXISTS news_projection_evaluations (
+    id INTEGER PRIMARY KEY,
+    news_projection_pair_id INTEGER NOT NULL UNIQUE
+        REFERENCES news_projection_pairs(id) ON DELETE CASCADE,
+    evaluated_at TEXT NOT NULL,
+    sample_count INTEGER NOT NULL CHECK (sample_count > 0),
+    pre_news_points_mae REAL NOT NULL,
+    post_news_points_mae REAL NOT NULL,
+    pre_news_minutes_mae REAL NOT NULL,
+    post_news_minutes_mae REAL NOT NULL,
+    points_mae_change REAL NOT NULL,
+    minutes_mae_change REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS projection_backtest_runs (
@@ -409,6 +469,8 @@ CREATE INDEX IF NOT EXISTS idx_news_review_queue
     ON news_evidence(season_id, gameweek_id, review_status);
 CREATE INDEX IF NOT EXISTS idx_weekly_runs_gameweek
     ON weekly_decision_runs(season_id, gameweek_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_news_projection_pairs_gameweek
+    ON news_projection_pairs(season_id, gameweek_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_backtest_runs_season
     ON projection_backtest_runs(season_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_backtest_predictions_run
@@ -1095,5 +1157,88 @@ UPDATE projection_backtest_runs
 SET generated_prediction_count = prediction_count;
 
 PRAGMA user_version = 10;
+COMMIT;
+"""
+
+MIGRATE_V10_TO_V11_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+ALTER TABLE news_evidence
+    ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1
+    CHECK (schema_version IN (1, 2));
+ALTER TABLE news_evidence ADD COLUMN source_name TEXT;
+ALTER TABLE news_evidence ADD COLUMN published_at TEXT;
+ALTER TABLE news_evidence ADD COLUMN source_tier TEXT CHECK (
+    source_tier IS NULL
+    OR source_tier IN ('official', 'strong_reporting', 'predicted_lineup', 'rumour')
+);
+ALTER TABLE news_evidence ADD COLUMN model_area TEXT CHECK (
+    model_area IS NULL
+    OR model_area IN (
+        'minutes', 'role', 'availability', 'set_pieces', 'fixture', 'none'
+    )
+);
+ALTER TABLE news_evidence ADD COLUMN suggested_adjustment_json TEXT;
+ALTER TABLE news_evidence ADD COLUMN adjustment_basis TEXT;
+ALTER TABLE news_evidence
+    ADD COLUMN requires_decision INTEGER NOT NULL DEFAULT 1
+    CHECK (requires_decision IN (0, 1));
+ALTER TABLE news_evidence ADD COLUMN decision_question TEXT;
+ALTER TABLE news_evidence ADD COLUMN expires_at TEXT;
+ALTER TABLE news_evidence ADD COLUMN prompt_version TEXT;
+ALTER TABLE news_evidence ADD COLUMN research_run_id TEXT;
+ALTER TABLE news_evidence ADD COLUMN reviewed_at TEXT;
+ALTER TABLE news_evidence ADD COLUMN decision_maker TEXT;
+ALTER TABLE news_evidence ADD COLUMN original_value REAL;
+ALTER TABLE news_evidence ADD COLUMN proposed_value REAL;
+ALTER TABLE news_evidence ADD COLUMN accepted_value REAL;
+
+CREATE TABLE news_projection_pairs (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    pre_news_projection_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES projection_runs(id),
+    post_news_projection_run_id INTEGER NOT NULL UNIQUE
+        REFERENCES projection_runs(id),
+    created_at TEXT NOT NULL,
+    evidence_ids_json TEXT NOT NULL,
+    CHECK (pre_news_projection_run_id <> post_news_projection_run_id)
+);
+
+CREATE TABLE news_projection_evaluations (
+    id INTEGER PRIMARY KEY,
+    news_projection_pair_id INTEGER NOT NULL UNIQUE
+        REFERENCES news_projection_pairs(id) ON DELETE CASCADE,
+    evaluated_at TEXT NOT NULL,
+    sample_count INTEGER NOT NULL CHECK (sample_count > 0),
+    pre_news_points_mae REAL NOT NULL,
+    post_news_points_mae REAL NOT NULL,
+    pre_news_minutes_mae REAL NOT NULL,
+    post_news_minutes_mae REAL NOT NULL,
+    points_mae_change REAL NOT NULL,
+    minutes_mae_change REAL NOT NULL
+);
+
+CREATE INDEX idx_news_projection_pairs_gameweek
+    ON news_projection_pairs(season_id, gameweek_id, created_at);
+
+PRAGMA user_version = 11;
+COMMIT;
+"""
+
+MIGRATE_V11_TO_V12_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+ALTER TABLE player_gameweek_projections
+    ADD COLUMN appearance_probability REAL NOT NULL DEFAULT 0
+    CHECK (appearance_probability BETWEEN 0 AND 1);
+ALTER TABLE player_gameweek_projections
+    ADD COLUMN sixty_probability REAL NOT NULL DEFAULT 0
+    CHECK (sixty_probability BETWEEN 0 AND 1);
+
+PRAGMA user_version = 12;
 COMMIT;
 """

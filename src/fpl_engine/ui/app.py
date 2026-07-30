@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,8 +11,9 @@ import pandas as pd
 import streamlit as st
 
 from fpl_engine.backtest import load_backtest_report
+from fpl_engine.chips import recommend_chip
 from fpl_engine.config import load_season_rules
-from fpl_engine.domain import Position
+from fpl_engine.domain import Chip, Position
 from fpl_engine.history.database import HistoricalDatabase
 from fpl_engine.live.collector import LiveSnapshotCollector
 from fpl_engine.manager import (
@@ -21,8 +23,14 @@ from fpl_engine.manager import (
     ManagerStateRepository,
 )
 from fpl_engine.model_health import build_model_health_report
+from fpl_engine.news import ingest_structured_news, structured_news_schema
+from fpl_engine.news_projection import (
+    create_news_projection_pair,
+    evaluate_news_projection_pair,
+)
 from fpl_engine.optimisation import (
     CandidatePlayer,
+    GameweekPlayerValue,
     OptimisationError,
     optimise_opening_squads,
     optimise_starting_xi,
@@ -128,6 +136,7 @@ def main() -> None:
                 "Optimal XI",
                 "Full squad",
                 "Transfers",
+                "Chips",
                 "Weekly cycle",
                 "Data health",
             )
@@ -168,14 +177,23 @@ def main() -> None:
                 gameweek_number,
             )
         with tabs[6]:
+            _chip_explorer(
+                database,
+                rules,
+                latest,
+                season_code,
+                gameweek_number,
+            )
+        with tabs[7]:
             _weekly_cycle(
                 database,
+                rules,
                 latest,
                 available,
                 season_code,
                 gameweek_number,
             )
-        with tabs[7]:
+        with tabs[8]:
             _data_health(database, season_code, gameweek_number, deadline)
 
 
@@ -530,8 +548,7 @@ def _projection_explorer(
                teams.short_name AS team, ps.position,
                ROUND(SUM(projections.expected_minutes), 1) AS expected_minutes,
                ROUND(SUM(projections.expected_points), 2) AS expected_points,
-               ROUND(SQRT(SUM(projections.uncertainty * projections.uncertainty)), 2)
-                   AS uncertainty
+               ROUND(SUM(projections.uncertainty), 2) AS uncertainty
         FROM player_gameweek_projections projections
         JOIN player_seasons ps ON ps.id = projections.player_season_id
         JOIN players ON players.id = ps.player_id
@@ -574,6 +591,126 @@ def _projection_explorer(
         st.json(latest_run["assumptions_json"])
 
 
+def _load_optimisation_candidates(
+    database: HistoricalDatabase,
+    projection_run_id: int,
+) -> tuple[CandidatePlayer, ...]:
+    run = database.connection.execute(
+        """
+        SELECT generated_at, source_ingestion_run_id
+        FROM projection_runs WHERE id = ?
+        """,
+        (projection_run_id,),
+    ).fetchone()
+    if run is None:
+        raise ValueError(f"Projection run {projection_run_id} is unavailable")
+    rows = database.connection.execute(
+        """
+        WITH ranked_state AS (
+            SELECT observations.player_season_id,
+                   observations.price_tenths, observations.team_id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY observations.player_season_id
+                       ORDER BY datetime(ingestion_runs.retrieved_at) DESC,
+                                observations.observed_at DESC,
+                                observations.observed_on DESC,
+                                observations.id DESC
+                   ) AS state_rank
+            FROM player_gameweek_observations observations
+            JOIN ingestion_runs
+              ON ingestion_runs.id = observations.provenance_run_id
+            WHERE ingestion_runs.status = 'completed'
+              AND (
+                  (? IS NOT NULL AND ingestion_runs.id <= ?)
+                  OR (
+                      ? IS NULL
+                      AND datetime(ingestion_runs.retrieved_at)
+                          <= datetime(?)
+                  )
+              )
+        )
+        SELECT ps.source_player_id, players.web_name,
+               teams.source_team_id, teams.short_name, ps.position,
+               ranked_state.price_tenths, projections.gameweek_number,
+               projections.expected_points, projections.expected_minutes,
+               projections.appearance_probability,
+               projections.sixty_probability, projections.uncertainty
+        FROM player_gameweek_projections projections
+        JOIN player_seasons ps ON ps.id = projections.player_season_id
+        JOIN players ON players.id = ps.player_id
+        JOIN ranked_state
+          ON ranked_state.player_season_id = ps.id
+         AND ranked_state.state_rank = 1
+        JOIN teams
+          ON teams.id = COALESCE(ranked_state.team_id, ps.team_id)
+        WHERE projections.projection_run_id = ?
+        ORDER BY ps.source_player_id, projections.gameweek_number
+        """,
+        (
+            run["source_ingestion_run_id"],
+            run["source_ingestion_run_id"],
+            run["source_ingestion_run_id"],
+            run["generated_at"],
+            projection_run_id,
+        ),
+    ).fetchall()
+    grouped: dict[str, dict[str, object]] = {}
+    for row in rows:
+        player_id = str(row["source_player_id"])
+        item = grouped.setdefault(
+            player_id,
+            {
+                "web_name": row["web_name"],
+                "team_id": str(row["source_team_id"]),
+                "team_short_name": row["short_name"],
+                "position": Position(row["position"]),
+                "price_tenths": int(row["price_tenths"]),
+                "values": [],
+                "uncertainty_total": 0.0,
+            },
+        )
+        appearance_probability = float(row["appearance_probability"])
+        # Migrated legacy runs have no persisted probabilities. Keep them
+        # viewable while every newly generated run uses the model outputs.
+        if appearance_probability == 0 and float(row["expected_minutes"]) > 0:
+            appearance_probability = min(
+                1.0, float(row["expected_minutes"]) / 60.0
+            )
+        item["values"].append(
+            GameweekPlayerValue(
+                gameweek_number=int(row["gameweek_number"]),
+                expected_points=float(row["expected_points"]),
+                appearance_probability=appearance_probability,
+                sixty_probability=float(row["sixty_probability"]),
+            )
+        )
+        item["uncertainty_total"] = float(
+            item["uncertainty_total"]
+        ) + float(row["uncertainty"])
+    candidates = []
+    for player_id, item in grouped.items():
+        values = tuple(item["values"])
+        first = values[0]
+        candidates.append(
+            CandidatePlayer(
+                source_player_id=player_id,
+                web_name=str(item["web_name"]),
+                team_id=str(item["team_id"]),
+                team_short_name=str(item["team_short_name"]),
+                position=item["position"],
+                price_tenths=int(item["price_tenths"]),
+                expected_points=sum(
+                    value.expected_points for value in values
+                ),
+                gameweek_expected_points=first.expected_points,
+                appearance_probability=first.appearance_probability,
+                uncertainty=float(item["uncertainty_total"]),
+                gameweek_values=values,
+            )
+        )
+    return tuple(sorted(candidates, key=lambda player: player.source_player_id))
+
+
 def _starting_xi_explorer(
     database: HistoricalDatabase,
     rules: object,
@@ -610,45 +747,8 @@ def _starting_xi_explorer(
     )
     if not st.button("Optimise starting XI"):
         return
-    rows = database.connection.execute(
-        """
-        WITH latest_prices AS (
-            SELECT observations.player_season_id, observations.price_tenths,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY observations.player_season_id
-                       ORDER BY observations.observed_at DESC,
-                                observations.observed_on DESC,
-                                observations.id DESC
-                   ) AS price_rank
-            FROM player_gameweek_observations observations
-        )
-        SELECT ps.source_player_id, players.web_name,
-               teams.source_team_id, teams.short_name, ps.position,
-               latest_prices.price_tenths,
-               SUM(projections.expected_points) AS expected_points
-        FROM player_gameweek_projections projections
-        JOIN player_seasons ps ON ps.id = projections.player_season_id
-        JOIN players ON players.id = ps.player_id
-        JOIN teams ON teams.id = ps.team_id
-        JOIN latest_prices
-          ON latest_prices.player_season_id = ps.id
-         AND latest_prices.price_rank = 1
-        WHERE projections.projection_run_id = ?
-        GROUP BY ps.id
-        """,
-        (latest_run["id"],),
-    ).fetchall()
-    candidates = tuple(
-        CandidatePlayer(
-            source_player_id=row["source_player_id"],
-            web_name=row["web_name"],
-            team_id=row["source_team_id"],
-            team_short_name=row["short_name"],
-            position=Position(row["position"]),
-            price_tenths=row["price_tenths"],
-            expected_points=row["expected_points"],
-        )
-        for row in rows
+    candidates = _load_optimisation_candidates(
+        database, int(latest_run["id"])
     )
     try:
         result = optimise_starting_xi(
@@ -656,7 +756,7 @@ def _starting_xi_explorer(
             budget_tenths=round(budget * 10),
             rules=rules,
         )
-    except OptimisationError as error:
+    except (OptimisationError, ValueError) as error:
         st.error(str(error))
         return
     metrics = st.columns(3)
@@ -726,64 +826,8 @@ def _full_squad_explorer(
         return
     if not st.button("Optimise £100m squad"):
         return
-    rows = database.connection.execute(
-        """
-        WITH latest_prices AS (
-            SELECT observations.player_season_id, observations.price_tenths,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY observations.player_season_id
-                       ORDER BY observations.observed_at DESC,
-                                observations.observed_on DESC,
-                                observations.id DESC
-                   ) AS price_rank
-            FROM player_gameweek_observations observations
-        )
-        SELECT ps.source_player_id, players.web_name,
-               teams.source_team_id, teams.short_name, ps.position,
-               latest_prices.price_tenths,
-               SUM(projections.expected_points) AS horizon_points,
-               MAX(CASE WHEN projections.gameweek_number = ?
-                   THEN projections.expected_points END) AS gameweek_points,
-               MAX(CASE WHEN projections.gameweek_number = ?
-                   THEN projections.expected_minutes END) AS gameweek_minutes
-               ,SQRT(SUM(projections.uncertainty * projections.uncertainty))
-                   AS uncertainty
-               ,MAX(CASE WHEN projections.gameweek_number = ?
-                   THEN projections.expected_points END) AS residual_value
-        FROM player_gameweek_projections projections
-        JOIN player_seasons ps ON ps.id = projections.player_season_id
-        JOIN players ON players.id = ps.player_id
-        JOIN teams ON teams.id = ps.team_id
-        JOIN latest_prices
-          ON latest_prices.player_season_id = ps.id
-         AND latest_prices.price_rank = 1
-        WHERE projections.projection_run_id = ?
-        GROUP BY ps.id
-        """,
-        (
-            gameweek_number,
-            gameweek_number,
-            gameweek_number + latest_run["horizon_gameweeks"] - 1,
-            latest_run["id"],
-        ),
-    ).fetchall()
-    candidates = tuple(
-        CandidatePlayer(
-            source_player_id=row["source_player_id"],
-            web_name=row["web_name"],
-            team_id=row["source_team_id"],
-            team_short_name=row["short_name"],
-            position=Position(row["position"]),
-            price_tenths=row["price_tenths"],
-            expected_points=row["horizon_points"],
-            gameweek_expected_points=row["gameweek_points"],
-            appearance_probability=min(
-                1.0, max(0.0, (row["gameweek_minutes"] or 0) / 60)
-            ),
-            uncertainty=row["uncertainty"],
-            residual_value=row["residual_value"] or 0,
-        )
-        for row in rows
+    candidates = _load_optimisation_candidates(
+        database, int(latest_run["id"])
     )
     try:
         recommendation = optimise_opening_squads(
@@ -792,7 +836,7 @@ def _full_squad_explorer(
             rules=rules,
             alternative_count=2,
         )
-    except OptimisationError as error:
+    except (OptimisationError, ValueError) as error:
         st.error(str(error))
         return
     result = recommendation.primary
@@ -896,58 +940,10 @@ def _transfer_explorer(
     if latest_run is None:
         st.info("Generate a projection baseline before comparing transfers.")
         return
-    if not st.button("Compare roll, one- and two-transfer routes"):
+    if not st.button("Compare roll and configured multi-transfer routes"):
         return
-    rows = database.connection.execute(
-        """
-        WITH latest_prices AS (
-            SELECT observations.player_season_id, observations.price_tenths,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY observations.player_season_id
-                       ORDER BY observations.observed_at DESC,
-                                observations.observed_on DESC,
-                                observations.id DESC
-                   ) AS price_rank
-            FROM player_gameweek_observations observations
-        )
-        SELECT ps.source_player_id, players.web_name,
-               teams.source_team_id, teams.short_name, ps.position,
-               latest_prices.price_tenths,
-               SUM(projections.expected_points) AS horizon_points,
-               MAX(CASE WHEN projections.gameweek_number = ?
-                   THEN projections.expected_points END) AS gameweek_points,
-               MAX(CASE WHEN projections.gameweek_number = ?
-                   THEN projections.expected_minutes END) AS gameweek_minutes,
-               SQRT(SUM(projections.uncertainty * projections.uncertainty))
-                   AS uncertainty
-        FROM player_gameweek_projections projections
-        JOIN player_seasons ps ON ps.id = projections.player_season_id
-        JOIN players ON players.id = ps.player_id
-        JOIN teams ON teams.id = ps.team_id
-        JOIN latest_prices
-          ON latest_prices.player_season_id = ps.id
-         AND latest_prices.price_rank = 1
-        WHERE projections.projection_run_id = ?
-        GROUP BY ps.id
-        """,
-        (gameweek_number, gameweek_number, latest_run["id"]),
-    ).fetchall()
-    candidates = tuple(
-        CandidatePlayer(
-            source_player_id=row["source_player_id"],
-            web_name=row["web_name"],
-            team_id=row["source_team_id"],
-            team_short_name=row["short_name"],
-            position=Position(row["position"]),
-            price_tenths=row["price_tenths"],
-            expected_points=row["horizon_points"],
-            gameweek_expected_points=row["gameweek_points"],
-            appearance_probability=min(
-                1.0, max(0.0, (row["gameweek_minutes"] or 0) / 60)
-            ),
-            uncertainty=row["uncertainty"],
-        )
-        for row in rows
+    candidates = _load_optimisation_candidates(
+        database, int(latest_run["id"])
     )
     snapshot = latest.snapshot
     current = CurrentSquad(
@@ -966,7 +962,6 @@ def _transfer_explorer(
             candidates,
             current,
             rules=rules,
-            max_transfers=2,
         )
     except (OptimisationError, ValueError) as error:
         st.error(str(error))
@@ -991,8 +986,182 @@ def _transfer_explorer(
     st.success(f"Primary recommendation: {recommendation.primary.explanation}")
 
 
+def _chip_explorer(
+    database: HistoricalDatabase,
+    rules: object,
+    latest: object,
+    season_code: str,
+    gameweek_number: int,
+) -> None:
+    st.subheader("Chip comparison")
+    if latest is None:
+        st.info("Save your current squad before comparing chips.")
+        return
+    latest_run = database.connection.execute(
+        """
+        SELECT projection_runs.id FROM projection_runs
+        JOIN seasons ON seasons.id = projection_runs.season_id
+        WHERE seasons.code = ? AND projection_runs.start_gameweek = ?
+        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC
+        LIMIT 1
+        """,
+        (season_code, gameweek_number),
+    ).fetchone()
+    if latest_run is None:
+        st.info("Generate a projection baseline before comparing chips.")
+        return
+    snapshot = latest.snapshot
+    available_chips = [
+        chip_name
+        for chip_name, remaining in snapshot.remaining_chips.items()
+        if remaining > 0
+    ]
+    if not available_chips:
+        st.info("The saved manager state has no chips remaining.")
+        return
+    chip_name = st.selectbox(
+        "Chip",
+        available_chips,
+        format_func=lambda value: value.replace("_", " ").title(),
+    )
+    inferred_uses = _inferred_chip_gameweeks(
+        database,
+        season_code,
+        chip_name,
+    )
+    previous_uses_text = st.text_input(
+        "Previous use Gameweeks",
+        value=", ".join(str(gameweek) for gameweek in inferred_uses),
+        help=(
+            "Inferred from saved manager-state changes. Correct this list if "
+            "older snapshots are missing."
+        ),
+    )
+    future_opportunity_cost = st.number_input(
+        "Future opportunity cost (points)",
+        min_value=0.0,
+        value=0.0,
+        step=0.5,
+        help=(
+            "Optional estimate of the value of saving this chip for a better "
+            "future Gameweek."
+        ),
+    )
+    if not st.button("Value selected chip"):
+        return
+    try:
+        previous_uses = tuple(
+            sorted(
+                {
+                    int(value.strip())
+                    for value in previous_uses_text.split(",")
+                    if value.strip()
+                }
+            )
+        )
+    except ValueError:
+        st.error("Previous use Gameweeks must be comma-separated integers.")
+        return
+    candidates = _load_optimisation_candidates(
+        database,
+        int(latest_run["id"]),
+    )
+    current_ids = frozenset(
+        entry.source_player_id for entry in snapshot.entries
+    )
+    budget_tenths = (
+        sum(entry.selling_price_tenths for entry in snapshot.entries)
+        + snapshot.bank_tenths
+    )
+    try:
+        recommendation = recommend_chip(
+            Chip(chip_name),
+            candidates,
+            gameweek_number=gameweek_number,
+            previous_chip_gameweeks=previous_uses,
+            budget_tenths=budget_tenths,
+            rules=rules,
+            current_player_ids=current_ids,
+            future_opportunity_cost=float(future_opportunity_cost),
+        )
+    except (OptimisationError, ValueError) as error:
+        st.error(str(error))
+        return
+    st.metric(
+        "Expected incremental points",
+        f"{recommendation.expected_incremental_points:.2f}",
+    )
+    st.write(recommendation.explanation)
+    if recommendation.captain_id is not None:
+        captain = next(
+            player
+            for player in candidates
+            if player.source_player_id == recommendation.captain_id
+        )
+        st.caption(f"Captain: {captain.web_name}")
+    if recommendation.squad is not None:
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Player": player.web_name,
+                    "Team": player.team_short_name,
+                    "Position": player.position.value,
+                    "Starter": (
+                        player.source_player_id
+                        in recommendation.squad.starting_player_ids
+                    ),
+                }
+                for player in recommendation.squad.players
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def _inferred_chip_gameweeks(
+    database: HistoricalDatabase,
+    season_code: str,
+    chip_name: str,
+) -> tuple[int, ...]:
+    rows = database.connection.execute(
+        """
+        WITH ranked AS (
+            SELECT gameweeks.number,
+                   manager_snapshots.remaining_chips_json,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY gameweeks.number
+                       ORDER BY datetime(manager_snapshots.captured_at) DESC,
+                                manager_snapshots.id DESC
+                   ) AS snapshot_rank
+            FROM manager_snapshots
+            JOIN seasons ON seasons.id = manager_snapshots.season_id
+            JOIN gameweeks ON gameweeks.id = manager_snapshots.gameweek_id
+            WHERE seasons.code = ?
+        )
+        SELECT number, remaining_chips_json
+        FROM ranked
+        WHERE snapshot_rank = 1
+        ORDER BY number
+        """,
+        (season_code,),
+    ).fetchall()
+    uses = []
+    previous_remaining: int | None = None
+    for row in rows:
+        remaining = int(
+            json.loads(row["remaining_chips_json"]).get(chip_name, 0)
+        )
+        if previous_remaining is not None and remaining < previous_remaining:
+            uses.extend(
+                [int(row["number"])] * (previous_remaining - remaining)
+            )
+        previous_remaining = remaining
+    return tuple(uses)
+
+
 def _weekly_cycle(
     database: HistoricalDatabase,
+    rules: object,
     latest: object,
     available: list[dict],
     season_code: str,
@@ -1002,6 +1171,30 @@ def _weekly_cycle(
     workflow = WeeklyWorkflowRepository(database)
     player_lookup = {row["source_player_id"]: row for row in available}
     with st.expander("News evidence and review", expanded=True):
+        st.caption(
+            "Paste the strict JSON produced by the team-news research prompt. "
+            "Every item enters the human review queue before it can affect projections."
+        )
+        structured_payload = st.text_area(
+            "Structured team-news JSON",
+            value=json.dumps(structured_news_schema(), indent=2),
+            height=180,
+        )
+        if st.button("Import structured news"):
+            try:
+                evidence_ids = ingest_structured_news(
+                    workflow,
+                    season_code=season_code,
+                    gameweek_number=gameweek_number,
+                    payload=structured_payload,
+                )
+            except (ValueError, WorkflowError) as error:
+                st.error(str(error))
+            else:
+                st.success(
+                    f"Added {len(evidence_ids)} item(s) to the review queue."
+                )
+                st.rerun()
         evidence_player = st.selectbox(
             "Affected player",
             ["", *player_lookup],
@@ -1104,6 +1297,88 @@ def _weekly_cycle(
                 except WorkflowError as error:
                     st.error(str(error))
                 else:
+                    st.rerun()
+
+        accepted_adjustments = [
+            row
+            for row in evidence_rows
+            if row["review_status"] == "accepted"
+            and row["expected_minutes_adjustment"] is not None
+        ]
+        if accepted_adjustments and not pending and st.button(
+            "Generate comparable pre-news and final projections",
+            type="primary",
+        ):
+            try:
+                pair = create_news_projection_pair(
+                    database,
+                    rules,
+                    season_code=season_code,
+                    gameweek_number=gameweek_number,
+                )
+            except WorkflowError as error:
+                st.error(str(error))
+            else:
+                st.success(
+                    f"News pair {pair.pair_id} saved: "
+                    f"pre-news run {pair.pre_news_projection_run_id}, "
+                    f"final run {pair.post_news_projection_run_id}."
+                )
+                st.rerun()
+
+        pairs = database.connection.execute(
+            """
+            SELECT pairs.id, pairs.created_at,
+                   pairs.pre_news_projection_run_id,
+                   pairs.post_news_projection_run_id,
+                   evaluations.points_mae_change,
+                   evaluations.minutes_mae_change
+            FROM news_projection_pairs pairs
+            LEFT JOIN news_projection_evaluations evaluations
+              ON evaluations.news_projection_pair_id = pairs.id
+            JOIN seasons ON seasons.id = pairs.season_id
+            JOIN gameweeks ON gameweeks.id = pairs.gameweek_id
+            WHERE seasons.code = ? AND gameweeks.number = ?
+            ORDER BY pairs.id DESC
+            """,
+            (season_code, gameweek_number),
+        ).fetchall()
+        if pairs:
+            st.write("Pre/post-news projection pairs")
+            st.dataframe(
+                pd.DataFrame([dict(row) for row in pairs]),
+                hide_index=True,
+                use_container_width=True,
+            )
+            latest_pair = pairs[0]
+            unfinished = database.connection.execute(
+                """
+                SELECT COUNT(*) FROM fixtures
+                JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                JOIN seasons ON seasons.id = fixtures.season_id
+                WHERE seasons.code = ? AND gameweeks.number = ?
+                  AND fixtures.finished = 0
+                """,
+                (season_code, gameweek_number),
+            ).fetchone()[0]
+            if (
+                latest_pair["points_mae_change"] is None
+                and unfinished == 0
+                and st.button("Evaluate latest news projection pair")
+            ):
+                try:
+                    evaluation = evaluate_news_projection_pair(
+                        database,
+                        int(latest_pair["id"]),
+                    )
+                except WorkflowError as error:
+                    st.error(str(error))
+                else:
+                    st.success(
+                        "News uplift scored. Points MAE change: "
+                        f"{evaluation.points_mae_change:+.4f}; minutes MAE "
+                        f"change: {evaluation.minutes_mae_change:+.4f}."
+                    )
                     st.rerun()
 
     projection = database.connection.execute(
@@ -1265,6 +1540,7 @@ def _data_health(
             pd.DataFrame(
                 {
                     "Model": version.model_version,
+                    "Horizon step": version.horizon_step,
                     "Samples": version.samples,
                     "MAE": version.mean_absolute_error,
                     "Bias": version.bias,
@@ -1280,6 +1556,11 @@ def _data_health(
     st.caption(
         f"Weekly decisions scored: {health.weekly_decisions_scored} · "
         f"MAE: {health.weekly_mean_absolute_error} · Bias: {health.weekly_bias}"
+    )
+    st.caption(
+        f"News pairs scored: {health.news_pairs_scored}; "
+        f"points MAE change: {health.news_points_mae_change}; "
+        f"minutes MAE change: {health.news_minutes_mae_change}"
     )
     latest_backtest = database.connection.execute(
         """

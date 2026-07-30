@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from fpl_engine.assumption_audit import run_assumption_audit
 from fpl_engine.backtest import ProjectionBacktester, load_backtest_report
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
@@ -23,8 +24,15 @@ from fpl_engine.history.records import (
     SeasonRecord,
     TeamRecord,
 )
-from fpl_engine.projections import RatesProjectionModel
-from fpl_engine.tuning import tune_projection_model, tuning_objective
+from fpl_engine.learned_challenger import (
+    train_and_evaluate_learned_challenger,
+)
+from fpl_engine.projections import ProjectionModelConfig, RatesProjectionModel
+from fpl_engine.tuning import (
+    tune_projection_model,
+    tune_projection_model_rolling,
+    tuning_objective,
+)
 
 RULES = load_season_rules(Path("config/seasons/2025-26.json"))
 SOURCE = IngestionSource(
@@ -260,6 +268,64 @@ def test_future_season_results_do_not_leak_into_historical_projection(
         assert after.expected_minutes == before.expected_minutes
         assert after.goal_points == before.goal_points
         assert after.expected_points == before.expected_points
+
+
+def test_assumption_variants_change_recent_and_threshold_scoring(
+    tmp_path,
+) -> None:
+    historical = _historical_bundle()
+    historical = replace(
+        historical,
+        player_seasons=(
+            replace(historical.player_seasons[0], position=Position.DEF),
+        ),
+        fixture_stats=(
+            replace(
+                historical.fixture_stats[0],
+                defensive_contributions=10,
+                penalties_missed=1,
+            ),
+            *historical.fixture_stats[1:],
+        ),
+    )
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, historical)
+        reference = RatesProjectionModel(
+            database,
+            RULES,
+            config=ProjectionModelConfig(
+                player_rate_prior_minutes=90,
+                scoring_recent_evidence_weight=1,
+            ),
+        ).project(
+            season_code="2025-26",
+            start_gameweek=2,
+            horizon_gameweeks=1,
+            persist=False,
+        ).projections[0]
+        corrected = RatesProjectionModel(
+            database,
+            RULES,
+            config=ProjectionModelConfig(
+                player_rate_prior_minutes=90,
+                scoring_recent_evidence_weight=3,
+                defensive_contribution_model="threshold_poisson",
+                include_penalty_events=True,
+            ),
+        ).project(
+            season_code="2025-26",
+            start_gameweek=2,
+            horizon_gameweeks=1,
+            persist=False,
+        ).projections[0]
+
+        assert corrected.goal_points > reference.goal_points
+        assert 0 <= corrected.defensive_contribution_points <= 2
+        assert corrected.defensive_contribution_points < (
+            reference.defensive_contribution_points
+        )
+        assert corrected.deduction_points < reference.deduction_points
 
 
 def test_later_same_season_results_do_not_leak_into_projection(
@@ -644,3 +710,217 @@ def test_tuning_uses_development_then_separate_validation_window(
         )
         assert result.validation_report.origin_gameweek_start == 3
         assert "validation_change" in result.as_dict()
+
+
+def test_rolling_tuning_locks_validation_after_first_inspection(
+    tmp_path,
+) -> None:
+    development = replace(
+        _historical_bundle(),
+        season=SeasonRecord("2024-25", "2024/25"),
+    )
+    storage = f"sqlite:///{(tmp_path / 'tuning.sqlite3').as_posix()}"
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            replace(SCHEDULE_SOURCE, content_sha256="2024-schedule"),
+            _schedule_bundle(development),
+        )
+        database.ingest_bundle(
+            replace(SOURCE, content_sha256="2024-results"),
+            development,
+        )
+        database.ingest_bundle(
+            replace(SCHEDULE_SOURCE, content_sha256="2025-schedule"),
+            _schedule_bundle(_historical_bundle()),
+        )
+        database.ingest_bundle(
+            replace(SOURCE, content_sha256="2025-results"),
+            _historical_bundle(),
+        )
+        result = tune_projection_model_rolling(
+            database,
+            {
+                "2024-25": replace(RULES, season="2024-25"),
+                "2025-26": RULES,
+            },
+            development_seasons=("2024-25",),
+            validation_season="2025-26",
+            origin_gameweek_start=2,
+            origin_gameweek_end=3,
+            trials=1,
+            study_name="rolling-lock-test",
+            storage_url=storage,
+            seed=1,
+        )
+
+        assert result.development_seasons == ("2024-25",)
+        assert result.validation_season == "2025-26"
+        assert result.development_backtest_run_ids["2024-25"] > 0
+        result_dict = result.as_dict()
+        assert result_dict["holdout_locked"] is True
+        assert (
+            result_dict["holdout_selection_locked_before_evaluation"] is True
+        )
+        assert result.development_season_scores["2024-25"] > 0
+        assert result.development_weighted_mean_score == (
+            result.development_worst_season_score
+        )
+        assert result.cross_season_stability_penalty == 0
+        learned = train_and_evaluate_learned_challenger(
+            database,
+            training_run_ids=(
+                result.development_backtest_run_ids["2024-25"],
+            ),
+            validation_run_id=(
+                result.challenger_validation_report.backtest_run_id
+            ),
+            artifact_path=tmp_path / "challenger.joblib",
+            seed=1,
+        )
+        assert learned.baseline.samples > 0
+        assert learned.challenger.samples == learned.baseline.samples
+        assert learned.loss == "absolute_error"
+        assert learned.challenger.captain_regret >= 0
+        assert (tmp_path / "challenger.joblib").exists()
+        assert (tmp_path / "challenger.json").exists()
+
+        import optuna
+
+        interrupted_study = optuna.load_study(
+            study_name="rolling-lock-test",
+            storage=storage,
+        )
+        interrupted_study.set_user_attr("holdout_locked", False)
+        recovered = tune_projection_model_rolling(
+            database,
+            {
+                "2024-25": replace(RULES, season="2024-25"),
+                "2025-26": RULES,
+            },
+            development_seasons=("2024-25",),
+            validation_season="2025-26",
+            origin_gameweek_start=2,
+            origin_gameweek_end=3,
+            trials=2,
+            study_name="rolling-lock-test",
+            storage_url=storage,
+            seed=1,
+        )
+        assert recovered.best_trial_number == result.best_trial_number
+        recovered_study = optuna.load_study(
+            study_name="rolling-lock-test",
+            storage=storage,
+        )
+        assert sum(
+            trial.state.name == "COMPLETE"
+            for trial in recovered_study.trials
+        ) == 1
+
+        with pytest.raises(ValueError, match="already been inspected"):
+            tune_projection_model_rolling(
+                database,
+                {
+                    "2024-25": replace(RULES, season="2024-25"),
+                    "2025-26": RULES,
+                },
+                development_seasons=("2024-25",),
+                validation_season="2025-26",
+                origin_gameweek_start=2,
+                origin_gameweek_end=3,
+                trials=1,
+                study_name="rolling-lock-test",
+                storage_url=storage,
+                seed=1,
+            )
+
+
+def test_assumption_audit_uses_development_folds_only(tmp_path) -> None:
+    first = replace(
+        _historical_bundle(),
+        season=SeasonRecord("2024-25", "2024/25"),
+        fixture_stats=(
+            _historical_bundle().fixture_stats[0],
+            replace(
+                _historical_bundle().fixture_stats[1],
+                total_points=-1,
+            ),
+            _historical_bundle().fixture_stats[2],
+        ),
+    )
+    second = _historical_bundle()
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        for season_code, bundle in (
+            ("2024-25", first),
+            ("2025-26", second),
+        ):
+            database.ingest_bundle(
+                replace(
+                    SCHEDULE_SOURCE,
+                    content_sha256=f"{season_code}-schedule",
+                ),
+                _schedule_bundle(bundle),
+            )
+            database.ingest_bundle(
+                replace(
+                    SOURCE,
+                    content_sha256=f"{season_code}-results",
+                ),
+                bundle,
+            )
+
+        report = run_assumption_audit(
+            database,
+            {
+                "2024-25": replace(RULES, season="2024-25"),
+                "2025-26": RULES,
+            },
+            development_seasons=("2024-25", "2025-26"),
+            origin_gameweek_start=2,
+            origin_gameweek_end=3,
+            output_path=tmp_path / "audit.json",
+            artifact_directory=tmp_path / "models",
+            seed=1,
+        )
+
+        assert len(report.variants) == 5
+        assert len(report.learned_losses) == 3
+        assert {
+            result.estimand for result in report.learned_losses
+        } == {"conditional_median", "conditional_mean"}
+        assert all(
+            len(result.seasons) == 2 for result in report.variants
+        )
+        assert (tmp_path / "audit.json").exists()
+        assert not any(
+            "validation" in limitation.lower()
+            and "previously inspected" not in limitation.lower()
+            for limitation in report.limitations
+        )
+        backtest_count = database.connection.execute(
+            "SELECT COUNT(*) FROM projection_backtest_runs"
+        ).fetchone()[0]
+        rerun = run_assumption_audit(
+            database,
+            {
+                "2024-25": replace(RULES, season="2024-25"),
+                "2025-26": RULES,
+            },
+            development_seasons=("2024-25", "2025-26"),
+            origin_gameweek_start=2,
+            origin_gameweek_end=3,
+            output_path=tmp_path / "audit-rerun.json",
+            artifact_directory=tmp_path / "models-rerun",
+            seed=1,
+        )
+        assert {
+            result.seasons[0].backtest_run_id
+            for result in rerun.variants
+        } == {
+            result.seasons[0].backtest_run_id
+            for result in report.variants
+        }
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM projection_backtest_runs"
+        ).fetchone()[0] == backtest_count

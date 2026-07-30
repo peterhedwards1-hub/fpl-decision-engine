@@ -1,3 +1,5 @@
+from fpl_engine.history.database import HistoricalDatabase
+from fpl_engine.ui.app import _inferred_chip_gameweeks
 from fpl_engine.ui.view import pitch_html
 
 
@@ -31,3 +33,14 @@ def test_pitch_view_escapes_player_names_and_marks_roles() -> None:
     assert '<span class="fpl-role">C</span>' in content
     assert "£7.5m" in content
     assert "Bench" in content
+
+
+def test_chip_history_inference_handles_an_empty_manager_history(tmp_path) -> None:
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+
+        assert _inferred_chip_gameweeks(
+            database,
+            "2026-27",
+            "free_hit",
+        ) == ()

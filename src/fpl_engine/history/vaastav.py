@@ -58,6 +58,7 @@ class VaastavQualityReport:
     fixture_stats: int
     gameweek_observations: int
     skipped_rescheduled_rows: int
+    skipped_non_player_rows: int
     players_without_gameweek_rows: int
 
 
@@ -150,6 +151,12 @@ class VaastavAdapter:
             fixture_rows=fixture_rows,
             gameweek_rows=gameweek_rows,
         )
+        non_player_ids = _non_player_ids(player_rows)
+        skipped_non_player_rows = sum(
+            str(_required_int(row, "element", "Gameweek CSV"))
+            in non_player_ids
+            for row in gameweek_rows
+        )
         digest = hashlib.sha256()
         for path in sorted(fetched):
             digest.update(path.encode("utf-8"))
@@ -167,8 +174,11 @@ class VaastavAdapter:
                 fixture_stats=len(bundle.fixture_stats),
                 gameweek_observations=len(bundle.gameweek_snapshots),
                 skipped_rescheduled_rows=(
-                    len(gameweek_rows) - len(bundle.fixture_stats)
+                    len(gameweek_rows)
+                    - skipped_non_player_rows
+                    - len(bundle.fixture_stats)
                 ),
+                skipped_non_player_rows=skipped_non_player_rows,
                 players_without_gameweek_rows=(
                     len(bundle.players)
                     - len(
@@ -203,12 +213,19 @@ def _build_bundle(
     if len(team_ids) != len(teams):
         raise VaastavImportError("teams.csv contains duplicate team IDs")
 
-    players = tuple(_player_record(row) for row in player_rows)
+    non_player_ids = _non_player_ids(player_rows)
+    footballer_rows = [
+        row
+        for row in player_rows
+        if str(_required_int(row, "id", "players_raw.csv"))
+        not in non_player_ids
+    ]
+    players = tuple(_player_record(row) for row in footballer_rows)
     player_rows_by_id = {
         str(_required_int(row, "id", "players_raw.csv")): row
-        for row in player_rows
+        for row in footballer_rows
     }
-    if len(player_rows_by_id) != len(player_rows):
+    if len(player_rows_by_id) != len(footballer_rows):
         raise VaastavImportError("players_raw.csv contains duplicate player IDs")
 
     fixtures = tuple(_fixture_record(row, team_ids) for row in fixture_rows)
@@ -236,6 +253,12 @@ def _build_bundle(
 
     for row in sorted_gw_rows:
         player_id = str(_required_int(row, "element", "Gameweek CSV"))
+        if player_id in non_player_ids:
+            if _required_text(row, "position", "Gameweek CSV").upper() != "AM":
+                raise VaastavImportError(
+                    f"Non-player element {player_id} has an unexpected position"
+                )
+            continue
         fixture_id = str(_required_int(row, "fixture", "Gameweek CSV"))
         gameweek_number = _required_int(row, "round", "Gameweek CSV")
         if player_id not in player_rows_by_id:
@@ -415,6 +438,19 @@ def _player_record(row: dict[str, str]) -> PlayerRecord:
         official_fpl_code=official_code,
         opta_code=_text(row.get("opta_code")),
     )
+
+
+def _non_player_ids(player_rows: list[dict[str, str]]) -> set[str]:
+    """Return assistant-manager chip elements, which are not footballers."""
+
+    return {
+        str(_required_int(row, "id", "players_raw.csv"))
+        for row in player_rows
+        if _required_text(
+            row, "element_type", "players_raw.csv"
+        ).strip()
+        == "5"
+    }
 
 
 def _fixture_record(

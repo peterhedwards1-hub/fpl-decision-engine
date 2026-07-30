@@ -11,6 +11,10 @@ from fpl_engine.history.database import HistoricalDatabase
 from fpl_engine.history.records import IngestionSource
 from fpl_engine.manager import ManagerStateRepository
 from fpl_engine.model_health import build_model_health_report
+from fpl_engine.news_projection import (
+    create_news_projection_pair,
+    evaluate_news_projection_pair,
+)
 from fpl_engine.projections import RatesProjectionModel
 from fpl_engine.workflow import WeeklyWorkflowRepository, WorkflowError
 
@@ -72,9 +76,16 @@ def test_two_pass_workflow_freezes_final_and_records_outcome(tmp_path) -> None:
             rationale="Reliable training report",
             expected_minutes_adjustment=10,
         )
+        pair = create_news_projection_pair(
+            database,
+            RULES,
+            season_code="2026-27",
+            gameweek_number=1,
+            generated_at=CAPTURED_AT,
+        )
         final_id = workflow.create_decision_run(
             manager_snapshot_id=manager_id,
-            projection_run_id=projection_id,
+            projection_run_id=pair.post_news_projection_run_id,
             mode="final",
             recommendation={"action": "roll", "expected_points": 53.0},
             decision_triggers=("Revisit if absent from squad",),
@@ -89,6 +100,19 @@ def test_two_pass_workflow_freezes_final_and_records_outcome(tmp_path) -> None:
         )
         final = workflow.load(final_id)
         assert final.frozen_at == CAPTURED_AT
+        assert pair.pre_news_projection_run_id != (
+            pair.post_news_projection_run_id
+        )
+        accepted = database.connection.execute(
+            """
+            SELECT original_value, accepted_value
+            FROM news_evidence WHERE id = ?
+            """,
+            (evidence_id,),
+        ).fetchone()
+        assert accepted["accepted_value"] == pytest.approx(
+            min(90, accepted["original_value"] + 10)
+        )
 
         with pytest.raises(
             sqlite3.IntegrityError, match="final weekly decision runs are immutable"
@@ -130,7 +154,20 @@ def test_two_pass_workflow_freezes_final_and_records_outcome(tmp_path) -> None:
             "realised_points": 61.0,
             "score_error": 8.0,
         }
+        database.connection.execute(
+            "UPDATE fixtures SET finished = 1 WHERE gameweek_id = 1"
+        )
+        database.connection.commit()
+        news_evaluation = evaluate_news_projection_pair(
+            database,
+            pair.pair_id,
+            evaluated_at=CAPTURED_AT,
+        )
+        assert news_evaluation.sample_count > 0
+        assert news_evaluation.pair_id == pair.pair_id
         health = build_model_health_report(database, "2026-27")
         assert health.weekly_decisions_scored == 1
         assert health.weekly_mean_absolute_error == 8.0
         assert health.weekly_bias == 8.0
+        assert health.news_pairs_scored == 1
+        assert health.news_points_mae_change is not None

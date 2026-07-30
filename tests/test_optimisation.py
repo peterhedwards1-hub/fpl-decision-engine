@@ -8,6 +8,7 @@ from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
 from fpl_engine.optimisation import (
     CandidatePlayer,
+    _used_outfield_bench_indexes,
     optimise_full_squad,
     optimise_opening_squads,
     optimise_starting_xi,
@@ -122,7 +123,7 @@ def test_full_squad_returns_legal_lineup_bench_and_captaincy() -> None:
     assert result.total_cost_tenths <= 1000
     assert result.gameweek_expected_points > 0
     assert result.expected_bench_contribution >= 0
-    assert "2^15" in result.proof
+    assert "exactly integrates" in result.proof
 
     opening = optimise_opening_squads(
         candidates,
@@ -137,5 +138,62 @@ def test_full_squad_returns_legal_lineup_bench_and_captaincy() -> None:
         player.source_player_id for player in opening.alternatives[0].players
     }
     assert primary_ids != alternative_ids
-    assert "uncertainty" in opening.objective
+    assert "legal-XI" in opening.objective
     assert opening.transfer_triggers
+
+
+def test_full_squad_uses_the_callers_budget_above_initial_team_value() -> None:
+    positions = (
+        *(Position.GK for _ in range(2)),
+        *(Position.DEF for _ in range(5)),
+        *(Position.MID for _ in range(5)),
+        *(Position.FWD for _ in range(3)),
+    )
+    candidates = tuple(
+        CandidatePlayer(
+            source_player_id=str(index),
+            web_name=f"Player {index}",
+            team_id=str((index - 1) % 5 + 1),
+            team_short_name=f"T{(index - 1) % 5 + 1}",
+            position=position,
+            price_tenths=77 if index == 1 else 66,
+            expected_points=30 + index,
+            gameweek_expected_points=2 + index / 10,
+            appearance_probability=1.0,
+        )
+        for index, position in enumerate(positions, start=1)
+    )
+
+    result = optimise_full_squad(
+        candidates,
+        budget_tenths=1001,
+        rules=RULES,
+    )
+
+    assert result.total_cost_tenths == 1001
+
+
+def test_exact_bench_evaluator_skips_an_illegal_higher_priority_substitute() -> None:
+    starter_positions = (
+        *(Position.DEF for _ in range(3)),
+        *(Position.MID for _ in range(4)),
+        *(Position.FWD for _ in range(3)),
+    )
+    bench_positions = (Position.FWD, Position.DEF, Position.MID)
+    # One starting defender is absent and all three substitutes play. The
+    # first bench player cannot enter because that would leave only two
+    # defenders, so the second substitute must be used.
+    outcomes = (
+        False,
+        *(True for _ in range(9)),
+        True,
+        True,
+        True,
+    )
+
+    assert _used_outfield_bench_indexes(
+        starter_positions,
+        bench_positions,
+        outcomes,
+        RULES,
+    ) == (1,)

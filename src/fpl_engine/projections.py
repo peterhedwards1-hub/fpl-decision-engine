@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -12,7 +12,9 @@ from .config import SeasonRules
 from .domain import Position
 from .history.database import HistoricalDatabase
 
-MODEL_VERSION = "rates-two-stage-v2"
+MODEL_VERSION = "rates-rules-corrected-v4"
+TUNED_V3_MODEL_VERSION = "rates-two-stage-v3"
+BASELINE_V2_MODEL_VERSION = "rates-two-stage-v2"
 LEGACY_MODEL_VERSION = "rates-baseline-v1"
 POSITION_PRIORS: dict[Position, dict[str, float]] = {
     Position.GK: {
@@ -26,6 +28,8 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
         "yellow_cards": 0.04,
         "red_cards": 0.002,
         "own_goals": 0.002,
+        "penalties_saved": 0.01,
+        "penalties_missed": 0.0,
     },
     Position.DEF: {
         "minutes": 68.0,
@@ -38,6 +42,8 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
         "yellow_cards": 0.16,
         "red_cards": 0.008,
         "own_goals": 0.010,
+        "penalties_saved": 0.0,
+        "penalties_missed": 0.002,
     },
     Position.MID: {
         "minutes": 66.0,
@@ -50,6 +56,8 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
         "yellow_cards": 0.14,
         "red_cards": 0.006,
         "own_goals": 0.003,
+        "penalties_saved": 0.0,
+        "penalties_missed": 0.01,
     },
     Position.FWD: {
         "minutes": 64.0,
@@ -62,7 +70,16 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
         "yellow_cards": 0.13,
         "red_cards": 0.006,
         "own_goals": 0.002,
+        "penalties_saved": 0.0,
+        "penalties_missed": 0.015,
     },
+}
+
+DEFENSIVE_CONTRIBUTION_COUNT_PRIORS: dict[Position, float] = {
+    Position.GK: 0.0,
+    Position.DEF: 7.0,
+    Position.MID: 5.0,
+    Position.FWD: 3.0,
 }
 
 MINUTES_PRIORS: dict[Position, dict[str, float]] = {
@@ -102,6 +119,10 @@ class ProjectionModelConfig:
     conditional_minutes_prior_appearances: float = 2.0
     team_minutes_per_fixture: float = 990.0
     enforce_team_minutes: bool = True
+    minutes_allocation: str = "team_total"
+    scoring_recent_evidence_weight: float = 1.0
+    defensive_contribution_model: str = "legacy_linear"
+    include_penalty_events: bool = False
 
     def __post_init__(self) -> None:
         if self.player_rate_prior_minutes <= 0:
@@ -136,9 +157,70 @@ class ProjectionModelConfig:
             )
         if self.team_minutes_per_fixture <= 0:
             raise ValueError("Team minutes per fixture must be positive")
+        if self.minutes_allocation not in {
+            "team_total",
+            "position_aware",
+        }:
+            raise ValueError(
+                "Minutes allocation must be 'team_total' or "
+                "'position_aware'"
+            )
+        if self.scoring_recent_evidence_weight < 1:
+            raise ValueError(
+                "Recent scoring evidence weight cannot be below one"
+            )
+        if self.defensive_contribution_model not in {
+            "legacy_linear",
+            "threshold_poisson",
+        }:
+            raise ValueError(
+                "Defensive contribution model must be 'legacy_linear' "
+                "or 'threshold_poisson'"
+            )
 
 
-DEFAULT_MODEL_CONFIG = ProjectionModelConfig()
+BASELINE_V2_MODEL_CONFIG = ProjectionModelConfig()
+TUNED_V3_MODEL_CONFIG = ProjectionModelConfig(
+    player_rate_prior_minutes=1776.650037050099,
+    minutes_prior_matches=6.0,
+    team_prior_matches=11.870184562035677,
+    home_attack_multiplier=1.0680722197944925,
+    away_attack_multiplier=0.8512934695622035,
+    minimum_team_multiplier=0.6,
+    maximum_team_multiplier=1.5,
+    minutes_model="two_stage",
+    recent_gameweeks=4,
+    recent_evidence_weight=1.845760710001814,
+    appearance_prior_matches=3.2516466478759654,
+    appearance_prior_probability=0.4044943812940328,
+    conditional_minutes_prior_appearances=1.248676119370052,
+    team_minutes_per_fixture=990.0,
+    enforce_team_minutes=True,
+)
+CORRECTED_V4_MODEL_CONFIG = replace(
+    TUNED_V3_MODEL_CONFIG,
+    defensive_contribution_model="threshold_poisson",
+    include_penalty_events=True,
+)
+DEFAULT_MODEL_CONFIG = CORRECTED_V4_MODEL_CONFIG
+
+ROBUST_V4_MODEL_CONFIG = ProjectionModelConfig(
+    player_rate_prior_minutes=2761.331925036367,
+    minutes_prior_matches=6.0,
+    team_prior_matches=19.355921510454394,
+    home_attack_multiplier=1.1440792800906638,
+    away_attack_multiplier=0.9884699819036712,
+    minimum_team_multiplier=0.6,
+    maximum_team_multiplier=1.5,
+    minutes_model="two_stage",
+    recent_gameweeks=6,
+    recent_evidence_weight=3.4024319691135294,
+    appearance_prior_matches=3.2594648781387656,
+    appearance_prior_probability=0.5517557096047864,
+    conditional_minutes_prior_appearances=1.352415949352844,
+    team_minutes_per_fixture=990.0,
+    enforce_team_minutes=True,
+)
 
 
 @dataclass(frozen=True)
@@ -166,6 +248,8 @@ class PlayerGameweekProjection:
     gameweek_number: int
     fixture_count: int
     expected_minutes: float
+    appearance_probability: float
+    sixty_probability: float
     appearance_points: float
     goal_points: float
     assist_points: float
@@ -236,10 +320,15 @@ class RatesProjectionModel:
         ).fetchone()
         if season is None:
             raise ValueError(f"Season {season_code!r} is not available")
+        source_ingestion_run_id = self._resolve_source_ingestion_run_id(
+            generated,
+            fixture_max_ingestion_run_id,
+        )
         players = self._players(
             season_code,
             start_gameweek,
             observation_mode=observation_mode,
+            maximum_ingestion_run_id=source_ingestion_run_id,
         )
         self._prepare_minutes(players, use_availability=use_availability)
         fixtures = self._fixtures(
@@ -247,14 +336,14 @@ class RatesProjectionModel:
             start_gameweek,
             horizon_gameweeks,
             as_of=fixture_as_of,
-            maximum_ingestion_run_id=fixture_max_ingestion_run_id,
+            maximum_ingestion_run_id=source_ingestion_run_id,
         )
         strengths = self._team_strengths(
             season_code,
             start_gameweek,
             team_overrides,
             as_of=fixture_as_of,
-            maximum_ingestion_run_id=fixture_max_ingestion_run_id,
+            maximum_ingestion_run_id=source_ingestion_run_id,
         )
         override_lookup = {
             (override.source_player_id, override.gameweek_number): override
@@ -281,6 +370,7 @@ class RatesProjectionModel:
                 projections=projections,
                 strengths=strengths,
                 observation_mode=observation_mode,
+                source_ingestion_run_id=source_ingestion_run_id,
             )
             if persist
             else None
@@ -296,12 +386,48 @@ class RatesProjectionModel:
             model_config=self.config,
         )
 
+    def _resolve_source_ingestion_run_id(
+        self,
+        generated_at: datetime,
+        requested_run_id: int | None,
+    ) -> int:
+        if requested_run_id is not None:
+            row = self.database.connection.execute(
+                """
+                SELECT id FROM ingestion_runs
+                WHERE id = ? AND status = 'completed'
+                """,
+                (requested_run_id,),
+            ).fetchone()
+        else:
+            row = self.database.connection.execute(
+                """
+                SELECT id FROM ingestion_runs
+                WHERE status = 'completed'
+                  AND datetime(retrieved_at) <= datetime(?)
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (generated_at.astimezone(UTC).isoformat(),),
+            ).fetchone()
+        if row is None:
+            qualifier = (
+                f" {requested_run_id}"
+                if requested_run_id is not None
+                else f" as of {generated_at.astimezone(UTC).isoformat()}"
+            )
+            raise ValueError(
+                f"No completed projection source ingestion run{qualifier}"
+            )
+        return int(row["id"])
+
     def _players(
         self,
         season_code: str,
         start_gameweek: int,
         *,
         observation_mode: str,
+        maximum_ingestion_run_id: int | None,
     ) -> list[dict[str, Any]]:
         observation_filter = {
             "latest_available": "1 = 1",
@@ -339,9 +465,15 @@ class RatesProjectionModel:
                                observations.id DESC
                        ) AS observation_rank
                 FROM player_gameweek_observations observations
+                JOIN ingestion_runs observation_runs
+                  ON observation_runs.id = observations.provenance_run_id
                 JOIN gameweeks ON gameweeks.id = observations.gameweek_id
                 JOIN seasons ON seasons.id = gameweeks.season_id
                 WHERE seasons.code = ? AND gameweeks.number <= ?
+                  AND (
+                      ? IS NULL
+                      OR observation_runs.id <= ?
+                  )
                   AND {observation_filter}
             ),
             career AS (
@@ -360,10 +492,16 @@ class RatesProjectionModel:
                            AS defensive_contributions,
                        COALESCE(SUM(stats.yellow_cards), 0) AS yellow_cards,
                        COALESCE(SUM(stats.red_cards), 0) AS red_cards,
-                       COALESCE(SUM(stats.own_goals), 0) AS own_goals
+                       COALESCE(SUM(stats.own_goals), 0) AS own_goals,
+                       COALESCE(SUM(stats.penalties_saved), 0)
+                           AS penalties_saved,
+                       COALESCE(SUM(stats.penalties_missed), 0)
+                           AS penalties_missed
                 FROM player_seasons current_ps
                 JOIN player_seasons history_ps
                   ON history_ps.player_id = current_ps.player_id
+                 AND history_ps.identifier_namespace =
+                     current_ps.identifier_namespace
                 LEFT JOIN player_fixture_stats stats
                   ON stats.player_season_id = history_ps.id
                  AND stats.fixture_id IN (
@@ -388,7 +526,25 @@ class RatesProjectionModel:
                            AS recent_appearances,
                        COALESCE(SUM(stats.minutes >= 60), 0)
                            AS recent_sixty_appearances,
-                       COALESCE(SUM(stats.minutes), 0) AS recent_minutes
+                       COALESCE(SUM(stats.minutes), 0) AS recent_minutes,
+                       COALESCE(SUM(stats.goals), 0) AS recent_goals,
+                       COALESCE(SUM(stats.assists), 0) AS recent_assists,
+                       COALESCE(SUM(stats.clean_sheet), 0)
+                           AS recent_clean_sheets,
+                       COALESCE(SUM(stats.saves), 0) AS recent_saves,
+                       COALESCE(SUM(stats.bonus), 0) AS recent_bonus,
+                       COALESCE(SUM(stats.defensive_contributions), 0)
+                           AS recent_defensive_contributions,
+                       COALESCE(SUM(stats.yellow_cards), 0)
+                           AS recent_yellow_cards,
+                       COALESCE(SUM(stats.red_cards), 0)
+                           AS recent_red_cards,
+                       COALESCE(SUM(stats.own_goals), 0)
+                           AS recent_own_goals,
+                       COALESCE(SUM(stats.penalties_saved), 0)
+                           AS recent_penalties_saved,
+                       COALESCE(SUM(stats.penalties_missed), 0)
+                           AS recent_penalties_missed
                 FROM player_seasons current_ps
                 JOIN seasons current_seasons
                   ON current_seasons.id = current_ps.season_id
@@ -414,10 +570,19 @@ class RatesProjectionModel:
                    career.sixty_appearances, career.minutes,
                    recent.recent_matches, recent.recent_appearances,
                    recent.recent_sixty_appearances, recent.recent_minutes,
+                   recent.recent_goals, recent.recent_assists,
+                   recent.recent_clean_sheets, recent.recent_saves,
+                   recent.recent_bonus,
+                   recent.recent_defensive_contributions,
+                   recent.recent_yellow_cards, recent.recent_red_cards,
+                   recent.recent_own_goals,
+                   recent.recent_penalties_saved,
+                   recent.recent_penalties_missed,
                    career.goals, career.assists,
                    career.clean_sheets, career.saves, career.bonus,
                    career.defensive_contributions, career.yellow_cards,
-                   career.red_cards, career.own_goals
+                   career.red_cards, career.own_goals,
+                   career.penalties_saved, career.penalties_missed
             FROM player_seasons ps
             JOIN seasons ON seasons.id = ps.season_id
             JOIN players ON players.id = ps.player_id
@@ -434,6 +599,8 @@ class RatesProjectionModel:
             (
                 season_code,
                 start_gameweek,
+                maximum_ingestion_run_id,
+                maximum_ingestion_run_id,
                 season_code,
                 season_code,
                 start_gameweek,
@@ -798,17 +965,41 @@ class RatesProjectionModel:
                 player
             )
         for team_players in players_by_team.values():
-            allocations = _allocate_capped_minutes(
-                [
-                    float(player["_expected_minutes_per_fixture"])
-                    for player in team_players
-                ],
-                target=self.config.team_minutes_per_fixture,
-                cap=90.0,
+            allocation_groups = (
+                (
+                    (
+                        player
+                        for player in team_players
+                        if player["position"] == Position.GK.value
+                    ),
+                    90.0,
+                ),
+                (
+                    (
+                        player
+                        for player in team_players
+                        if player["position"] != Position.GK.value
+                    ),
+                    self.config.team_minutes_per_fixture - 90.0,
+                ),
+            ) if self.config.minutes_allocation == "position_aware" else (
+                (iter(team_players), self.config.team_minutes_per_fixture),
             )
-            for player, expected_minutes in zip(
-                team_players, allocations, strict=True
-            ):
+            reconciled: list[tuple[dict[str, Any], float]] = []
+            for group, target in allocation_groups:
+                group_players = list(group)
+                allocations = _allocate_capped_minutes(
+                    [
+                        float(player["_expected_minutes_per_fixture"])
+                        for player in group_players
+                    ],
+                    target=target,
+                    cap=90.0,
+                )
+                reconciled.extend(
+                    zip(group_players, allocations, strict=True)
+                )
+            for player, expected_minutes in reconciled:
                 conditional_minutes = float(
                     player["_conditional_minutes"]
                 )
@@ -854,13 +1045,36 @@ class RatesProjectionModel:
             "yellow_cards",
             "red_cards",
             "own_goals",
+            "penalties_saved",
+            "penalties_missed",
+        )
+        recent_scoring_extra = (
+            self.config.scoring_recent_evidence_weight - 1.0
+        )
+        scoring_sample_minutes = (
+            sample_minutes
+            + recent_scoring_extra * float(player["recent_minutes"])
         )
         rates = {
             name: (
-                float(player[name]) * 90.0
-                + prior[name] * prior_minutes
+                (
+                    float(player[name])
+                    + recent_scoring_extra
+                    * float(player[f"recent_{name}"])
+                )
+                * 90.0
+                + (
+                    DEFENSIVE_CONTRIBUTION_COUNT_PRIORS[position]
+                    if (
+                        name == "defensive_contributions"
+                        and self.config.defensive_contribution_model
+                        == "threshold_poisson"
+                    )
+                    else prior[name]
+                )
+                * prior_minutes
             )
-            / (sample_minutes + prior_minutes)
+            / (scoring_sample_minutes + prior_minutes)
             for name in rate_names
         }
         projections = []
@@ -968,9 +1182,42 @@ class RatesProjectionModel:
                     * minute_factor
                     / self.rules.scoring.saves_per_point
                 )
-                components["defensive"] += (
-                    rates["defensive_contributions"] * minute_factor
-                )
+                if (
+                    self.config.defensive_contribution_model
+                    == "threshold_poisson"
+                ):
+                    contribution_threshold = (
+                        self.rules.scoring
+                        .defensive_contribution_thresholds[position.value]
+                    )
+                    contribution_lambda = (
+                        rates["defensive_contributions"]
+                        * conditional_minutes
+                        / 90.0
+                    )
+                    components["defensive"] += (
+                        fixture_appearance_probability
+                        * _poisson_at_least(
+                            contribution_lambda,
+                            contribution_threshold,
+                        )
+                        * self.rules.scoring.defensive_contribution_points
+                    )
+                else:
+                    components["defensive"] += (
+                        rates["defensive_contributions"] * minute_factor
+                    )
+                if self.config.include_penalty_events:
+                    components["save"] += (
+                        rates["penalties_saved"]
+                        * minute_factor
+                        * self.rules.scoring.penalty_save
+                    )
+                    components["deduction"] += (
+                        rates["penalties_missed"]
+                        * minute_factor
+                        * self.rules.scoring.penalty_miss
+                    )
                 components["bonus"] += rates["bonus"] * minute_factor
                 components["deduction"] -= (
                     rates["yellow_cards"] * minute_factor
@@ -978,9 +1225,28 @@ class RatesProjectionModel:
                     + 2.0 * rates["own_goals"] * minute_factor
                 )
                 if position in (Position.GK, Position.DEF):
-                    components["deduction"] -= (
-                        opponent_lambda / 2.0
-                    ) * sixty_factor
+                    if self.config.minutes_model == "two_stage":
+                        conceded_lambda = (
+                            opponent_lambda * conditional_minutes / 90.0
+                        )
+                        expected_conceded_pairs = (
+                            fixture_appearance_probability
+                            * _poisson_expected_complete_pairs(
+                                conceded_lambda
+                            )
+                        )
+                    else:
+                        expected_conceded_pairs = (
+                            _poisson_expected_complete_pairs(
+                                opponent_lambda * minute_factor
+                            )
+                        )
+                    components["deduction"] += (
+                        expected_conceded_pairs
+                        * self.rules.scoring.goals_conceded_per_two[
+                            position.value
+                        ]
+                    )
                 fixture_notes.append(
                     f"{'home' if is_home else 'away'} fixture factor "
                     f"{scoring_factor:.2f}"
@@ -1009,6 +1275,20 @@ class RatesProjectionModel:
                     gameweek_number=gameweek,
                     fixture_count=fixture_count,
                     expected_minutes=round(expected_minutes, 2),
+                    appearance_probability=round(
+                        1.0
+                        - (
+                            1.0 - fixture_appearance_probability
+                        )
+                        ** fixture_count,
+                        6,
+                    ),
+                    sixty_probability=round(
+                        1.0
+                        - (1.0 - fixture_sixty_probability)
+                        ** fixture_count,
+                        6,
+                    ),
                     appearance_points=round(components["appearance"], 3),
                     goal_points=round(components["goal"], 3),
                     assist_points=round(components["assist"], 3),
@@ -1037,13 +1317,27 @@ class RatesProjectionModel:
         projections: tuple[PlayerGameweekProjection, ...],
         strengths: dict[str, dict[str, float]],
         observation_mode: str,
+        source_ingestion_run_id: int | None,
     ) -> int:
-        source_run = self.database.connection.execute(
-            """
-            SELECT id FROM ingestion_runs WHERE status = 'completed'
-            ORDER BY retrieved_at DESC, id DESC LIMIT 1
-            """
-        ).fetchone()
+        source_run = (
+            self.database.connection.execute(
+                "SELECT id FROM ingestion_runs WHERE id = ? AND status = 'completed'",
+                (source_ingestion_run_id,),
+            ).fetchone()
+            if source_ingestion_run_id is not None
+            else self.database.connection.execute(
+                """
+                SELECT id FROM ingestion_runs
+                WHERE status = 'completed' AND datetime(retrieved_at) <= datetime(?)
+                ORDER BY datetime(retrieved_at) DESC, id DESC LIMIT 1
+                """,
+                (generated_at.astimezone(UTC).isoformat(),),
+            ).fetchone()
+        )
+        if source_ingestion_run_id is not None and source_run is None:
+            raise ValueError(
+                "Projection source ingestion run is missing or incomplete"
+            )
         assumptions = {
             "position_priors": POSITION_PRIORS,
             "team_strengths": strengths,
@@ -1085,12 +1379,13 @@ class RatesProjectionModel:
                 """
                 INSERT INTO player_gameweek_projections (
                     projection_run_id, player_season_id, gameweek_number,
-                    expected_minutes, appearance_points, goal_points,
+                    expected_minutes, appearance_probability,
+                    sixty_probability, appearance_points, goal_points,
                     assist_points, clean_sheet_points, save_points,
                     defensive_contribution_points, bonus_points,
                     deduction_points, expected_points, uncertainty,
                     assumptions_json, override_rationale
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     (
@@ -1098,6 +1393,8 @@ class RatesProjectionModel:
                         player_season_ids[projection.source_player_id],
                         projection.gameweek_number,
                         projection.expected_minutes,
+                        projection.appearance_probability,
+                        projection.sixty_probability,
                         projection.appearance_points,
                         projection.goal_points,
                         projection.assist_points,
@@ -1138,9 +1435,10 @@ def projection_totals(
         )
         row["expected_minutes"] += projection.expected_minutes
         row["expected_points"] += projection.expected_points
-        row["uncertainty"] = math.sqrt(
-            row["uncertainty"] ** 2 + projection.uncertainty**2
-        )
+        # Horizon errors for one player are persistent and correlated. Adding
+        # the disclosed per-Gameweek uncertainty avoids the unjustified
+        # independence assumption implicit in root-sum-of-squares.
+        row["uncertainty"] += projection.uncertainty
     for row in totals.values():
         row["expected_minutes"] = round(row["expected_minutes"], 1)
         row["expected_points"] = round(row["expected_points"], 2)
@@ -1197,6 +1495,29 @@ def _allocate_capped_minutes(
             remaining -= cap
         active -= capped
     return allocations
+
+
+def _poisson_at_least(rate: float, threshold: int) -> float:
+    """Return P(X >= threshold) for a Poisson count without SciPy."""
+
+    if threshold <= 0:
+        return 1.0
+    if rate <= 0 or threshold >= 1000:
+        return 0.0
+    probability = math.exp(-rate)
+    cumulative = probability
+    for count in range(1, threshold):
+        probability *= rate / count
+        cumulative += probability
+    return _clamp(1.0 - cumulative, 0.0, 1.0)
+
+
+def _poisson_expected_complete_pairs(rate: float) -> float:
+    """Return E[floor(X / 2)] for a Poisson-distributed goal count."""
+
+    if rate <= 0:
+        return 0.0
+    return rate / 2.0 - (1.0 - math.exp(-2.0 * rate)) / 4.0
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:

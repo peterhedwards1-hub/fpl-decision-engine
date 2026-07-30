@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import product
+from itertools import combinations, product
 
 from .config import SeasonRules
 from .domain import Player, Position, Squad
-from .rules import resolve_automatic_substitutions, validate_squad
+from .rules import validate_squad
 
 
 class OptimisationError(RuntimeError):
     """Raised when no proven optimal solution can be produced."""
+
+
+@dataclass(frozen=True)
+class GameweekPlayerValue:
+    gameweek_number: int
+    expected_points: float
+    appearance_probability: float = 1.0
+    sixty_probability: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -27,6 +35,7 @@ class CandidatePlayer:
     appearance_probability: float = 1.0
     uncertainty: float = 0.0
     residual_value: float = 0.0
+    gameweek_values: tuple[GameweekPlayerValue, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -94,17 +103,12 @@ def optimise_starting_xi(
         )
         for index, player in enumerate(ordered)
     }
-    # Expected points dominate by six orders of magnitude. The smaller terms
-    # make equally projected solutions prefer lower cost, then stable ID order.
-    problem += pulp.lpSum(
+    primary_objective = pulp.lpSum(
         selected[player.source_player_id]
-        * (
-            round(player.expected_points, 6) * 1_000_000
-            - player.price_tenths * 0.001
-            - index * 0.000001
-        )
-        for index, player in enumerate(ordered)
+        * round(player.expected_points, 6)
+        for player in ordered
     )
+    problem += primary_objective
     problem += (
         pulp.lpSum(selected.values()) == rules.squad.starting_size,
         "starting_size",
@@ -142,11 +146,41 @@ def optimise_starting_xi(
             f"club_{team_id}_limit",
         )
 
-    status_code = problem.solve(pulp.PULP_CBC_CMD(msg=False))
+    solver = pulp.PULP_CBC_CMD(msg=False)
+    status_code = problem.solve(solver)
     status = pulp.LpStatus[status_code]
     if status != "Optimal":
         raise OptimisationError(
             f"Starting-XI optimisation did not prove an optimum: {status}"
+        )
+    primary_optimum = float(pulp.value(primary_objective))
+    problem += primary_objective >= primary_optimum - 1e-7
+    cost_objective = pulp.lpSum(
+        selected[player.source_player_id] * player.price_tenths
+        for player in ordered
+    )
+    problem.sense = pulp.LpMinimize
+    problem.setObjective(cost_objective)
+    status_code = problem.solve(solver)
+    status = pulp.LpStatus[status_code]
+    if status != "Optimal":
+        raise OptimisationError(
+            "Starting-XI cost tie-break did not prove an optimum: "
+            f"{status}"
+        )
+    minimum_cost = round(float(pulp.value(cost_objective)))
+    problem += cost_objective == minimum_cost
+    stable_order_objective = pulp.lpSum(
+        selected[player.source_player_id] * index
+        for index, player in enumerate(ordered)
+    )
+    problem.setObjective(stable_order_objective)
+    status_code = problem.solve(solver)
+    status = pulp.LpStatus[status_code]
+    if status != "Optimal":
+        raise OptimisationError(
+            "Starting-XI deterministic tie-break did not prove an optimum: "
+            f"{status}"
         )
     chosen = tuple(
         player
@@ -213,42 +247,49 @@ def optimise_full_squad(
         )
         for index, player in enumerate(ordered)
     }
-    starter_vars = {
-        player.source_player_id: pulp.LpVariable(
-            f"starter_{index}", cat=pulp.LpBinary
+    gameweeks = _optimisation_gameweeks(ordered)
+    values = {
+        (gameweek, player.source_player_id): _value_for_gameweek(
+            player, gameweek
         )
+        for gameweek in gameweeks
+        for player in ordered
+    }
+    starter_vars = {
+        (gameweek, player.source_player_id): pulp.LpVariable(
+            f"starter_{gameweek}_{index}", cat=pulp.LpBinary
+        )
+        for gameweek in gameweeks
         for index, player in enumerate(ordered)
     }
     captain_vars = {
-        player.source_player_id: pulp.LpVariable(
-            f"captain_{index}", cat=pulp.LpBinary
+        (gameweek, player.source_player_id): pulp.LpVariable(
+            f"captain_{gameweek}_{index}", cat=pulp.LpBinary
         )
+        for gameweek in gameweeks
         for index, player in enumerate(ordered)
     }
     vice_vars = {
-        player.source_player_id: pulp.LpVariable(
-            f"vice_{index}", cat=pulp.LpBinary
+        (gameweek, player.source_player_id): pulp.LpVariable(
+            f"vice_{gameweek}_{index}", cat=pulp.LpBinary
         )
+        for gameweek in gameweeks
         for index, player in enumerate(ordered)
     }
+    # The primary objective is expected FPL points from a legal XI plus its
+    # captain in every projected Gameweek. Uncertainty, bank and terminal
+    # heuristics are reported separately rather than silently priced.
     problem += pulp.lpSum(
-        squad_vars[player.source_player_id]
-        * _robust_horizon_value(player)
-        * 0.15
-        + starter_vars[player.source_player_id]
-        * _gameweek_points(player)
-        * 0.85
-        + captain_vars[player.source_player_id] * _gameweek_points(player)
-        + vice_vars[player.source_player_id] * _gameweek_points(player) * 0.05
+        starter_vars[(gameweek, player.source_player_id)]
+        * values[(gameweek, player.source_player_id)].expected_points
+        + captain_vars[(gameweek, player.source_player_id)]
+        * values[(gameweek, player.source_player_id)].expected_points
+        for gameweek in gameweeks
         for player in ordered
     )
     problem += (
         pulp.lpSum(squad_vars.values()) == rules.squad.squad_size,
         "squad_size",
-    )
-    problem += (
-        pulp.lpSum(starter_vars.values()) == rules.squad.starting_size,
-        "starting_size",
     )
     problem += (
         pulp.lpSum(
@@ -258,34 +299,57 @@ def optimise_full_squad(
         <= budget_tenths,
         "budget",
     )
-    problem += (pulp.lpSum(captain_vars.values()) == 1, "one_captain")
-    problem += (pulp.lpSum(vice_vars.values()) == 1, "one_vice")
-    for player in ordered:
-        player_id = player.source_player_id
+    for gameweek in gameweeks:
         problem += (
-            starter_vars[player_id] <= squad_vars[player_id],
-            f"starter_in_squad_{player_id}",
+            pulp.lpSum(
+                starter_vars[(gameweek, player.source_player_id)]
+                for player in ordered
+            )
+            == rules.squad.starting_size,
+            f"starting_size_{gameweek}",
         )
         problem += (
-            captain_vars[player_id] <= starter_vars[player_id],
-            f"captain_starts_{player_id}",
+            pulp.lpSum(
+                captain_vars[(gameweek, player.source_player_id)]
+                for player in ordered
+            )
+            == 1,
+            f"one_captain_{gameweek}",
         )
         problem += (
-            vice_vars[player_id] <= starter_vars[player_id],
-            f"vice_starts_{player_id}",
+            pulp.lpSum(
+                vice_vars[(gameweek, player.source_player_id)]
+                for player in ordered
+            )
+            == 1,
+            f"one_vice_{gameweek}",
         )
-        problem += (
-            captain_vars[player_id] + vice_vars[player_id] <= 1,
-            f"roles_distinct_{player_id}",
-        )
+        for player in ordered:
+            player_id = player.source_player_id
+            problem += (
+                starter_vars[(gameweek, player_id)]
+                <= squad_vars[player_id],
+                f"starter_in_squad_{gameweek}_{player_id}",
+            )
+            problem += (
+                captain_vars[(gameweek, player_id)]
+                <= starter_vars[(gameweek, player_id)],
+                f"captain_starts_{gameweek}_{player_id}",
+            )
+            problem += (
+                vice_vars[(gameweek, player_id)]
+                <= starter_vars[(gameweek, player_id)],
+                f"vice_starts_{gameweek}_{player_id}",
+            )
+            problem += (
+                captain_vars[(gameweek, player_id)]
+                + vice_vars[(gameweek, player_id)]
+                <= 1,
+                f"roles_distinct_{gameweek}_{player_id}",
+            )
     for position in Position:
         squad_position_total = pulp.lpSum(
             squad_vars[player.source_player_id]
-            for player in ordered
-            if player.position == position
-        )
-        starter_position_total = pulp.lpSum(
-            starter_vars[player.source_player_id]
             for player in ordered
             if player.position == position
         )
@@ -293,14 +357,22 @@ def optimise_full_squad(
             squad_position_total == rules.squad.position_counts[position.value],
             f"squad_{position.value}",
         )
-        problem += (
-            starter_position_total >= rules.squad.formation_min[position.value],
-            f"starter_{position.value}_minimum",
-        )
-        problem += (
-            starter_position_total <= rules.squad.formation_max[position.value],
-            f"starter_{position.value}_maximum",
-        )
+        for gameweek in gameweeks:
+            starter_position_total = pulp.lpSum(
+                starter_vars[(gameweek, player.source_player_id)]
+                for player in ordered
+                if player.position == position
+            )
+            problem += (
+                starter_position_total
+                >= rules.squad.formation_min[position.value],
+                f"starter_{gameweek}_{position.value}_minimum",
+            )
+            problem += (
+                starter_position_total
+                <= rules.squad.formation_max[position.value],
+                f"starter_{gameweek}_{position.value}_maximum",
+            )
     for team_id in sorted({player.team_id for player in ordered}):
         problem += (
             pulp.lpSum(
@@ -331,20 +403,39 @@ def optimise_full_squad(
         for player in ordered
         if (squad_vars[player.source_player_id].value() or 0) > 0.5
     )
+    current_gameweek = gameweeks[0]
     starter_ids = frozenset(
         player.source_player_id
         for player in selected
-        if (starter_vars[player.source_player_id].value() or 0) > 0.5
+        if (
+            starter_vars[
+                (current_gameweek, player.source_player_id)
+            ].value()
+            or 0
+        )
+        > 0.5
     )
     captain_id = next(
         player.source_player_id
         for player in selected
-        if (captain_vars[player.source_player_id].value() or 0) > 0.5
+        if (
+            captain_vars[
+                (current_gameweek, player.source_player_id)
+            ].value()
+            or 0
+        )
+        > 0.5
     )
     vice_id = next(
         player.source_player_id
         for player in selected
-        if (vice_vars[player.source_player_id].value() or 0) > 0.5
+        if (
+            vice_vars[
+                (current_gameweek, player.source_player_id)
+            ].value()
+            or 0
+        )
+        > 0.5
     )
     bench = _ordered_bench(selected, starter_ids)
     expected, bench_contribution, captain_contribution = _expected_weekly_score(
@@ -358,7 +449,7 @@ def optimise_full_squad(
     squad = _domain_squad(
         selected, starter_ids, bench, captain_id, vice_id
     )
-    errors = validate_squad(squad, rules)
+    errors = validate_squad(squad, rules, check_budget=False)
     if errors:
         raise OptimisationError(
             "Solver returned an invalid squad: "
@@ -372,16 +463,26 @@ def optimise_full_squad(
         vice_captain_id=vice_id,
         total_cost_tenths=sum(player.price_tenths for player in selected),
         horizon_expected_points=round(
-            sum(player.expected_points for player in selected), 3
+            sum(
+                values[(gameweek, player.source_player_id)].expected_points
+                * (
+                    (starter_vars[(gameweek, player.source_player_id)].value() or 0)
+                    + (captain_vars[(gameweek, player.source_player_id)].value() or 0)
+                )
+                for gameweek in gameweeks
+                for player in selected
+            ),
+            3,
         ),
         gameweek_expected_points=round(expected, 3),
         expected_bench_contribution=round(bench_contribution, 3),
         expected_captain_contribution=round(captain_contribution, 3),
         solver_status=status,
         proof=(
-            "CBC returned Optimal for the full-squad surrogate objective; "
-            "the reported weekly value then enumerates all 2^15 player "
-            "appearance outcomes with legal autosubs."
+            "CBC returned Optimal for the projected multi-Gameweek legal-XI "
+            "and captain objective; "
+            "the reported weekly value exactly integrates independent player "
+            "appearance outcomes with legal autosubs and captain fallback."
         ),
     )
 
@@ -433,13 +534,12 @@ def optimise_opening_squads(
         primary=primary,
         alternatives=tuple(results[1:]),
         objective=(
-            "Eight-Gameweek projected value with uncertainty penalty, "
-            "residual value, Gameweek 1 lineup, captaincy and bench resilience"
+            "Projected legal-XI and captain points across every Gameweek in "
+            "the active horizon, with exact current-week autosub valuation"
         ),
         assumptions=(
-            "Later Gameweeks inherit the projection model's increasing uncertainty",
-            "Uncertainty is penalised at 0.20 points per unit",
-            "Residual value contributes 0.10 points per unit",
+            "Uncertainty is disclosed but does not receive an arbitrary points penalty",
+            "No terminal value is added until it can be measured beyond the horizon",
             "Alternative squads must differ by at least one player",
         ),
         transfer_triggers=triggers,
@@ -460,7 +560,7 @@ def _ordered_bench(
     outfield = sorted(
         (player for player in substitutes if player.position != Position.GK),
         key=lambda player: (
-            -_gameweek_points(player) * player.appearance_probability,
+            -_gameweek_points(player),
             player.source_player_id,
         ),
     )
@@ -479,25 +579,46 @@ def _expected_weekly_score(
     rules: SeasonRules,
 ) -> tuple[float, float, float]:
     by_id = {player.source_player_id: player for player in selected}
-    numeric_ids = {
-        player.source_player_id: index
-        for index, player in enumerate(selected, start=1)
-    }
-    source_ids = {numeric_id: source_id for source_id, numeric_id in numeric_ids.items()}
     domain_squad = _domain_squad(
         selected, starter_ids, bench, captain_id, vice_id
     )
-    player_ids = sorted(by_id)
-    expected_base = 0.0
-    expected_captain = 0.0
+    errors = validate_squad(domain_squad, rules, check_budget=False)
+    if errors:
+        raise OptimisationError(
+            "Cannot value an invalid solver squad: "
+            + "; ".join(error.message for error in errors)
+        )
+    # A starter's projected points already include their non-appearance
+    # probability. Only bench activation depends on the joint appearance
+    # state, so enumerate the 10 outfield starters and three outfield
+    # substitutes rather than repeatedly invoking the full rule engine for
+    # all 2^15 states.
     without_bench = sum(
         _gameweek_points(by_id[player_id]) for player_id in starter_ids
     )
-    for outcomes in product((False, True), repeat=len(player_ids)):
-        appeared = dict(zip(player_ids, outcomes, strict=True))
+    starting_goalkeeper = next(
+        player
+        for player in selected
+        if player.source_player_id in starter_ids
+        and player.position == Position.GK
+    )
+    bench_goalkeeper = by_id[bench[0]]
+    bench_contribution = (
+        (1.0 - starting_goalkeeper.appearance_probability)
+        * _gameweek_points(bench_goalkeeper)
+    )
+    starting_outfield = tuple(
+        player
+        for player in selected
+        if player.source_player_id in starter_ids
+        and player.position != Position.GK
+    )
+    bench_outfield = tuple(by_id[player_id] for player_id in bench[1:])
+    state_players = (*starting_outfield, *bench_outfield)
+    for outcomes in product((False, True), repeat=len(state_players)):
         probability = 1.0
-        for player_id, did_appear in appeared.items():
-            appearance_probability = by_id[player_id].appearance_probability
+        for player, did_appear in zip(state_players, outcomes, strict=True):
+            appearance_probability = player.appearance_probability
             probability *= (
                 appearance_probability
                 if did_appear
@@ -505,42 +626,83 @@ def _expected_weekly_score(
             )
         if probability == 0:
             continue
-        minutes = {
-            numeric_ids[player.source_player_id]: (
-                90 if appeared[player.source_player_id] else 0
-            )
-            for player in selected
-        }
-        resolved = resolve_automatic_substitutions(
-            domain_squad, minutes, rules
+        used_bench_indexes = _used_outfield_bench_indexes(
+            tuple(player.position for player in starting_outfield),
+            tuple(player.position for player in bench_outfield),
+            outcomes,
+            rules,
         )
-        base_score = sum(
-            _conditional_points(by_id[source_ids[player_id]])
-            for player_id in resolved.scoring_player_ids
+        bench_contribution += probability * sum(
+            _conditional_points(bench_outfield[index])
+            for index in used_bench_indexes
         )
-        expected_base += probability * base_score
-        effective_captain = None
-        captain_numeric = numeric_ids[captain_id]
-        vice_numeric = numeric_ids[vice_id]
-        if (
-            captain_numeric in resolved.scoring_player_ids
-            and minutes[captain_numeric]
-        ):
-            effective_captain = captain_id
-        elif (
-            vice_numeric in resolved.scoring_player_ids
-            and minutes[vice_numeric]
-        ):
-            effective_captain = vice_id
-        if effective_captain is not None:
-            expected_captain += probability * _conditional_points(
-                by_id[effective_captain]
-            )
+    captain = by_id[captain_id]
+    vice = by_id[vice_id]
+    expected_captain = _gameweek_points(captain) + (
+        (1.0 - captain.appearance_probability) * _gameweek_points(vice)
+    )
+    expected_base = without_bench + bench_contribution
     return (
         expected_base + expected_captain,
-        max(0.0, expected_base - without_bench),
+        max(0.0, bench_contribution),
         expected_captain,
     )
+
+
+def _used_outfield_bench_indexes(
+    starter_positions: tuple[Position, ...],
+    bench_positions: tuple[Position, ...],
+    outcomes: tuple[bool, ...],
+    rules: SeasonRules,
+) -> tuple[int, ...]:
+    starter_count = len(starter_positions)
+    absent_starters = tuple(
+        index
+        for index, appeared in enumerate(outcomes[:starter_count])
+        if not appeared
+    )
+    played_bench = tuple(
+        index
+        for index, appeared in enumerate(outcomes[starter_count:])
+        if appeared
+    )
+    maximum = min(len(absent_starters), len(played_bench))
+    starting_counts = {
+        position: sum(
+            starter_position == position
+            for starter_position in starter_positions
+        )
+        for position in Position
+    }
+    best_key: tuple[int, tuple[int, ...]] = (-1, ())
+    best_bench: tuple[int, ...] = ()
+    for substitution_count in range(maximum + 1):
+        for bench_indexes in combinations(played_bench, substitution_count):
+            priority = tuple(
+                int(index in bench_indexes)
+                for index in range(len(bench_positions))
+            )
+            for replaced_indexes in combinations(
+                absent_starters, substitution_count
+            ):
+                counts = dict(starting_counts)
+                for index in replaced_indexes:
+                    counts[starter_positions[index]] -= 1
+                for index in bench_indexes:
+                    counts[bench_positions[index]] += 1
+                if any(
+                    not rules.squad.formation_min[position.value]
+                    <= counts[position]
+                    <= rules.squad.formation_max[position.value]
+                    for position in (Position.DEF, Position.MID, Position.FWD)
+                ):
+                    continue
+                key = (substitution_count, priority)
+                if key > best_key:
+                    best_key = key
+                    best_bench = bench_indexes
+                break
+    return best_bench
 
 
 def _domain_squad(
@@ -588,12 +750,47 @@ def _gameweek_points(player: CandidatePlayer) -> float:
     )
 
 
-def _robust_horizon_value(player: CandidatePlayer) -> float:
-    return (
-        player.expected_points
-        - 0.20 * player.uncertainty
-        + 0.10 * player.residual_value
-    )
+def _optimisation_gameweeks(
+    players: tuple[CandidatePlayer, ...],
+) -> tuple[int, ...]:
+    configured = {
+        value.gameweek_number
+        for player in players
+        for value in player.gameweek_values
+    }
+    if not configured:
+        return (0,)
+    for player in players:
+        player_gameweeks = {
+            value.gameweek_number for value in player.gameweek_values
+        }
+        if player_gameweeks != configured:
+            raise ValueError(
+                "Every candidate must cover the same projection Gameweeks"
+            )
+    return tuple(sorted(configured))
+
+
+def _value_for_gameweek(
+    player: CandidatePlayer, gameweek_number: int
+) -> GameweekPlayerValue:
+    if not player.gameweek_values:
+        return GameweekPlayerValue(
+            gameweek_number=gameweek_number,
+            expected_points=_gameweek_points(player),
+            appearance_probability=player.appearance_probability,
+        )
+    try:
+        return next(
+            value
+            for value in player.gameweek_values
+            if value.gameweek_number == gameweek_number
+        )
+    except StopIteration as error:
+        raise ValueError(
+            f"Player {player.source_player_id} has no value for "
+            f"Gameweek {gameweek_number}"
+        ) from error
 
 
 def _conditional_points(player: CandidatePlayer) -> float:

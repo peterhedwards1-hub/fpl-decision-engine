@@ -67,13 +67,16 @@ fabricate a percentage. The live API continues to populate the percentage field.
 
 ## Migration
 
-The application supports schema version 10 and migrates version 2 in place through the
+The application supports schema version 12 and migrates version 2 in place through the
 version-3 identity/observation and version-4 timing models. Version 5 adds normalised
 fixture and season-stat observations, version 6 adds private manager snapshots, version 7
 adds versioned projections, version 8 adds news and weekly decision audit records, and
 version 9 adds persisted walk-forward projection runs and their player-Gameweek outcomes.
 Version 10 adds generated/scored/missing-outcome counts plus the evaluated ingestion cutoff
-and data fingerprint. Historical forecasts reconstruct each fixture assignment from the
+and data fingerprint. Version 11 adds rich team-news provenance, governed review values and
+paired pre/post-news projection evaluation. Version 12 persists the appearance and
+60-minute probabilities consumed by lineup and autosub valuation. Historical forecasts
+reconstruct each fixture assignment from the
 latest fixture observation ingested before the forecast origin.
 The fixture observation retained for every ingestion run makes reschedules recoverable
 without relying only on raw archives. The v2-to-v3 migration

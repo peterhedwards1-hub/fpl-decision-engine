@@ -8,10 +8,12 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..config import load_season_rules
-from ..projections import MODEL_VERSION, ProjectionModelConfig
-from ..tuning import tune_projection_model
+from ..learned_challenger import train_and_evaluate_learned_challenger
+from ..projections import DEFAULT_MODEL_CONFIG, MODEL_VERSION, ProjectionModelConfig
+from ..tuning import tune_projection_model, tune_projection_model_rolling
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
 from .records import IngestionSource, SeasonRecord
@@ -77,39 +79,59 @@ def main() -> None:
     )
     backtest_parser.add_argument("--model-version", default=MODEL_VERSION)
     backtest_parser.add_argument(
-        "--player-prior-minutes", type=float, default=900.0
+        "--player-prior-minutes",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.player_rate_prior_minutes,
     )
     backtest_parser.add_argument(
-        "--minutes-prior-matches", type=float, default=6.0
+        "--minutes-prior-matches",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.minutes_prior_matches,
     )
     backtest_parser.add_argument(
-        "--team-prior-matches", type=float, default=6.0
+        "--team-prior-matches",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.team_prior_matches,
     )
     backtest_parser.add_argument(
-        "--home-attack-multiplier", type=float, default=1.08
+        "--home-attack-multiplier",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.home_attack_multiplier,
     )
     backtest_parser.add_argument(
-        "--away-attack-multiplier", type=float, default=0.92
+        "--away-attack-multiplier",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.away_attack_multiplier,
     )
     backtest_parser.add_argument(
         "--minutes-model",
         choices=("legacy", "two_stage"),
         default="two_stage",
     )
-    backtest_parser.add_argument("--recent-gameweeks", type=int, default=3)
     backtest_parser.add_argument(
-        "--recent-evidence-weight", type=float, default=4.0
+        "--recent-gameweeks",
+        type=int,
+        default=DEFAULT_MODEL_CONFIG.recent_gameweeks,
     )
     backtest_parser.add_argument(
-        "--appearance-prior-matches", type=float, default=1.0
+        "--recent-evidence-weight",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.recent_evidence_weight,
     )
     backtest_parser.add_argument(
-        "--appearance-prior-probability", type=float, default=0.40
+        "--appearance-prior-matches",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.appearance_prior_matches,
+    )
+    backtest_parser.add_argument(
+        "--appearance-prior-probability",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.appearance_prior_probability,
     )
     backtest_parser.add_argument(
         "--conditional-minutes-prior-appearances",
         type=float,
-        default=2.0,
+        default=DEFAULT_MODEL_CONFIG.conditional_minutes_prior_appearances,
     )
     backtest_parser.add_argument(
         "--no-team-minute-constraint",
@@ -139,6 +161,100 @@ def main() -> None:
         default="sqlite:///data/fpl_tuning.sqlite3",
     )
     tune_parser.add_argument("--seed", type=int, default=20260729)
+
+    rolling_parser = subparsers.add_parser(
+        "tune-projections-rolling",
+        help=(
+            "Tune across development seasons and evaluate one locked "
+            "validation season"
+        ),
+    )
+    rolling_parser.add_argument(
+        "--development-seasons",
+        nargs="+",
+        required=True,
+    )
+    rolling_parser.add_argument("--validation-season", required=True)
+    rolling_parser.add_argument(
+        "--rules-directory",
+        default="config/seasons",
+    )
+    rolling_parser.add_argument("--origin-start", type=int, default=2)
+    rolling_parser.add_argument("--origin-end", type=int, default=38)
+    rolling_parser.add_argument("--horizon", type=int, default=1)
+    rolling_parser.add_argument(
+        "--trials",
+        type=int,
+        default=50,
+        help="Target number of completed trials; safe to reuse after interruption",
+    )
+    rolling_parser.add_argument(
+        "--study-name",
+        default="fpl-rates-rolling-v3",
+    )
+    rolling_parser.add_argument(
+        "--study-storage",
+        default="sqlite:///data/fpl_tuning.sqlite3",
+    )
+    rolling_parser.add_argument("--seed", type=int, default=20260729)
+
+    challenger_parser = subparsers.add_parser(
+        "train-boosted-challenger",
+        help=(
+            "Train on earlier completed backtests and evaluate one later "
+            "validation run"
+        ),
+    )
+    challenger_parser.add_argument(
+        "--training-run-ids",
+        nargs="+",
+        type=int,
+        required=True,
+    )
+    challenger_parser.add_argument(
+        "--validation-run-id",
+        type=int,
+        required=True,
+    )
+    challenger_parser.add_argument(
+        "--artifact",
+        default="data/models/boosted-points-v1.joblib",
+    )
+    challenger_parser.add_argument(
+        "--loss",
+        choices=("absolute_error", "squared_error", "poisson"),
+        default="absolute_error",
+    )
+    challenger_parser.add_argument("--seed", type=int, default=20260729)
+
+    audit_parser = subparsers.add_parser(
+        "audit-projection-assumptions",
+        help=(
+            "Compare predeclared football assumptions on development "
+            "seasons only"
+        ),
+    )
+    audit_parser.add_argument(
+        "--development-seasons",
+        nargs="+",
+        required=True,
+    )
+    audit_parser.add_argument(
+        "--rules-directory",
+        default="config/seasons",
+    )
+    audit_parser.add_argument("--origin-start", type=int, default=2)
+    audit_parser.add_argument("--origin-end", type=int, default=38)
+    audit_parser.add_argument("--horizon", type=int, default=1)
+    audit_parser.add_argument(
+        "--output",
+        default="data/models/assumption-audit-v1.json",
+    )
+    audit_parser.add_argument(
+        "--artifact-directory",
+        default="data/models/assumption-audit",
+    )
+    audit_parser.add_argument("--seed", type=int, default=20260729)
 
     report_parser = subparsers.add_parser(
         "backtest-report", help="Show a completed persisted backtest scorecard"
@@ -241,6 +357,74 @@ def main() -> None:
             print(json.dumps(result.as_dict(), indent=2))
             return
 
+        if args.command == "tune-projections-rolling":
+            requested_seasons = (
+                *args.development_seasons,
+                args.validation_season,
+            )
+            rules_directory = Path(args.rules_directory)
+            rules_by_season = {
+                season_code: load_season_rules(
+                    rules_directory / f"{season_code}.json"
+                )
+                for season_code in requested_seasons
+            }
+            for season_code, rules in rules_by_season.items():
+                if rules.season != season_code:
+                    raise ValueError(
+                        f"Rules season {rules.season!r} does not match "
+                        f"requested season {season_code!r}"
+                    )
+            result = tune_projection_model_rolling(
+                database,
+                rules_by_season,
+                development_seasons=tuple(args.development_seasons),
+                validation_season=args.validation_season,
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                trials=args.trials,
+                study_name=args.study_name,
+                storage_url=args.study_storage,
+                seed=args.seed,
+            )
+            print(json.dumps(result.as_dict(), indent=2))
+            return
+
+        if args.command == "train-boosted-challenger":
+            result = train_and_evaluate_learned_challenger(
+                database,
+                training_run_ids=tuple(args.training_run_ids),
+                validation_run_id=args.validation_run_id,
+                artifact_path=args.artifact,
+                seed=args.seed,
+                loss=args.loss,
+            )
+            print(json.dumps(result.as_dict(), indent=2))
+            return
+
+        if args.command == "audit-projection-assumptions":
+            rules_directory = Path(args.rules_directory)
+            rules_by_season = {
+                season_code: load_season_rules(
+                    rules_directory / f"{season_code}.json"
+                )
+                for season_code in args.development_seasons
+            }
+            result = run_assumption_audit(
+                database,
+                rules_by_season,
+                development_seasons=tuple(args.development_seasons),
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                output_path=args.output,
+                artifact_directory=args.artifact_directory,
+                seed=args.seed,
+            )
+            print(json.dumps(result.as_dict(), indent=2))
+            return
+
         if args.command == "import-vaastav":
             adapter = VaastavAdapter(
                 VaastavClient(base_url=args.source_base_url)
@@ -281,6 +465,9 @@ def main() -> None:
                             ),
                             "skipped_rescheduled_rows": (
                                 result.quality.skipped_rescheduled_rows
+                            ),
+                            "skipped_non_player_rows": (
+                                result.quality.skipped_non_player_rows
                             ),
                             "players_without_gameweek_rows": (
                                 result.quality.players_without_gameweek_rows

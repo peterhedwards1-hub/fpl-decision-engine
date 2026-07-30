@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cache
 from itertools import combinations
 
 from .config import SeasonRules
@@ -260,6 +261,7 @@ def validate_chip_use(
     *,
     already_used_in_half: frozenset[Chip] = frozenset(),
     previous_gameweek_chip: Chip | None = None,
+    last_used_gameweek: int | None = None,
 ) -> tuple[ValidationError, ...]:
     """Validate availability constraints for a proposed chip activation."""
 
@@ -287,14 +289,21 @@ def validate_chip_use(
             )
         )
     minimum_gap = rules.chips.minimum_gap_gameweeks.get(active_chip.value, 0)
+    effective_last_use = (
+        gameweek_number - 1
+        if previous_gameweek_chip == active_chip
+        else last_used_gameweek
+    )
     if (
         minimum_gap > 0
-        and previous_gameweek_chip == active_chip
+        and effective_last_use is not None
+        and gameweek_number - effective_last_use <= minimum_gap
     ):
         errors.append(
             ValidationError(
                 "chip_cooldown",
-                f"{active_chip.value} cannot be used in consecutive Gameweeks",
+                f"{active_chip.value} requires a gap of {minimum_gap} "
+                "Gameweek(s)",
             )
         )
     return tuple(errors)
@@ -326,15 +335,21 @@ def resolve_automatic_substitutions(
     squad: Squad,
     minutes_by_player_id: Mapping[int, int],
     rules: SeasonRules,
+    *,
+    _skip_validation: bool = False,
 ) -> ResolvedLineup:
     """Resolve the final scoring lineup while respecting bench priority and formation."""
 
-    errors = validate_squad(squad, rules)
-    if errors:
-        raise ValueError(
-            "Cannot resolve substitutions for an invalid squad: "
-            + "; ".join(error.message for error in errors)
-        )
+    # Substitution legality is independent of the season's initial £100m
+    # budget. Existing squads, Wildcards and Free Hits use their caller's
+    # current selling-value budget and can legitimately cost more.
+    if not _skip_validation:
+        errors = validate_squad(squad, rules, check_budget=False)
+        if errors:
+            raise ValueError(
+                "Cannot resolve substitutions for an invalid squad: "
+                + "; ".join(error.message for error in errors)
+            )
     if not squad.bench_player_ids:
         raise ValueError("Bench order is required to resolve automatic substitutions")
 
@@ -449,12 +464,34 @@ def _is_legal_formation(
     players_by_id: Mapping[int, Player],
     rules: SeasonRules,
 ) -> bool:
-    counts = Counter(players_by_id[player_id].position.value for player_id in player_ids)
+    positions = tuple(Position)
+    counts = Counter(
+        players_by_id[player_id].position for player_id in player_ids
+    )
+    return _formation_signature_is_legal(
+        tuple(counts[position] for position in positions),
+        tuple(
+            rules.squad.formation_min[position.value]
+            for position in positions
+        ),
+        tuple(
+            rules.squad.formation_max[position.value]
+            for position in positions
+        ),
+    )
+
+
+@cache
+def _formation_signature_is_legal(
+    counts: tuple[int, ...],
+    minimums: tuple[int, ...],
+    maximums: tuple[int, ...],
+) -> bool:
     return all(
-        rules.squad.formation_min[position]
-        <= counts[position]
-        <= rules.squad.formation_max[position]
-        for position in rules.squad.formation_min
+        minimum <= count <= maximum
+        for count, minimum, maximum in zip(
+            counts, minimums, maximums, strict=True
+        )
     )
 
 
@@ -481,7 +518,10 @@ def calculate_player_points(
     if stats.clean_sheet and stats.minutes >= scoring.goals_conceded_threshold_minutes:
         points += scoring.clean_sheets[position]
 
-    if stats.minutes >= scoring.goals_conceded_threshold_minutes and stats.goals_conceded > 0:
+    # The 60-minute threshold applies to clean sheets, not to goals-conceded
+    # deductions. Official fixture statistics already count only goals
+    # conceded while the player was on the pitch.
+    if stats.goals_conceded > 0:
         points += (stats.goals_conceded // 2) * scoring.goals_conceded_per_two[position]
 
     if player.position == Position.GK:

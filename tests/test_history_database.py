@@ -81,7 +81,7 @@ def test_initialise_creates_versioned_schema(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
 
-        assert database.schema_version == 10
+        assert database.schema_version == 12
         table_names = {
             row[0]
             for row in database.connection.execute(

@@ -1,0 +1,50 @@
+{
+  "model_type": "HistGradientBoostingRegressor",
+  "created_at": "2026-07-30T07:33:49.499158+00:00",
+  "feature_names": [
+    "base_expected_points",
+    "base_expected_minutes",
+    "uncertainty",
+    "fixture_count",
+    "horizon_step",
+    "origin_gameweek_fraction",
+    "position_gk",
+    "position_def",
+    "position_mid",
+    "position_fwd"
+  ],
+  "training_run_ids": [
+    340
+  ],
+  "training_seasons": [
+    "2021-22"
+  ],
+  "validation_run_id": 341,
+  "validation_season": "2022-23",
+  "base_model_config": {
+    "appearance_prior_matches": 3.2594648781387656,
+    "appearance_prior_probability": 0.5517557096047864,
+    "away_attack_multiplier": 0.9884699819036712,
+    "conditional_minutes_prior_appearances": 1.352415949352844,
+    "defensive_contribution_model": "legacy_linear",
+    "enforce_team_minutes": true,
+    "home_attack_multiplier": 1.1440792800906638,
+    "include_penalty_events": false,
+    "maximum_team_multiplier": 1.5,
+    "minimum_team_multiplier": 0.6,
+    "minutes_allocation": "team_total",
+    "minutes_model": "two_stage",
+    "minutes_prior_matches": 6.0,
+    "player_rate_prior_minutes": 2761.331925036367,
+    "recent_evidence_weight": 3.4024319691135294,
+    "recent_gameweeks": 6,
+    "scoring_recent_evidence_weight": 1.0,
+    "team_minutes_per_fixture": 990.0,
+    "team_prior_matches": 19.355921510454394
+  },
+  "seed": 20260729,
+  "loss": "absolute_error",
+  "target_offset": 0.0,
+  "estimand": "conditional_median",
+  "selection_warning": "Do not retrain or tune this artifact after inspecting its validation report; use a new holdout."
+}

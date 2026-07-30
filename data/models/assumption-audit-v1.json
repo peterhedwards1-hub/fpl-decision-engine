@@ -1,0 +1,1440 @@
+{
+  "audit_version": "football-assumptions-v1",
+  "development_seasons": [
+    "2021-22",
+    "2022-23",
+    "2023-24"
+  ],
+  "origin_gameweek_start": 2,
+  "origin_gameweek_end": 38,
+  "horizon_gameweeks": 1,
+  "variants": [
+    {
+      "name": "reference",
+      "changed_assumption": "Frozen robust-v4 transparent reference",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "team_total",
+        "scoring_recent_evidence_weight": 1.0,
+        "defensive_contribution_model": "legacy_linear",
+        "include_penalty_events": false
+      },
+      "seasons": [
+        {
+          "season_code": "2021-22",
+          "backtest_run_id": 340,
+          "samples": 22676,
+          "top_100_samples": 3700,
+          "objective": 3.019857,
+          "overall_points_mae": 1.2826,
+          "overall_points_bias": -0.0343,
+          "overall_minutes_mae": 21.9803,
+          "top_100_points_mae": 2.7134,
+          "top_100_points_bias": 0.0119,
+          "top_100_actual_points_mean": 3.6262,
+          "captain_regret": 10.7297,
+          "unconstrained_top_15_regret": 104.9459,
+          "by_position": {
+            "GK": {
+              "samples": 2596,
+              "points_mae": 0.9015,
+              "points_bias": -0.0125,
+              "minutes_mae": 14.3531,
+              "minutes_bias": -2.3215
+            },
+            "DEF": {
+              "samples": 7691,
+              "points_mae": 1.3729,
+              "points_bias": 0.1369,
+              "minutes_mae": 25.0885,
+              "minutes_bias": 0.4133
+            },
+            "MID": {
+              "samples": 9375,
+              "points_mae": 1.3058,
+              "points_bias": -0.1781,
+              "minutes_mae": 22.2843,
+              "minutes_bias": 0.0904
+            },
+            "FWD": {
+              "samples": 3014,
+              "points_mae": 1.3081,
+              "points_bias": -0.0425,
+              "minutes_mae": 19.6725,
+              "minutes_bias": -0.2927
+            }
+          }
+        },
+        {
+          "season_code": "2022-23",
+          "backtest_run_id": 341,
+          "samples": 24384,
+          "top_100_samples": 3600,
+          "objective": 2.858759,
+          "overall_points_mae": 1.2064,
+          "overall_points_bias": -0.0181,
+          "overall_minutes_mae": 21.8597,
+          "top_100_points_mae": 2.5251,
+          "top_100_points_bias": 0.124,
+          "top_100_actual_points_mean": 3.5086,
+          "captain_regret": 9.2778,
+          "unconstrained_top_15_regret": 97.8333,
+          "by_position": {
+            "GK": {
+              "samples": 2566,
+              "points_mae": 0.9784,
+              "points_bias": 0.0953,
+              "minutes_mae": 16.4594,
+              "minutes_bias": -0.1324
+            },
+            "DEF": {
+              "samples": 8447,
+              "points_mae": 1.2214,
+              "points_bias": 0.066,
+              "minutes_mae": 25.1796,
+              "minutes_bias": -0.4025
+            },
+            "MID": {
+              "samples": 10500,
+              "points_mae": 1.2025,
+              "points_bias": -0.1254,
+              "minutes_mae": 20.8761,
+              "minutes_bias": 0.3885
+            },
+            "FWD": {
+              "samples": 2871,
+              "points_mae": 1.3808,
+              "points_bias": 0.026,
+              "minutes_mae": 20.5159,
+              "minutes_bias": -1.2459
+            }
+          }
+        },
+        {
+          "season_code": "2023-24",
+          "backtest_run_id": 342,
+          "samples": 28084,
+          "top_100_samples": 3700,
+          "objective": 2.899029,
+          "overall_points_mae": 1.1141,
+          "overall_points_bias": -0.0001,
+          "overall_minutes_mae": 21.4705,
+          "top_100_points_mae": 2.5295,
+          "top_100_points_bias": 0.2716,
+          "top_100_actual_points_mean": 3.2403,
+          "captain_regret": 12.2162,
+          "unconstrained_top_15_regret": 109.7297,
+          "by_position": {
+            "GK": {
+              "samples": 3222,
+              "points_mae": 0.7758,
+              "points_bias": -0.0157,
+              "minutes_mae": 16.2322,
+              "minutes_bias": -1.301
+            },
+            "DEF": {
+              "samples": 9080,
+              "points_mae": 1.1234,
+              "points_bias": 0.0784,
+              "minutes_mae": 25.3776,
+              "minutes_bias": 0.2901
+            },
+            "MID": {
+              "samples": 12143,
+              "points_mae": 1.1723,
+              "points_bias": -0.062,
+              "minutes_mae": 20.8018,
+              "minutes_bias": -0.0143
+            },
+            "FWD": {
+              "samples": 3639,
+              "points_mae": 1.196,
+              "points_bias": 0.0249,
+              "minutes_mae": 18.5908,
+              "minutes_bias": -0.5426
+            }
+          }
+        }
+      ],
+      "development_score": 2.949833,
+      "cross_season_stability_penalty": 0.023341,
+      "aggregate": {
+        "development_score": 2.949833,
+        "cross_season_stability_penalty": 0.023341,
+        "overall_points_mae": 1.1949,
+        "overall_absolute_points_bias": 0.0163,
+        "overall_minutes_mae": 21.7506,
+        "top_100_points_mae": 2.5899,
+        "top_100_absolute_points_bias": 0.1359,
+        "top_100_actual_points_mean": 3.4579,
+        "captain_regret": 10.7412,
+        "unconstrained_top_15_regret": 104.1696,
+        "by_position": {
+          "DEF": {
+            "samples": 25218,
+            "points_mae": 1.2323,
+            "points_bias": 0.0921,
+            "minutes_mae": 25.2231,
+            "minutes_bias": 0.0957
+          },
+          "FWD": {
+            "samples": 9524,
+            "points_mae": 1.2872,
+            "points_bias": 0.0039,
+            "minutes_mae": 19.5134,
+            "minutes_bias": -0.6755
+          },
+          "GK": {
+            "samples": 8384,
+            "points_mae": 0.8767,
+            "points_bias": 0.0193,
+            "minutes_mae": 15.7199,
+            "minutes_bias": -1.2593
+          },
+          "MID": {
+            "samples": 32018,
+            "points_mae": 1.2213,
+            "points_bias": -0.1168,
+            "minutes_mae": 21.2602,
+            "minutes_bias": 0.1485
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0,
+        "overall_points_mae": 0.0,
+        "overall_absolute_points_bias": 0.0,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_development_gate": false
+    },
+    {
+      "name": "position_minutes",
+      "changed_assumption": "Separate 90 goalkeeper and 900 outfield expected minutes",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "position_aware",
+        "scoring_recent_evidence_weight": 1.0,
+        "defensive_contribution_model": "legacy_linear",
+        "include_penalty_events": false
+      },
+      "seasons": [
+        {
+          "season_code": "2021-22",
+          "backtest_run_id": 343,
+          "samples": 22676,
+          "top_100_samples": 3700,
+          "objective": 3.038383,
+          "overall_points_mae": 1.2836,
+          "overall_points_bias": -0.0359,
+          "overall_minutes_mae": 21.9662,
+          "top_100_points_mae": 2.7344,
+          "top_100_points_bias": -0.0046,
+          "top_100_actual_points_mean": 3.6205,
+          "captain_regret": 10.7297,
+          "unconstrained_top_15_regret": 105.2703,
+          "by_position": {
+            "GK": {
+              "samples": 2596,
+              "points_mae": 0.869,
+              "points_bias": 0.0731,
+              "minutes_mae": 14.7152,
+              "minutes_bias": -0.0002
+            },
+            "DEF": {
+              "samples": 7691,
+              "points_mae": 1.3768,
+              "points_bias": 0.1258,
+              "minutes_mae": 24.9922,
+              "minutes_bias": 0.0849
+            },
+            "MID": {
+              "samples": 9375,
+              "points_mae": 1.3125,
+              "points_bias": -0.1925,
+              "minutes_mae": 22.2424,
+              "minutes_bias": -0.2004
+            },
+            "FWD": {
+              "samples": 3014,
+              "points_mae": 1.3132,
+              "points_bias": -0.0552,
+              "minutes_mae": 19.6305,
+              "minutes_bias": -0.549
+            }
+          }
+        },
+        {
+          "season_code": "2022-23",
+          "backtest_run_id": 344,
+          "samples": 24384,
+          "top_100_samples": 3600,
+          "objective": 2.870994,
+          "overall_points_mae": 1.2048,
+          "overall_points_bias": -0.0182,
+          "overall_minutes_mae": 21.7976,
+          "top_100_points_mae": 2.5326,
+          "top_100_points_bias": 0.1391,
+          "top_100_actual_points_mean": 3.5303,
+          "captain_regret": 9.75,
+          "unconstrained_top_15_regret": 98.0,
+          "by_position": {
+            "GK": {
+              "samples": 2566,
+              "points_mae": 0.9645,
+              "points_bias": 0.0992,
+              "minutes_mae": 15.9801,
+              "minutes_bias": -0.0017
+            },
+            "DEF": {
+              "samples": 8447,
+              "points_mae": 1.2213,
+              "points_bias": 0.0655,
+              "minutes_mae": 25.1681,
+              "minutes_bias": -0.4168
+            },
+            "MID": {
+              "samples": 10500,
+              "points_mae": 1.2024,
+              "points_bias": -0.1265,
+              "minutes_mae": 20.8611,
+              "minutes_bias": 0.365
+            },
+            "FWD": {
+              "samples": 2871,
+              "points_mae": 1.3798,
+              "points_bias": 0.0263,
+              "minutes_mae": 20.5059,
+              "minutes_bias": -1.2346
+            }
+          }
+        },
+        {
+          "season_code": "2023-24",
+          "backtest_run_id": 345,
+          "samples": 28084,
+          "top_100_samples": 3700,
+          "objective": 2.917355,
+          "overall_points_mae": 1.1133,
+          "overall_points_bias": -0.0013,
+          "overall_minutes_mae": 21.4161,
+          "top_100_points_mae": 2.5478,
+          "top_100_points_bias": 0.2728,
+          "top_100_actual_points_mean": 3.2614,
+          "captain_regret": 12.2162,
+          "unconstrained_top_15_regret": 108.9189,
+          "by_position": {
+            "GK": {
+              "samples": 3222,
+              "points_mae": 0.7506,
+              "points_bias": 0.0283,
+              "minutes_mae": 15.8648,
+              "minutes_bias": -0.0025
+            },
+            "DEF": {
+              "samples": 9080,
+              "points_mae": 1.126,
+              "points_bias": 0.0716,
+              "minutes_mae": 25.3484,
+              "minutes_bias": 0.0725
+            },
+            "MID": {
+              "samples": 12143,
+              "points_mae": 1.1743,
+              "points_bias": -0.0688,
+              "minutes_mae": 20.7954,
+              "minutes_bias": -0.1471
+            },
+            "FWD": {
+              "samples": 3639,
+              "points_mae": 1.1992,
+              "points_bias": 0.0162,
+              "minutes_mae": 18.5907,
+              "minutes_bias": -0.7065
+            }
+          }
+        }
+      ],
+      "development_score": 2.966765,
+      "cross_season_stability_penalty": 0.023873,
+      "aggregate": {
+        "development_score": 2.966765,
+        "cross_season_stability_penalty": 0.023873,
+        "overall_points_mae": 1.1944,
+        "overall_absolute_points_bias": 0.0172,
+        "overall_minutes_mae": 21.7059,
+        "top_100_points_mae": 2.6056,
+        "top_100_absolute_points_bias": 0.1357,
+        "top_100_actual_points_mean": 3.4702,
+        "captain_regret": 10.8986,
+        "unconstrained_top_15_regret": 104.0631,
+        "by_position": {
+          "DEF": {
+            "samples": 25218,
+            "points_mae": 1.2344,
+            "points_bias": 0.0861,
+            "minutes_mae": 25.1794,
+            "minutes_bias": -0.0876
+          },
+          "FWD": {
+            "samples": 9524,
+            "points_mae": 1.2897,
+            "points_bias": -0.0034,
+            "minutes_mae": 19.4971,
+            "minutes_bias": -0.8159
+          },
+          "GK": {
+            "samples": 8384,
+            "points_mae": 0.8527,
+            "points_bias": 0.0639,
+            "minutes_mae": 15.5441,
+            "minutes_bias": -0.0015
+          },
+          "MID": {
+            "samples": 32018,
+            "points_mae": 1.224,
+            "points_bias": -0.1239,
+            "minutes_mae": 21.2406,
+            "minutes_bias": 0.0052
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0169,
+        "overall_points_mae": -0.0005,
+        "overall_absolute_points_bias": 0.0009,
+        "overall_minutes_mae": -0.0447,
+        "top_100_points_mae": 0.0157,
+        "top_100_absolute_points_bias": -0.0002,
+        "top_100_actual_points_mean": 0.0123,
+        "captain_regret": 0.1574,
+        "unconstrained_top_15_regret": -0.1065
+      },
+      "passes_development_gate": false
+    },
+    {
+      "name": "recent_scoring",
+      "changed_assumption": "Triple weight for scoring events in the recent window",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "team_total",
+        "scoring_recent_evidence_weight": 3.0,
+        "defensive_contribution_model": "legacy_linear",
+        "include_penalty_events": false
+      },
+      "seasons": [
+        {
+          "season_code": "2021-22",
+          "backtest_run_id": 346,
+          "samples": 22676,
+          "top_100_samples": 3700,
+          "objective": 3.045337,
+          "overall_points_mae": 1.2766,
+          "overall_points_bias": -0.027,
+          "overall_minutes_mae": 21.9803,
+          "top_100_points_mae": 2.7304,
+          "top_100_points_bias": 0.0387,
+          "top_100_actual_points_mean": 3.6711,
+          "captain_regret": 10.7838,
+          "unconstrained_top_15_regret": 105.8649,
+          "by_position": {
+            "GK": {
+              "samples": 2596,
+              "points_mae": 0.9022,
+              "points_bias": -0.0158,
+              "minutes_mae": 14.3531,
+              "minutes_bias": -2.3215
+            },
+            "DEF": {
+              "samples": 7691,
+              "points_mae": 1.37,
+              "points_bias": 0.1405,
+              "minutes_mae": 25.0885,
+              "minutes_bias": 0.4133
+            },
+            "MID": {
+              "samples": 9375,
+              "points_mae": 1.2943,
+              "points_bias": -0.1623,
+              "minutes_mae": 22.2843,
+              "minutes_bias": 0.0904
+            },
+            "FWD": {
+              "samples": 3014,
+              "points_mae": 1.3058,
+              "points_bias": -0.0435,
+              "minutes_mae": 19.6725,
+              "minutes_bias": -0.2927
+            }
+          }
+        },
+        {
+          "season_code": "2022-23",
+          "backtest_run_id": 347,
+          "samples": 24384,
+          "top_100_samples": 3600,
+          "objective": 2.870804,
+          "overall_points_mae": 1.2025,
+          "overall_points_bias": -0.0115,
+          "overall_minutes_mae": 21.8597,
+          "top_100_points_mae": 2.5322,
+          "top_100_points_bias": 0.1398,
+          "top_100_actual_points_mean": 3.5278,
+          "captain_regret": 9.4167,
+          "unconstrained_top_15_regret": 98.8611,
+          "by_position": {
+            "GK": {
+              "samples": 2566,
+              "points_mae": 0.978,
+              "points_bias": 0.0925,
+              "minutes_mae": 16.4594,
+              "minutes_bias": -0.1324
+            },
+            "DEF": {
+              "samples": 8447,
+              "points_mae": 1.2192,
+              "points_bias": 0.0736,
+              "minutes_mae": 25.1796,
+              "minutes_bias": -0.4025
+            },
+            "MID": {
+              "samples": 10500,
+              "points_mae": 1.1958,
+              "points_bias": -0.112,
+              "minutes_mae": 20.8761,
+              "minutes_bias": 0.3885
+            },
+            "FWD": {
+              "samples": 2871,
+              "points_mae": 1.3787,
+              "points_bias": 0.0128,
+              "minutes_mae": 20.5159,
+              "minutes_bias": -1.2459
+            }
+          }
+        },
+        {
+          "season_code": "2023-24",
+          "backtest_run_id": 348,
+          "samples": 28084,
+          "top_100_samples": 3700,
+          "objective": 2.937164,
+          "overall_points_mae": 1.1117,
+          "overall_points_bias": 0.0022,
+          "overall_minutes_mae": 21.4705,
+          "top_100_points_mae": 2.5576,
+          "top_100_points_bias": 0.3013,
+          "top_100_actual_points_mean": 3.2827,
+          "captain_regret": 12.2973,
+          "unconstrained_top_15_regret": 109.8378,
+          "by_position": {
+            "GK": {
+              "samples": 3222,
+              "points_mae": 0.7764,
+              "points_bias": -0.0183,
+              "minutes_mae": 16.2322,
+              "minutes_bias": -1.301
+            },
+            "DEF": {
+              "samples": 9080,
+              "points_mae": 1.1216,
+              "points_bias": 0.0812,
+              "minutes_mae": 25.3776,
+              "minutes_bias": 0.2901
+            },
+            "MID": {
+              "samples": 12143,
+              "points_mae": 1.1683,
+              "points_bias": -0.0564,
+              "minutes_mae": 20.8018,
+              "minutes_bias": -0.0143
+            },
+            "FWD": {
+              "samples": 3639,
+              "points_mae": 1.1948,
+              "points_bias": 0.0185,
+              "minutes_mae": 18.5908,
+              "minutes_bias": -0.5426
+            }
+          }
+        }
+      ],
+      "development_score": 2.975208,
+      "cross_season_stability_penalty": 0.023376,
+      "aggregate": {
+        "development_score": 2.975208,
+        "cross_season_stability_penalty": 0.023376,
+        "overall_points_mae": 1.1909,
+        "overall_absolute_points_bias": 0.0111,
+        "overall_minutes_mae": 21.7506,
+        "top_100_points_mae": 2.6074,
+        "top_100_absolute_points_bias": 0.1601,
+        "top_100_actual_points_mean": 3.4936,
+        "captain_regret": 10.8326,
+        "unconstrained_top_15_regret": 104.8546,
+        "by_position": {
+          "DEF": {
+            "samples": 25218,
+            "points_mae": 1.23,
+            "points_bias": 0.0967,
+            "minutes_mae": 25.2231,
+            "minutes_bias": 0.0957
+          },
+          "FWD": {
+            "samples": 9524,
+            "points_mae": 1.2854,
+            "points_bias": -0.0028,
+            "minutes_mae": 19.5134,
+            "minutes_bias": -0.6755
+          },
+          "GK": {
+            "samples": 8384,
+            "points_mae": 0.8771,
+            "points_bias": 0.0164,
+            "minutes_mae": 15.7199,
+            "minutes_bias": -1.2593
+          },
+          "MID": {
+            "samples": 32018,
+            "points_mae": 1.2142,
+            "points_bias": -0.1056,
+            "minutes_mae": 21.2602,
+            "minutes_bias": 0.1485
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0254,
+        "overall_points_mae": -0.004,
+        "overall_absolute_points_bias": -0.0052,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": 0.0175,
+        "top_100_absolute_points_bias": 0.0242,
+        "top_100_actual_points_mean": 0.0357,
+        "captain_regret": 0.0914,
+        "unconstrained_top_15_regret": 0.685
+      },
+      "passes_development_gate": false
+    },
+    {
+      "name": "corrected_scoring",
+      "changed_assumption": "Threshold defensive contributions plus penalty events",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "team_total",
+        "scoring_recent_evidence_weight": 1.0,
+        "defensive_contribution_model": "threshold_poisson",
+        "include_penalty_events": true
+      },
+      "seasons": [
+        {
+          "season_code": "2021-22",
+          "backtest_run_id": 349,
+          "samples": 22676,
+          "top_100_samples": 3700,
+          "objective": 3.009377,
+          "overall_points_mae": 1.262,
+          "overall_points_bias": 0.0191,
+          "overall_minutes_mae": 21.9803,
+          "top_100_points_mae": 2.6736,
+          "top_100_points_bias": 0.1045,
+          "top_100_actual_points_mean": 3.6211,
+          "captain_regret": 10.6486,
+          "unconstrained_top_15_regret": 106.0811,
+          "by_position": {
+            "GK": {
+              "samples": 2596,
+              "points_mae": 0.9073,
+              "points_bias": -0.0303,
+              "minutes_mae": 14.3531,
+              "minutes_bias": -2.3215
+            },
+            "DEF": {
+              "samples": 7691,
+              "points_mae": 1.3426,
+              "points_bias": 0.2274,
+              "minutes_mae": 25.0885,
+              "minutes_bias": 0.4133
+            },
+            "MID": {
+              "samples": 9375,
+              "points_mae": 1.2841,
+              "points_bias": -0.1288,
+              "minutes_mae": 22.2843,
+              "minutes_bias": 0.0904
+            },
+            "FWD": {
+              "samples": 3014,
+              "points_mae": 1.2934,
+              "points_bias": -0.0096,
+              "minutes_mae": 19.6725,
+              "minutes_bias": -0.2927
+            }
+          }
+        },
+        {
+          "season_code": "2022-23",
+          "backtest_run_id": 350,
+          "samples": 24384,
+          "top_100_samples": 3600,
+          "objective": 2.869314,
+          "overall_points_mae": 1.1905,
+          "overall_points_bias": 0.0207,
+          "overall_minutes_mae": 21.8597,
+          "top_100_points_mae": 2.5092,
+          "top_100_points_bias": 0.2064,
+          "top_100_actual_points_mean": 3.5281,
+          "captain_regret": 9.2778,
+          "unconstrained_top_15_regret": 98.0,
+          "by_position": {
+            "GK": {
+              "samples": 2566,
+              "points_mae": 0.9838,
+              "points_bias": 0.0767,
+              "minutes_mae": 16.4594,
+              "minutes_bias": -0.1324
+            },
+            "DEF": {
+              "samples": 8447,
+              "points_mae": 1.1973,
+              "points_bias": 0.1291,
+              "minutes_mae": 25.1796,
+              "minutes_bias": -0.4025
+            },
+            "MID": {
+              "samples": 10500,
+              "points_mae": 1.1865,
+              "points_bias": -0.0891,
+              "minutes_mae": 20.8761,
+              "minutes_bias": 0.3885
+            },
+            "FWD": {
+              "samples": 2871,
+              "points_mae": 1.3695,
+              "points_bias": 0.0531,
+              "minutes_mae": 20.5159,
+              "minutes_bias": -1.2459
+            }
+          }
+        },
+        {
+          "season_code": "2023-24",
+          "backtest_run_id": 351,
+          "samples": 28084,
+          "top_100_samples": 3700,
+          "objective": 2.909379,
+          "overall_points_mae": 1.1019,
+          "overall_points_bias": 0.0295,
+          "overall_minutes_mae": 21.4705,
+          "top_100_points_mae": 2.5232,
+          "top_100_points_bias": 0.3244,
+          "top_100_actual_points_mean": 3.2478,
+          "captain_regret": 12.4324,
+          "unconstrained_top_15_regret": 109.6486,
+          "by_position": {
+            "GK": {
+              "samples": 3222,
+              "points_mae": 0.7807,
+              "points_bias": -0.0298,
+              "minutes_mae": 16.2322,
+              "minutes_bias": -1.301
+            },
+            "DEF": {
+              "samples": 9080,
+              "points_mae": 1.1035,
+              "points_bias": 0.13,
+              "minutes_mae": 25.3776,
+              "minutes_bias": 0.2901
+            },
+            "MID": {
+              "samples": 12143,
+              "points_mae": 1.1603,
+              "points_bias": -0.0346,
+              "minutes_mae": 20.8018,
+              "minutes_bias": -0.0143
+            },
+            "FWD": {
+              "samples": 3639,
+              "points_mae": 1.1872,
+              "points_bias": 0.045,
+              "minutes_mae": 18.5908,
+              "minutes_bias": -0.5426
+            }
+          }
+        }
+      ],
+      "development_score": 2.949771,
+      "cross_season_stability_penalty": 0.019869,
+      "aggregate": {
+        "development_score": 2.949771,
+        "cross_season_stability_penalty": 0.019869,
+        "overall_points_mae": 1.179,
+        "overall_absolute_points_bias": 0.0235,
+        "overall_minutes_mae": 21.7506,
+        "top_100_points_mae": 2.5692,
+        "top_100_absolute_points_bias": 0.2118,
+        "top_100_actual_points_mean": 3.4651,
+        "captain_regret": 10.7863,
+        "unconstrained_top_15_regret": 104.5766,
+        "by_position": {
+          "DEF": {
+            "samples": 25218,
+            "points_mae": 1.2078,
+            "points_bias": 0.1594,
+            "minutes_mae": 25.2231,
+            "minutes_bias": 0.0957
+          },
+          "FWD": {
+            "samples": 9524,
+            "points_mae": 1.2758,
+            "points_bias": 0.0302,
+            "minutes_mae": 19.5134,
+            "minutes_bias": -0.6755
+          },
+          "GK": {
+            "samples": 8384,
+            "points_mae": 0.8821,
+            "points_bias": 0.0026,
+            "minutes_mae": 15.7199,
+            "minutes_bias": -1.2593
+          },
+          "MID": {
+            "samples": 32018,
+            "points_mae": 1.2051,
+            "points_bias": -0.0801,
+            "minutes_mae": 21.2602,
+            "minutes_bias": 0.1485
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": -0.0001,
+        "overall_points_mae": -0.0159,
+        "overall_absolute_points_bias": 0.0072,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": -0.0207,
+        "top_100_absolute_points_bias": 0.0759,
+        "top_100_actual_points_mean": 0.0072,
+        "captain_regret": 0.0451,
+        "unconstrained_top_15_regret": 0.407
+      },
+      "passes_development_gate": false
+    },
+    {
+      "name": "combined",
+      "changed_assumption": "All implemented football-assumption corrections",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "position_aware",
+        "scoring_recent_evidence_weight": 3.0,
+        "defensive_contribution_model": "threshold_poisson",
+        "include_penalty_events": true
+      },
+      "seasons": [
+        {
+          "season_code": "2021-22",
+          "backtest_run_id": 352,
+          "samples": 22676,
+          "top_100_samples": 3700,
+          "objective": 3.047388,
+          "overall_points_mae": 1.259,
+          "overall_points_bias": 0.0185,
+          "overall_minutes_mae": 21.9662,
+          "top_100_points_mae": 2.7087,
+          "top_100_points_bias": 0.1143,
+          "top_100_actual_points_mean": 3.6703,
+          "captain_regret": 10.4595,
+          "unconstrained_top_15_regret": 106.1081,
+          "by_position": {
+            "GK": {
+              "samples": 2596,
+              "points_mae": 0.8751,
+              "points_bias": 0.0526,
+              "minutes_mae": 14.7152,
+              "minutes_bias": -0.0002
+            },
+            "DEF": {
+              "samples": 7691,
+              "points_mae": 1.3459,
+              "points_bias": 0.2087,
+              "minutes_mae": 24.9922,
+              "minutes_bias": 0.0849
+            },
+            "MID": {
+              "samples": 9375,
+              "points_mae": 1.2817,
+              "points_bias": -0.1326,
+              "minutes_mae": 22.2424,
+              "minutes_bias": -0.2004
+            },
+            "FWD": {
+              "samples": 3014,
+              "points_mae": 1.2975,
+              "points_bias": -0.0267,
+              "minutes_mae": 19.6305,
+              "minutes_bias": -0.549
+            }
+          }
+        },
+        {
+          "season_code": "2022-23",
+          "backtest_run_id": 353,
+          "samples": 24384,
+          "top_100_samples": 3600,
+          "objective": 2.870304,
+          "overall_points_mae": 1.1863,
+          "overall_points_bias": 0.0233,
+          "overall_minutes_mae": 21.7976,
+          "top_100_points_mae": 2.5133,
+          "top_100_points_bias": 0.2002,
+          "top_100_actual_points_mean": 3.5422,
+          "captain_regret": 9.4444,
+          "unconstrained_top_15_regret": 98.7778,
+          "by_position": {
+            "GK": {
+              "samples": 2566,
+              "points_mae": 0.9701,
+              "points_bias": 0.076,
+              "minutes_mae": 15.9801,
+              "minutes_bias": -0.0017
+            },
+            "DEF": {
+              "samples": 8447,
+              "points_mae": 1.1969,
+              "points_bias": 0.1302,
+              "minutes_mae": 25.1681,
+              "minutes_bias": -0.4168
+            },
+            "MID": {
+              "samples": 10500,
+              "points_mae": 1.1813,
+              "points_bias": -0.0799,
+              "minutes_mae": 20.8611,
+              "minutes_bias": 0.365
+            },
+            "FWD": {
+              "samples": 2871,
+              "points_mae": 1.3668,
+              "points_bias": 0.0385,
+              "minutes_mae": 20.5059,
+              "minutes_bias": -1.2346
+            }
+          }
+        },
+        {
+          "season_code": "2023-24",
+          "backtest_run_id": 354,
+          "samples": 28084,
+          "top_100_samples": 3700,
+          "objective": 2.95652,
+          "overall_points_mae": 1.0991,
+          "overall_points_bias": 0.0284,
+          "overall_minutes_mae": 21.4161,
+          "top_100_points_mae": 2.5647,
+          "top_100_points_bias": 0.3425,
+          "top_100_actual_points_mean": 3.3024,
+          "captain_regret": 12.2703,
+          "unconstrained_top_15_regret": 108.973,
+          "by_position": {
+            "GK": {
+              "samples": 3222,
+              "points_mae": 0.7551,
+              "points_bias": 0.0126,
+              "minutes_mae": 15.8648,
+              "minutes_bias": -0.0025
+            },
+            "DEF": {
+              "samples": 9080,
+              "points_mae": 1.1049,
+              "points_bias": 0.1221,
+              "minutes_mae": 25.3484,
+              "minutes_bias": 0.0725
+            },
+            "MID": {
+              "samples": 12143,
+              "points_mae": 1.1589,
+              "points_bias": -0.0377,
+              "minutes_mae": 20.7954,
+              "minutes_bias": -0.1471
+            },
+            "FWD": {
+              "samples": 3639,
+              "points_mae": 1.1897,
+              "points_bias": 0.0288,
+              "minutes_mae": 18.5907,
+              "minutes_bias": -0.7065
+            }
+          }
+        }
+      ],
+      "development_score": 2.980998,
+      "cross_season_stability_penalty": 0.02213,
+      "aggregate": {
+        "development_score": 2.980998,
+        "cross_season_stability_penalty": 0.02213,
+        "overall_points_mae": 1.1756,
+        "overall_absolute_points_bias": 0.0238,
+        "overall_minutes_mae": 21.7059,
+        "top_100_points_mae": 2.5963,
+        "top_100_absolute_points_bias": 0.2192,
+        "top_100_actual_points_mean": 3.5046,
+        "captain_regret": 10.7247,
+        "unconstrained_top_15_regret": 104.6196,
+        "by_position": {
+          "DEF": {
+            "samples": 25218,
+            "points_mae": 1.2092,
+            "points_bias": 0.1512,
+            "minutes_mae": 25.1794,
+            "minutes_bias": -0.0876
+          },
+          "FWD": {
+            "samples": 9524,
+            "points_mae": 1.2772,
+            "points_bias": 0.0142,
+            "minutes_mae": 19.4971,
+            "minutes_bias": -0.8159
+          },
+          "GK": {
+            "samples": 8384,
+            "points_mae": 0.8581,
+            "points_bias": 0.0444,
+            "minutes_mae": 15.5441,
+            "minutes_bias": -0.0015
+          },
+          "MID": {
+            "samples": 32018,
+            "points_mae": 1.2022,
+            "points_bias": -0.0793,
+            "minutes_mae": 21.2406,
+            "minutes_bias": 0.0052
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0312,
+        "overall_points_mae": -0.0193,
+        "overall_absolute_points_bias": 0.0075,
+        "overall_minutes_mae": -0.0447,
+        "top_100_points_mae": 0.0064,
+        "top_100_absolute_points_bias": 0.0833,
+        "top_100_actual_points_mean": 0.0467,
+        "captain_regret": -0.0165,
+        "unconstrained_top_15_regret": 0.45
+      },
+      "passes_development_gate": false
+    }
+  ],
+  "learned_losses": [
+    {
+      "loss": "absolute_error",
+      "estimand": "conditional_median",
+      "folds": [
+        {
+          "artifact_path": "data\\models\\assumption-audit\\absolute_error-through-2022-23.joblib",
+          "metadata_path": "data\\models\\assumption-audit\\absolute_error-through-2022-23.json",
+          "training_run_ids": [
+            340
+          ],
+          "training_seasons": [
+            "2021-22"
+          ],
+          "validation_run_id": 341,
+          "validation_season": "2022-23",
+          "loss": "absolute_error",
+          "baseline": {
+            "samples": 24384,
+            "points_mae": 1.2064,
+            "points_bias": -0.0181,
+            "top_100_samples": 3600,
+            "top_100_points_mae": 2.5251,
+            "top_100_points_bias": 0.124,
+            "top_100_actual_points_mean": 3.5086,
+            "captain_regret": 9.2778,
+            "unconstrained_top_15_regret": 97.8333
+          },
+          "challenger": {
+            "samples": 24384,
+            "points_mae": 1.138,
+            "points_bias": 1.0015,
+            "top_100_samples": 3600,
+            "top_100_points_mae": 2.1034,
+            "top_100_points_bias": 1.2867,
+            "top_100_actual_points_mean": 3.0306,
+            "captain_regret": 12.8333,
+            "unconstrained_top_15_regret": 108.4167
+          },
+          "change": {
+            "points_mae": -0.0684,
+            "absolute_points_bias": 0.9834,
+            "top_100_points_mae": -0.4217,
+            "top_100_absolute_bias": 1.1627
+          }
+        },
+        {
+          "artifact_path": "data\\models\\assumption-audit\\absolute_error-through-2023-24.joblib",
+          "metadata_path": "data\\models\\assumption-audit\\absolute_error-through-2023-24.json",
+          "training_run_ids": [
+            340,
+            341
+          ],
+          "training_seasons": [
+            "2021-22",
+            "2022-23"
+          ],
+          "validation_run_id": 342,
+          "validation_season": "2023-24",
+          "loss": "absolute_error",
+          "baseline": {
+            "samples": 28084,
+            "points_mae": 1.1141,
+            "points_bias": -0.0001,
+            "top_100_samples": 3700,
+            "top_100_points_mae": 2.5295,
+            "top_100_points_bias": 0.2716,
+            "top_100_actual_points_mean": 3.2403,
+            "captain_regret": 12.2162,
+            "unconstrained_top_15_regret": 109.7297
+          },
+          "challenger": {
+            "samples": 28084,
+            "points_mae": 0.9599,
+            "points_bias": 0.769,
+            "top_100_samples": 3700,
+            "top_100_points_mae": 2.2099,
+            "top_100_points_bias": 1.187,
+            "top_100_actual_points_mean": 3.1497,
+            "captain_regret": 11.5946,
+            "unconstrained_top_15_regret": 115.5135
+          },
+          "change": {
+            "points_mae": -0.1542,
+            "absolute_points_bias": 0.7689,
+            "top_100_points_mae": -0.3196,
+            "top_100_absolute_bias": 0.9154
+          }
+        }
+      ],
+      "aggregate": {
+        "points_mae": 1.0427,
+        "absolute_points_bias": 0.8771,
+        "top_100_points_mae": 2.1574,
+        "top_100_absolute_points_bias": 1.2362,
+        "top_100_actual_points_mean": 3.091,
+        "captain_regret": 12.214,
+        "unconstrained_top_15_regret": 111.9651
+      },
+      "change_vs_absolute_error": {
+        "points_mae": 0.0,
+        "absolute_points_bias": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_mean_target_gate": false
+    },
+    {
+      "loss": "squared_error",
+      "estimand": "conditional_mean",
+      "folds": [
+        {
+          "artifact_path": "data\\models\\assumption-audit\\squared_error-through-2022-23.joblib",
+          "metadata_path": "data\\models\\assumption-audit\\squared_error-through-2022-23.json",
+          "training_run_ids": [
+            340
+          ],
+          "training_seasons": [
+            "2021-22"
+          ],
+          "validation_run_id": 341,
+          "validation_season": "2022-23",
+          "loss": "squared_error",
+          "baseline": {
+            "samples": 24384,
+            "points_mae": 1.2064,
+            "points_bias": -0.0181,
+            "top_100_samples": 3600,
+            "top_100_points_mae": 2.5251,
+            "top_100_points_bias": 0.124,
+            "top_100_actual_points_mean": 3.5086,
+            "captain_regret": 9.2778,
+            "unconstrained_top_15_regret": 97.8333
+          },
+          "challenger": {
+            "samples": 24384,
+            "points_mae": 1.1862,
+            "points_bias": 0.0191,
+            "top_100_samples": 3600,
+            "top_100_points_mae": 2.6134,
+            "top_100_points_bias": 0.264,
+            "top_100_actual_points_mean": 3.5531,
+            "captain_regret": 10.2778,
+            "unconstrained_top_15_regret": 102.6389
+          },
+          "change": {
+            "points_mae": -0.0202,
+            "absolute_points_bias": 0.001,
+            "top_100_points_mae": 0.0883,
+            "top_100_absolute_bias": 0.14
+          }
+        },
+        {
+          "artifact_path": "data\\models\\assumption-audit\\squared_error-through-2023-24.joblib",
+          "metadata_path": "data\\models\\assumption-audit\\squared_error-through-2023-24.json",
+          "training_run_ids": [
+            340,
+            341
+          ],
+          "training_seasons": [
+            "2021-22",
+            "2022-23"
+          ],
+          "validation_run_id": 342,
+          "validation_season": "2023-24",
+          "loss": "squared_error",
+          "baseline": {
+            "samples": 28084,
+            "points_mae": 1.1141,
+            "points_bias": -0.0001,
+            "top_100_samples": 3700,
+            "top_100_points_mae": 2.5295,
+            "top_100_points_bias": 0.2716,
+            "top_100_actual_points_mean": 3.2403,
+            "captain_regret": 12.2162,
+            "unconstrained_top_15_regret": 109.7297
+          },
+          "challenger": {
+            "samples": 28084,
+            "points_mae": 1.0935,
+            "points_bias": 0.0284,
+            "top_100_samples": 3700,
+            "top_100_points_mae": 2.6222,
+            "top_100_points_bias": 0.1245,
+            "top_100_actual_points_mean": 3.2524,
+            "captain_regret": 12.0811,
+            "unconstrained_top_15_regret": 111.9189
+          },
+          "change": {
+            "points_mae": -0.0206,
+            "absolute_points_bias": 0.0283,
+            "top_100_points_mae": 0.0927,
+            "top_100_absolute_bias": -0.1471
+          }
+        }
+      ],
+      "aggregate": {
+        "points_mae": 1.1366,
+        "absolute_points_bias": 0.0241,
+        "top_100_points_mae": 2.6179,
+        "top_100_absolute_points_bias": 0.1933,
+        "top_100_actual_points_mean": 3.4007,
+        "captain_regret": 11.1794,
+        "unconstrained_top_15_regret": 107.2789
+      },
+      "change_vs_absolute_error": {
+        "points_mae": 0.0939,
+        "absolute_points_bias": -0.853,
+        "top_100_points_mae": 0.4605,
+        "top_100_absolute_points_bias": -1.0429,
+        "top_100_actual_points_mean": 0.3097,
+        "captain_regret": -1.0346,
+        "unconstrained_top_15_regret": -4.6862
+      },
+      "passes_mean_target_gate": false
+    },
+    {
+      "loss": "poisson",
+      "estimand": "conditional_mean",
+      "folds": [
+        {
+          "artifact_path": "data\\models\\assumption-audit\\poisson-through-2022-23.joblib",
+          "metadata_path": "data\\models\\assumption-audit\\poisson-through-2022-23.json",
+          "training_run_ids": [
+            340
+          ],
+          "training_seasons": [
+            "2021-22"
+          ],
+          "validation_run_id": 341,
+          "validation_season": "2022-23",
+          "loss": "poisson",
+          "baseline": {
+            "samples": 24384,
+            "points_mae": 1.2064,
+            "points_bias": -0.0181,
+            "top_100_samples": 3600,
+            "top_100_points_mae": 2.5251,
+            "top_100_points_bias": 0.124,
+            "top_100_actual_points_mean": 3.5086,
+            "captain_regret": 9.2778,
+            "unconstrained_top_15_regret": 97.8333
+          },
+          "challenger": {
+            "samples": 24384,
+            "points_mae": 1.1807,
+            "points_bias": 0.0366,
+            "top_100_samples": 3600,
+            "top_100_points_mae": 2.6159,
+            "top_100_points_bias": 0.2684,
+            "top_100_actual_points_mean": 3.5272,
+            "captain_regret": 11.4444,
+            "unconstrained_top_15_regret": 103.7222
+          },
+          "change": {
+            "points_mae": -0.0257,
+            "absolute_points_bias": 0.0185,
+            "top_100_points_mae": 0.0908,
+            "top_100_absolute_bias": 0.1444
+          }
+        },
+        {
+          "artifact_path": "data\\models\\assumption-audit\\poisson-through-2023-24.joblib",
+          "metadata_path": "data\\models\\assumption-audit\\poisson-through-2023-24.json",
+          "training_run_ids": [
+            340,
+            341
+          ],
+          "training_seasons": [
+            "2021-22",
+            "2022-23"
+          ],
+          "validation_run_id": 342,
+          "validation_season": "2023-24",
+          "loss": "poisson",
+          "baseline": {
+            "samples": 28084,
+            "points_mae": 1.1141,
+            "points_bias": -0.0001,
+            "top_100_samples": 3700,
+            "top_100_points_mae": 2.5295,
+            "top_100_points_bias": 0.2716,
+            "top_100_actual_points_mean": 3.2403,
+            "captain_regret": 12.2162,
+            "unconstrained_top_15_regret": 109.7297
+          },
+          "challenger": {
+            "samples": 28084,
+            "points_mae": 1.0966,
+            "points_bias": 0.013,
+            "top_100_samples": 3700,
+            "top_100_points_mae": 2.6709,
+            "top_100_points_bias": 0.0071,
+            "top_100_actual_points_mean": 3.2414,
+            "captain_regret": 11.8649,
+            "unconstrained_top_15_regret": 115.8378
+          },
+          "change": {
+            "points_mae": -0.0175,
+            "absolute_points_bias": 0.0129,
+            "top_100_points_mae": 0.1414,
+            "top_100_absolute_bias": -0.2645
+          }
+        }
+      ],
+      "aggregate": {
+        "points_mae": 1.1357,
+        "absolute_points_bias": 0.024,
+        "top_100_points_mae": 2.6438,
+        "top_100_absolute_points_bias": 0.136,
+        "top_100_actual_points_mean": 3.3823,
+        "captain_regret": 11.6547,
+        "unconstrained_top_15_regret": 109.78
+      },
+      "change_vs_absolute_error": {
+        "points_mae": 0.093,
+        "absolute_points_bias": -0.8531,
+        "top_100_points_mae": 0.4864,
+        "top_100_absolute_points_bias": -1.1002,
+        "top_100_actual_points_mean": 0.2913,
+        "captain_regret": -0.5593,
+        "unconstrained_top_15_regret": -2.1851
+      },
+      "passes_mean_target_gate": false
+    }
+  ],
+  "limitations": [
+    "Development-fold evidence only; no previously inspected validation season is queried.",
+    "Club-change resets cannot yet be isolated because historical fixture rows do not preserve a reliable per-fixture club role.",
+    "Defensive-contribution threshold scoring has no effect before the rule exists and therefore needs forward 2026/27 evidence.",
+    "Top-15 regret is unconstrained by budget, formation and club limits; full optimiser regret remains a later promotion gate.",
+    "Historical reconstructed schedules may contain later rescheduling knowledge."
+  ],
+  "output_path": "data\\models\\assumption-audit-v1.json"
+}

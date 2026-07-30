@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from fpl_engine import (
@@ -20,6 +21,15 @@ from fpl_engine import (
 
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
+
+
+def test_historical_projection_rules_inherit_pre_2025_scoring() -> None:
+    rules = load_season_rules(Path("config/seasons/2024-25.json"))
+
+    assert rules.season == "2024-25"
+    assert rules.scoring.defensive_contribution_points == 0
+    assert rules.transfers.maximum_free_transfers == 5
+    assert rules.chips.banked_transfers_preserved is True
 
 
 def make_legal_squad() -> Squad:
@@ -120,9 +130,11 @@ def test_goalkeeper_points_include_saves_and_penalty_save() -> None:
 def test_goals_conceded_deduction_uses_complete_pairs() -> None:
     player = Player(1, "Defender", 1, Position.DEF, 50)
 
+    two_conceded_in_45 = PlayerGameweekStats(minutes=45, goals_conceded=2)
     three_conceded = PlayerGameweekStats(minutes=90, goals_conceded=3)
     four_conceded = PlayerGameweekStats(minutes=90, goals_conceded=4)
 
+    assert calculate_player_points(player, two_conceded_in_45, RULES) == 0
     assert calculate_player_points(player, three_conceded, RULES) == 1
     assert calculate_player_points(player, four_conceded, RULES) == 0
 
@@ -172,6 +184,28 @@ def test_chip_availability_and_cooldown_are_configured() -> None:
             already_used_in_half=frozenset({Chip.BENCH_BOOST}),
         )
     } == {"chip_already_used"}
+    three_gameweek_gap = replace(
+        RULES,
+        chips=replace(
+            RULES.chips,
+            minimum_gap_gameweeks={Chip.FREE_HIT.value: 3},
+        ),
+    )
+    assert {
+        error.code
+        for error in validate_chip_use(
+            Chip.FREE_HIT,
+            20,
+            three_gameweek_gap,
+            last_used_gameweek=17,
+        )
+    } == {"chip_cooldown"}
+    assert not validate_chip_use(
+        Chip.FREE_HIT,
+        21,
+        three_gameweek_gap,
+        last_used_gameweek=17,
+    )
 
 
 def test_bonus_allocation_handles_ties_at_each_rank() -> None:

@@ -8,7 +8,7 @@ from fpl_engine.transfers import CurrentSquad, recommend_transfers
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
 
 
-def test_transfer_recommender_compares_roll_one_and_two_moves() -> None:
+def test_transfer_recommender_searches_the_configured_move_cap_by_default() -> None:
     positions = (
         *(Position.GK for _ in range(3)),
         *(Position.DEF for _ in range(7)),
@@ -57,11 +57,17 @@ def test_transfer_recommender_compares_roll_one_and_two_moves() -> None:
             free_transfers=1,
         ),
         rules=RULES,
-        max_transfers=2,
     )
 
-    assert {route.transfer_count for route in recommendation.routes} == {0, 1, 2}
-    assert recommendation.primary.transfer_count in {1, 2}
+    assert {route.transfer_count for route in recommendation.routes} == {
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+    }
+    assert recommendation.primary.transfer_count in {1, 2, 3, 4, 5}
     assert any(
         player.source_player_id == "22"
         for player in recommendation.primary.transfers_in
