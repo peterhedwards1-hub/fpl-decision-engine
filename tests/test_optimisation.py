@@ -118,6 +118,10 @@ def test_full_squad_returns_legal_lineup_bench_and_captaincy() -> None:
     assert result.captain_id in result.starting_player_ids
     assert result.vice_captain_id in result.starting_player_ids
     assert result.captain_id != result.vice_captain_id
+    assert len(result.gameweek_plans) == 1
+    assert result.gameweek_plans[0].starting_player_ids == (
+        result.starting_player_ids
+    )
     selected = {player.source_player_id: player for player in result.players}
     assert selected[result.bench_player_ids[0]].position == Position.GK
     assert result.total_cost_tenths <= 1000

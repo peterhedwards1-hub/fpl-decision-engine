@@ -44,11 +44,11 @@ Implemented:
 - a leakage-checked histogram gradient-boosting points challenger and auditable artifact;
 - automated tests and GitHub Actions CI.
 
-Schema version 12 includes the hardened identity and observation foundation, fixture-state
+Schema version 13 includes the hardened identity and observation foundation, fixture-state
 history, manager state, projections, weekly decision records and historical backtests. The
 latest schema also records versioned team-news provenance, review governance and paired
 pre/post-news projection evaluations, plus persisted appearance and 60-minute
-probabilities for optimisation. The
+probabilities for live optimisation and historical decision replay. The
 database supports in-place version-2 migration, stable player
 identity links, explicit identifier namespaces and delivery-source provenance, timestamped
 multi-observation Gameweek history, selected-manager counts, and strict CSV contract
@@ -232,6 +232,21 @@ be printed again with:
 fpl-history --database data/fpl_history.sqlite3 backtest-report <run-id>
 ```
 
+Compare the same persisted forecast sample with leakage-controlled simple baselines:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 \
+  compare-backtest-baselines <run-id>
+```
+
+The expensive legal decision gate replays a £100m persistent squad, legal weekly XIs and
+captaincy:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 \
+  evaluate-squad-regret <run-id> --methods model season_points_per_fixture
+```
+
 The latest completed scorecard also appears in the app's Data Health view. Backtest runs
 do not create ordinary production projection runs.
 
@@ -263,8 +278,10 @@ seasons as potential historical evidence but evaluated model selection only on 2
 it was not a five-season test.
 
 The database now contains the complete 2021/22–2025/26 five-season window. The locked
-rolling evaluation command, promoted v3 incumbent and team-news integration are documented
-in [the strongest-model route](docs/06_StrongestModelRoute.md).
+rolling evaluation command, corrected-v4 default and team-news integration are documented
+in [the strongest-model route](docs/06_StrongestModelRoute.md). The completed
+five-season, eight-Gameweek evaluation and xG/xA challenger decision are recorded in
+[the corrected-v4 model evaluation](docs/08_ModelEvaluation.md).
 
 Football assumptions can be tested without reopening the locked holdout:
 

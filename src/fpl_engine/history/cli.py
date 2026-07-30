@@ -5,14 +5,21 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..config import load_season_rules
+from ..evaluation import (
+    build_evaluation_suite,
+    compare_backtest_to_baselines,
+    evaluate_legal_squad_regret,
+    write_json_report,
+)
 from ..learned_challenger import train_and_evaluate_learned_challenger
-from ..projections import DEFAULT_MODEL_CONFIG, MODEL_VERSION, ProjectionModelConfig
+from ..projections import DEFAULT_MODEL_CONFIG, MODEL_VERSION
 from ..tuning import tune_projection_model, tune_projection_model_rolling
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
@@ -117,6 +124,11 @@ def main() -> None:
         "--recent-evidence-weight",
         type=float,
         default=DEFAULT_MODEL_CONFIG.recent_evidence_weight,
+    )
+    backtest_parser.add_argument(
+        "--scoring-event-source",
+        choices=("actual", "expected_with_actual_fallback"),
+        default=DEFAULT_MODEL_CONFIG.scoring_event_source,
     )
     backtest_parser.add_argument(
         "--appearance-prior-matches",
@@ -260,6 +272,59 @@ def main() -> None:
         "backtest-report", help="Show a completed persisted backtest scorecard"
     )
     report_parser.add_argument("run_id", type=int)
+    baseline_parser = subparsers.add_parser(
+        "compare-backtest-baselines",
+        help="Compare one completed backtest with leakage-controlled simple baselines",
+    )
+    baseline_parser.add_argument("run_id", type=int)
+    baseline_parser.add_argument(
+        "--output",
+        help="Optional JSON output path",
+    )
+    regret_parser = subparsers.add_parser(
+        "evaluate-squad-regret",
+        help="Replay a backtest as legal £100m multi-Gameweek squad decisions",
+    )
+    regret_parser.add_argument("run_id", type=int)
+    regret_parser.add_argument(
+        "--rules",
+        help="Season rules JSON (defaults to the backtest season)",
+    )
+    regret_parser.add_argument(
+        "--methods",
+        nargs="+",
+        choices=(
+            "model",
+            "season_points_per_fixture",
+            "recent_4_points_per_fixture",
+            "season_points_per_90_model_minutes",
+            "position_points_per_fixture",
+        ),
+        default=(
+            "model",
+            "season_points_per_fixture",
+            "recent_4_points_per_fixture",
+            "season_points_per_90_model_minutes",
+            "position_points_per_fixture",
+        ),
+    )
+    suite_parser = subparsers.add_parser(
+        "compile-model-evaluation",
+        help="Compile horizon, baseline and challenger gates from backtest runs",
+    )
+    suite_parser.add_argument(
+        "--incumbent-runs",
+        nargs="+",
+        type=int,
+        required=True,
+    )
+    suite_parser.add_argument(
+        "--challenger-runs",
+        nargs="*",
+        type=int,
+        default=(),
+    )
+    suite_parser.add_argument("--output", required=True)
 
     args = parser.parse_args()
     database_path = Path(args.database)
@@ -284,6 +349,53 @@ def main() -> None:
             )
             return
 
+        if args.command == "compare-backtest-baselines":
+            comparison = compare_backtest_to_baselines(
+                database,
+                args.run_id,
+            )
+            if args.output:
+                comparison.write_json(args.output)
+            print(json.dumps(comparison.as_dict(), indent=2))
+            return
+
+        if args.command == "evaluate-squad-regret":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(
+                    args.rules
+                    or f"config/seasons/{season['code']}.json"
+                )
+            )
+            regret = evaluate_legal_squad_regret(
+                database,
+                args.run_id,
+                rules,
+                methods=tuple(args.methods),
+            )
+            print(json.dumps(regret.as_dict(), indent=2))
+            return
+
+        if args.command == "compile-model-evaluation":
+            suite = build_evaluation_suite(
+                database,
+                tuple(args.incumbent_runs),
+                challenger_run_ids=tuple(args.challenger_runs),
+            )
+            write_json_report(suite, args.output)
+            print(json.dumps(suite, indent=2))
+            return
+
         if args.command == "backtest-projections":
             rules_path = Path(
                 args.rules or f"config/seasons/{args.season_code}.json"
@@ -294,7 +406,8 @@ def main() -> None:
                     f"Rules season {rules.season!r} does not match "
                     f"backtest season {args.season_code!r}"
                 )
-            config = ProjectionModelConfig(
+            config = replace(
+                DEFAULT_MODEL_CONFIG,
                 player_rate_prior_minutes=args.player_prior_minutes,
                 minutes_prior_matches=args.minutes_prior_matches,
                 team_prior_matches=args.team_prior_matches,
@@ -303,6 +416,7 @@ def main() -> None:
                 minutes_model=args.minutes_model,
                 recent_gameweeks=args.recent_gameweeks,
                 recent_evidence_weight=args.recent_evidence_weight,
+                scoring_event_source=args.scoring_event_source,
                 appearance_prior_matches=args.appearance_prior_matches,
                 appearance_prior_probability=(
                     args.appearance_prior_probability

@@ -1,0 +1,1574 @@
+{
+  "challenger_comparisons": [
+    {
+      "challenger_run_id": 360,
+      "changes": {
+        "captain_regret": 0.0,
+        "overall_points_mae": 0.0,
+        "top_100_points_bias": 0.0,
+        "top_100_points_mae": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "gates": {
+        "captain_regret": true,
+        "overall_points_mae": true,
+        "top_100_absolute_bias": true,
+        "top_100_points_mae": true,
+        "unconstrained_top_15_regret": true
+      },
+      "incumbent_run_id": 355,
+      "passed": true,
+      "season_code": "2021-22"
+    },
+    {
+      "challenger_run_id": 361,
+      "changes": {
+        "captain_regret": 0.6343,
+        "overall_points_mae": -0.0087,
+        "top_100_points_bias": 0.1398,
+        "top_100_points_mae": -0.0478,
+        "unconstrained_top_15_regret": 0.9075
+      },
+      "gates": {
+        "captain_regret": false,
+        "overall_points_mae": true,
+        "top_100_absolute_bias": false,
+        "top_100_points_mae": true,
+        "unconstrained_top_15_regret": false
+      },
+      "incumbent_run_id": 356,
+      "passed": false,
+      "season_code": "2022-23"
+    },
+    {
+      "challenger_run_id": 362,
+      "changes": {
+        "captain_regret": -0.3542,
+        "overall_points_mae": -0.009,
+        "top_100_points_bias": 0.1231,
+        "top_100_points_mae": -0.0526,
+        "unconstrained_top_15_regret": -0.3084
+      },
+      "gates": {
+        "captain_regret": true,
+        "overall_points_mae": true,
+        "top_100_absolute_bias": false,
+        "top_100_points_mae": true,
+        "unconstrained_top_15_regret": true
+      },
+      "incumbent_run_id": 357,
+      "passed": false,
+      "season_code": "2023-24"
+    }
+  ],
+  "challenger_passes_development_gate": false,
+  "challenger_pooled_horizon": [
+    {
+      "horizon_step": 1,
+      "points_bias": 0.0082,
+      "points_mae": 1.2154,
+      "samples": 59007
+    },
+    {
+      "horizon_step": 2,
+      "points_bias": 0.0037,
+      "points_mae": 1.2292,
+      "samples": 58496
+    },
+    {
+      "horizon_step": 3,
+      "points_bias": 0.0011,
+      "points_mae": 1.2424,
+      "samples": 58230
+    },
+    {
+      "horizon_step": 4,
+      "points_bias": -0.0004,
+      "points_mae": 1.2602,
+      "samples": 58223
+    },
+    {
+      "horizon_step": 5,
+      "points_bias": -0.0028,
+      "points_mae": 1.2674,
+      "samples": 58249
+    },
+    {
+      "horizon_step": 6,
+      "points_bias": -0.0025,
+      "points_mae": 1.2806,
+      "samples": 58341
+    },
+    {
+      "horizon_step": 7,
+      "points_bias": -0.0054,
+      "points_mae": 1.2933,
+      "samples": 58856
+    },
+    {
+      "horizon_step": 8,
+      "points_bias": -0.0091,
+      "points_mae": 1.2973,
+      "samples": 59055
+    }
+  ],
+  "challenger_runs": [
+    {
+      "backtest_run_id": 360,
+      "baselines": [
+        {
+          "captain_regret": 12.5708,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": -0.0317,
+          "points_mae": 1.3631,
+          "points_rmse": 2.3423,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 111.4792
+        },
+        {
+          "captain_regret": 12.0958,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.0579,
+          "points_mae": 1.356,
+          "points_rmse": 2.4596,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 113.2667
+        },
+        {
+          "captain_regret": 13.4208,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0405,
+          "points_mae": 1.403,
+          "points_rmse": 2.6484,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 120.5
+        },
+        {
+          "captain_regret": 14.9167,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.0153,
+          "points_mae": 1.3777,
+          "points_rmse": 2.5253,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 121.4125
+        },
+        {
+          "captain_regret": 17.4292,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.1197,
+          "points_mae": 1.7789,
+          "points_rmse": 2.6567,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 158.0375
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.3466,
+          "expected_points_mean": 1.3676,
+          "group": "horizon",
+          "minutes_bias": -0.124,
+          "minutes_mae": 22.8487,
+          "minutes_rmse": 30.8355,
+          "points_bias": -0.0209,
+          "points_mae": 1.2906,
+          "points_rmse": 2.2449,
+          "samples": 17710,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.3424,
+          "expected_points_mean": 1.3671,
+          "group": "horizon",
+          "minutes_bias": -0.1997,
+          "minutes_mae": 23.7502,
+          "minutes_rmse": 32.135,
+          "points_bias": -0.0247,
+          "points_mae": 1.3173,
+          "points_rmse": 2.2771,
+          "samples": 17708,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.3573,
+          "expected_points_mean": 1.3841,
+          "group": "horizon",
+          "minutes_bias": -0.3214,
+          "minutes_mae": 24.6486,
+          "minutes_rmse": 33.4783,
+          "points_bias": -0.0268,
+          "points_mae": 1.3481,
+          "points_rmse": 2.3173,
+          "samples": 17609,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.3579,
+          "expected_points_mean": 1.3882,
+          "group": "horizon",
+          "minutes_bias": -0.4106,
+          "minutes_mae": 25.1531,
+          "minutes_rmse": 34.2401,
+          "points_bias": -0.0304,
+          "points_mae": 1.3612,
+          "points_rmse": 2.3344,
+          "samples": 17626,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.352,
+          "expected_points_mean": 1.3878,
+          "group": "horizon",
+          "minutes_bias": -0.4578,
+          "minutes_mae": 25.5233,
+          "minutes_rmse": 34.7526,
+          "points_bias": -0.0358,
+          "points_mae": 1.366,
+          "points_rmse": 2.3387,
+          "samples": 17638,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.3831,
+          "expected_points_mean": 1.4159,
+          "group": "horizon",
+          "minutes_bias": -0.5352,
+          "minutes_mae": 26.1309,
+          "minutes_rmse": 35.7035,
+          "points_bias": -0.0328,
+          "points_mae": 1.397,
+          "points_rmse": 2.3939,
+          "samples": 17650,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.3878,
+          "expected_points_mean": 1.4266,
+          "group": "horizon",
+          "minutes_bias": -0.615,
+          "minutes_mae": 26.5111,
+          "minutes_rmse": 36.3506,
+          "points_bias": -0.0387,
+          "points_mae": 1.4113,
+          "points_rmse": 2.4148,
+          "samples": 17628,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.3823,
+          "expected_points_mean": 1.4259,
+          "group": "horizon",
+          "minutes_bias": -0.6514,
+          "minutes_mae": 26.7035,
+          "minutes_rmse": 36.6277,
+          "points_bias": -0.0436,
+          "points_mae": 1.4133,
+          "points_rmse": 2.4123,
+          "samples": 17638,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 12.5708,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-expected-events-v4-h8-development",
+      "overall_points_bias": -0.0317,
+      "overall_points_mae": 1.3631,
+      "samples": 141207,
+      "season_code": "2021-22",
+      "top_100_points_bias": -0.0692,
+      "top_100_points_mae": 2.7627,
+      "unconstrained_top_15_regret": 111.4792
+    },
+    {
+      "backtest_run_id": 361,
+      "baselines": [
+        {
+          "captain_regret": 10.5286,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": 0.0113,
+          "points_mae": 1.271,
+          "points_rmse": 2.2055,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 103.3612
+        },
+        {
+          "captain_regret": 9.7489,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.071,
+          "points_mae": 1.2342,
+          "points_rmse": 2.2508,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 104.3877
+        },
+        {
+          "captain_regret": 12.0661,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0356,
+          "points_mae": 1.2702,
+          "points_rmse": 2.3974,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 110.1013
+        },
+        {
+          "captain_regret": 17.2291,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.1957,
+          "points_mae": 1.498,
+          "points_rmse": 3.4607,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 140.8062
+        },
+        {
+          "captain_regret": 13.8546,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.1266,
+          "points_mae": 1.6637,
+          "points_rmse": 2.4899,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 148.8106
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.2921,
+          "expected_points_mean": 1.2634,
+          "group": "horizon",
+          "minutes_bias": -0.143,
+          "minutes_mae": 23.0701,
+          "minutes_rmse": 30.5035,
+          "points_bias": 0.0287,
+          "points_mae": 1.2382,
+          "points_rmse": 2.1651,
+          "samples": 19169,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.2857,
+          "expected_points_mean": 1.2637,
+          "group": "horizon",
+          "minutes_bias": -0.2592,
+          "minutes_mae": 23.503,
+          "minutes_rmse": 31.1321,
+          "points_bias": 0.022,
+          "points_mae": 1.2475,
+          "points_rmse": 2.1721,
+          "samples": 18587,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.2757,
+          "expected_points_mean": 1.2612,
+          "group": "horizon",
+          "minutes_bias": -0.4005,
+          "minutes_mae": 23.8275,
+          "minutes_rmse": 31.6074,
+          "points_bias": 0.0145,
+          "points_mae": 1.2477,
+          "points_rmse": 2.1657,
+          "samples": 18412,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.2867,
+          "expected_points_mean": 1.275,
+          "group": "horizon",
+          "minutes_bias": -0.55,
+          "minutes_mae": 24.2218,
+          "minutes_rmse": 32.2703,
+          "points_bias": 0.0117,
+          "points_mae": 1.2699,
+          "points_rmse": 2.1987,
+          "samples": 18424,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.2842,
+          "expected_points_mean": 1.273,
+          "group": "horizon",
+          "minutes_bias": -0.6671,
+          "minutes_mae": 24.4043,
+          "minutes_rmse": 32.5385,
+          "points_bias": 0.0112,
+          "points_mae": 1.2779,
+          "points_rmse": 2.2172,
+          "samples": 18435,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.284,
+          "expected_points_mean": 1.2774,
+          "group": "horizon",
+          "minutes_bias": -0.7841,
+          "minutes_mae": 24.6424,
+          "minutes_rmse": 32.9377,
+          "points_bias": 0.0066,
+          "points_mae": 1.2821,
+          "points_rmse": 2.2274,
+          "samples": 18506,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.2914,
+          "expected_points_mean": 1.2898,
+          "group": "horizon",
+          "minutes_bias": -0.9275,
+          "minutes_mae": 25.1136,
+          "minutes_rmse": 33.6124,
+          "points_bias": 0.0016,
+          "points_mae": 1.2987,
+          "points_rmse": 2.2456,
+          "samples": 19034,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.2836,
+          "expected_points_mean": 1.2895,
+          "group": "horizon",
+          "minutes_bias": -1.0198,
+          "minutes_mae": 25.3694,
+          "minutes_rmse": 33.9299,
+          "points_bias": -0.0059,
+          "points_mae": 1.305,
+          "points_rmse": 2.2484,
+          "samples": 19220,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 10.5286,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-expected-events-v4-h8-development",
+      "overall_points_bias": 0.0113,
+      "overall_points_mae": 1.271,
+      "samples": 149787,
+      "season_code": "2022-23",
+      "top_100_points_bias": 0.1005,
+      "top_100_points_mae": 2.5701,
+      "unconstrained_top_15_regret": 103.3612
+    },
+    {
+      "backtest_run_id": 362,
+      "baselines": [
+        {
+          "captain_regret": 12.0333,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": 0.0134,
+          "points_mae": 1.1706,
+          "points_rmse": 2.1375,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 115.9708
+        },
+        {
+          "captain_regret": 12.7583,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.0209,
+          "points_mae": 1.1011,
+          "points_rmse": 2.1535,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 116.025
+        },
+        {
+          "captain_regret": 13.3042,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0122,
+          "points_mae": 1.1317,
+          "points_rmse": 2.2782,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 120.6875
+        },
+        {
+          "captain_regret": 16.4708,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.0783,
+          "points_mae": 1.277,
+          "points_rmse": 3.0051,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 144.6167
+        },
+        {
+          "captain_regret": 17.8042,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.0693,
+          "points_mae": 1.4719,
+          "points_rmse": 2.354,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 151.5208
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.0812,
+          "expected_points_mean": 1.0673,
+          "group": "horizon",
+          "minutes_bias": -0.1419,
+          "minutes_mae": 22.5045,
+          "minutes_rmse": 30.1292,
+          "points_bias": 0.0139,
+          "points_mae": 1.1353,
+          "points_rmse": 2.0827,
+          "samples": 22128,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.0787,
+          "expected_points_mean": 1.0676,
+          "group": "horizon",
+          "minutes_bias": -0.185,
+          "minutes_mae": 22.909,
+          "minutes_rmse": 30.6843,
+          "points_bias": 0.0111,
+          "points_mae": 1.1435,
+          "points_rmse": 2.0872,
+          "samples": 22201,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.0794,
+          "expected_points_mean": 1.0673,
+          "group": "horizon",
+          "minutes_bias": -0.2444,
+          "minutes_mae": 23.1976,
+          "minutes_rmse": 31.0656,
+          "points_bias": 0.0122,
+          "points_mae": 1.1541,
+          "points_rmse": 2.105,
+          "samples": 22209,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.0931,
+          "expected_points_mean": 1.0797,
+          "group": "horizon",
+          "minutes_bias": -0.3038,
+          "minutes_mae": 23.5784,
+          "minutes_rmse": 31.6543,
+          "points_bias": 0.0134,
+          "points_mae": 1.1718,
+          "points_rmse": 2.1365,
+          "samples": 22173,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.0949,
+          "expected_points_mean": 1.0832,
+          "group": "horizon",
+          "minutes_bias": -0.3552,
+          "minutes_mae": 23.8203,
+          "minutes_rmse": 32.0392,
+          "points_bias": 0.0117,
+          "points_mae": 1.1803,
+          "points_rmse": 2.1525,
+          "samples": 22176,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.0968,
+          "expected_points_mean": 1.0828,
+          "group": "horizon",
+          "minutes_bias": -0.3951,
+          "minutes_mae": 23.9457,
+          "minutes_rmse": 32.2022,
+          "points_bias": 0.014,
+          "points_mae": 1.1867,
+          "points_rmse": 2.1642,
+          "samples": 22185,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.1044,
+          "expected_points_mean": 1.0894,
+          "group": "horizon",
+          "minutes_bias": -0.4332,
+          "minutes_mae": 24.224,
+          "minutes_rmse": 32.6815,
+          "points_bias": 0.015,
+          "points_mae": 1.1948,
+          "points_rmse": 2.1786,
+          "samples": 22194,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.105,
+          "expected_points_mean": 1.0894,
+          "group": "horizon",
+          "minutes_bias": -0.4737,
+          "minutes_mae": 24.3296,
+          "minutes_rmse": 32.8074,
+          "points_bias": 0.0156,
+          "points_mae": 1.1984,
+          "points_rmse": 2.1909,
+          "samples": 22197,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 12.0333,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-expected-events-v4-h8-development",
+      "overall_points_bias": 0.0134,
+      "overall_points_mae": 1.1706,
+      "samples": 177463,
+      "season_code": "2023-24",
+      "top_100_points_bias": 0.1938,
+      "top_100_points_mae": 2.5501,
+      "unconstrained_top_15_regret": 115.9708
+    }
+  ],
+  "expected_event_coverage": [
+    {
+      "fixture_rows": 25447,
+      "season_code": "2021-22",
+      "xa_rows": 0,
+      "xg_rows": 0
+    },
+    {
+      "fixture_rows": 26505,
+      "season_code": "2022-23",
+      "xa_rows": 26505,
+      "xg_rows": 26505
+    },
+    {
+      "fixture_rows": 29725,
+      "season_code": "2023-24",
+      "xa_rows": 29725,
+      "xg_rows": 29725
+    },
+    {
+      "fixture_rows": 27283,
+      "season_code": "2024-25",
+      "xa_rows": 27283,
+      "xg_rows": 27283
+    },
+    {
+      "fixture_rows": 29747,
+      "season_code": "2025-26",
+      "xa_rows": 29747,
+      "xg_rows": 29747
+    }
+  ],
+  "incumbent_pooled_horizon": [
+    {
+      "horizon_step": 1,
+      "points_bias": -0.0078,
+      "points_mae": 1.2117,
+      "samples": 103057
+    },
+    {
+      "horizon_step": 2,
+      "points_bias": -0.0119,
+      "points_mae": 1.2238,
+      "samples": 102546
+    },
+    {
+      "horizon_step": 3,
+      "points_bias": -0.0134,
+      "points_mae": 1.238,
+      "samples": 102281
+    },
+    {
+      "horizon_step": 4,
+      "points_bias": -0.0159,
+      "points_mae": 1.25,
+      "samples": 101878
+    },
+    {
+      "horizon_step": 5,
+      "points_bias": -0.0183,
+      "points_mae": 1.2554,
+      "samples": 101903
+    },
+    {
+      "horizon_step": 6,
+      "points_bias": -0.0172,
+      "points_mae": 1.2655,
+      "samples": 101998
+    },
+    {
+      "horizon_step": 7,
+      "points_bias": -0.0203,
+      "points_mae": 1.2742,
+      "samples": 102514
+    },
+    {
+      "horizon_step": 8,
+      "points_bias": -0.0227,
+      "points_mae": 1.2776,
+      "samples": 102718
+    }
+  ],
+  "incumbent_runs": [
+    {
+      "backtest_run_id": 355,
+      "baselines": [
+        {
+          "captain_regret": 12.5708,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": -0.0317,
+          "points_mae": 1.3631,
+          "points_rmse": 2.3423,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 111.4792
+        },
+        {
+          "captain_regret": 12.0958,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.0579,
+          "points_mae": 1.356,
+          "points_rmse": 2.4596,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 113.2667
+        },
+        {
+          "captain_regret": 13.4208,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0405,
+          "points_mae": 1.403,
+          "points_rmse": 2.6484,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 120.5
+        },
+        {
+          "captain_regret": 14.9167,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.0153,
+          "points_mae": 1.3777,
+          "points_rmse": 2.5253,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 121.4125
+        },
+        {
+          "captain_regret": 17.4292,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.1197,
+          "points_mae": 1.7789,
+          "points_rmse": 2.6567,
+          "samples": 141207,
+          "unconstrained_top_15_regret": 158.0375
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.3466,
+          "expected_points_mean": 1.3676,
+          "group": "horizon",
+          "minutes_bias": -0.124,
+          "minutes_mae": 22.8487,
+          "minutes_rmse": 30.8355,
+          "points_bias": -0.0209,
+          "points_mae": 1.2906,
+          "points_rmse": 2.2449,
+          "samples": 17710,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.3424,
+          "expected_points_mean": 1.3671,
+          "group": "horizon",
+          "minutes_bias": -0.1997,
+          "minutes_mae": 23.7502,
+          "minutes_rmse": 32.135,
+          "points_bias": -0.0247,
+          "points_mae": 1.3173,
+          "points_rmse": 2.2771,
+          "samples": 17708,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.3573,
+          "expected_points_mean": 1.3841,
+          "group": "horizon",
+          "minutes_bias": -0.3214,
+          "minutes_mae": 24.6486,
+          "minutes_rmse": 33.4783,
+          "points_bias": -0.0268,
+          "points_mae": 1.3481,
+          "points_rmse": 2.3173,
+          "samples": 17609,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.3579,
+          "expected_points_mean": 1.3882,
+          "group": "horizon",
+          "minutes_bias": -0.4106,
+          "minutes_mae": 25.1531,
+          "minutes_rmse": 34.2401,
+          "points_bias": -0.0304,
+          "points_mae": 1.3612,
+          "points_rmse": 2.3344,
+          "samples": 17626,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.352,
+          "expected_points_mean": 1.3878,
+          "group": "horizon",
+          "minutes_bias": -0.4578,
+          "minutes_mae": 25.5233,
+          "minutes_rmse": 34.7526,
+          "points_bias": -0.0358,
+          "points_mae": 1.366,
+          "points_rmse": 2.3387,
+          "samples": 17638,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.3831,
+          "expected_points_mean": 1.4159,
+          "group": "horizon",
+          "minutes_bias": -0.5352,
+          "minutes_mae": 26.1309,
+          "minutes_rmse": 35.7035,
+          "points_bias": -0.0328,
+          "points_mae": 1.397,
+          "points_rmse": 2.3939,
+          "samples": 17650,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.3878,
+          "expected_points_mean": 1.4266,
+          "group": "horizon",
+          "minutes_bias": -0.615,
+          "minutes_mae": 26.5111,
+          "minutes_rmse": 36.3506,
+          "points_bias": -0.0387,
+          "points_mae": 1.4113,
+          "points_rmse": 2.4148,
+          "samples": 17628,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.3823,
+          "expected_points_mean": 1.4259,
+          "group": "horizon",
+          "minutes_bias": -0.6514,
+          "minutes_mae": 26.7035,
+          "minutes_rmse": 36.6277,
+          "points_bias": -0.0436,
+          "points_mae": 1.4133,
+          "points_rmse": 2.4123,
+          "samples": 17638,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 12.5708,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-rules-corrected-v4-h8-evaluation",
+      "overall_points_bias": -0.0317,
+      "overall_points_mae": 1.3631,
+      "samples": 141207,
+      "season_code": "2021-22",
+      "top_100_points_bias": -0.0692,
+      "top_100_points_mae": 2.7627,
+      "unconstrained_top_15_regret": 111.4792
+    },
+    {
+      "backtest_run_id": 356,
+      "baselines": [
+        {
+          "captain_regret": 9.8943,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": -0.0306,
+          "points_mae": 1.2797,
+          "points_rmse": 2.1963,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 102.4537
+        },
+        {
+          "captain_regret": 9.7489,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.071,
+          "points_mae": 1.2342,
+          "points_rmse": 2.2508,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 104.3877
+        },
+        {
+          "captain_regret": 12.0661,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0356,
+          "points_mae": 1.2702,
+          "points_rmse": 2.3974,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 110.1013
+        },
+        {
+          "captain_regret": 17.2291,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.1957,
+          "points_mae": 1.498,
+          "points_rmse": 3.4607,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 140.8062
+        },
+        {
+          "captain_regret": 13.8546,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.1266,
+          "points_mae": 1.6637,
+          "points_rmse": 2.4899,
+          "samples": 149787,
+          "unconstrained_top_15_regret": 148.8106
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.2921,
+          "expected_points_mean": 1.304,
+          "group": "horizon",
+          "minutes_bias": -0.143,
+          "minutes_mae": 23.0701,
+          "minutes_rmse": 30.5035,
+          "points_bias": -0.0119,
+          "points_mae": 1.2459,
+          "points_rmse": 2.1539,
+          "samples": 19169,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.2857,
+          "expected_points_mean": 1.3047,
+          "group": "horizon",
+          "minutes_bias": -0.2592,
+          "minutes_mae": 23.503,
+          "minutes_rmse": 31.1321,
+          "points_bias": -0.019,
+          "points_mae": 1.2557,
+          "points_rmse": 2.1619,
+          "samples": 18587,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.2757,
+          "expected_points_mean": 1.3025,
+          "group": "horizon",
+          "minutes_bias": -0.4005,
+          "minutes_mae": 23.8275,
+          "minutes_rmse": 31.6074,
+          "points_bias": -0.0268,
+          "points_mae": 1.2561,
+          "points_rmse": 2.1561,
+          "samples": 18412,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.2867,
+          "expected_points_mean": 1.3173,
+          "group": "horizon",
+          "minutes_bias": -0.55,
+          "minutes_mae": 24.2218,
+          "minutes_rmse": 32.2703,
+          "points_bias": -0.0306,
+          "points_mae": 1.2782,
+          "points_rmse": 2.1882,
+          "samples": 18424,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.2842,
+          "expected_points_mean": 1.3158,
+          "group": "horizon",
+          "minutes_bias": -0.6671,
+          "minutes_mae": 24.4043,
+          "minutes_rmse": 32.5385,
+          "points_bias": -0.0316,
+          "points_mae": 1.2866,
+          "points_rmse": 2.2081,
+          "samples": 18435,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.284,
+          "expected_points_mean": 1.3206,
+          "group": "horizon",
+          "minutes_bias": -0.7841,
+          "minutes_mae": 24.6424,
+          "minutes_rmse": 32.9377,
+          "points_bias": -0.0366,
+          "points_mae": 1.2912,
+          "points_rmse": 2.2186,
+          "samples": 18506,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.2914,
+          "expected_points_mean": 1.332,
+          "group": "horizon",
+          "minutes_bias": -0.9275,
+          "minutes_mae": 25.1136,
+          "minutes_rmse": 33.6124,
+          "points_bias": -0.0406,
+          "points_mae": 1.3085,
+          "points_rmse": 2.2384,
+          "samples": 19034,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.2836,
+          "expected_points_mean": 1.3313,
+          "group": "horizon",
+          "minutes_bias": -1.0198,
+          "minutes_mae": 25.3694,
+          "minutes_rmse": 33.9299,
+          "points_bias": -0.0476,
+          "points_mae": 1.3148,
+          "points_rmse": 2.2413,
+          "samples": 19220,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 9.8943,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-rules-corrected-v4-h8-evaluation",
+      "overall_points_bias": -0.0306,
+      "overall_points_mae": 1.2797,
+      "samples": 149787,
+      "season_code": "2022-23",
+      "top_100_points_bias": -0.0393,
+      "top_100_points_mae": 2.6179,
+      "unconstrained_top_15_regret": 102.4537
+    },
+    {
+      "backtest_run_id": 357,
+      "baselines": [
+        {
+          "captain_regret": 12.3875,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": -0.0152,
+          "points_mae": 1.1796,
+          "points_rmse": 2.1345,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 116.2792
+        },
+        {
+          "captain_regret": 12.7583,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.0209,
+          "points_mae": 1.1011,
+          "points_rmse": 2.1535,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 116.025
+        },
+        {
+          "captain_regret": 13.3042,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0122,
+          "points_mae": 1.1317,
+          "points_rmse": 2.2782,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 120.6875
+        },
+        {
+          "captain_regret": 16.4708,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.0783,
+          "points_mae": 1.277,
+          "points_rmse": 3.0051,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 144.6167
+        },
+        {
+          "captain_regret": 17.8042,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.0693,
+          "points_mae": 1.4719,
+          "points_rmse": 2.354,
+          "samples": 177463,
+          "unconstrained_top_15_regret": 151.5208
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.0812,
+          "expected_points_mean": 1.0956,
+          "group": "horizon",
+          "minutes_bias": -0.1419,
+          "minutes_mae": 22.5045,
+          "minutes_rmse": 30.1292,
+          "points_bias": -0.0144,
+          "points_mae": 1.144,
+          "points_rmse": 2.0789,
+          "samples": 22128,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.0787,
+          "expected_points_mean": 1.0959,
+          "group": "horizon",
+          "minutes_bias": -0.185,
+          "minutes_mae": 22.909,
+          "minutes_rmse": 30.6843,
+          "points_bias": -0.0171,
+          "points_mae": 1.152,
+          "points_rmse": 2.0834,
+          "samples": 22201,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.0794,
+          "expected_points_mean": 1.0955,
+          "group": "horizon",
+          "minutes_bias": -0.2444,
+          "minutes_mae": 23.1976,
+          "minutes_rmse": 31.0656,
+          "points_bias": -0.0161,
+          "points_mae": 1.163,
+          "points_rmse": 2.1018,
+          "samples": 22209,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.0931,
+          "expected_points_mean": 1.1082,
+          "group": "horizon",
+          "minutes_bias": -0.3038,
+          "minutes_mae": 23.5784,
+          "minutes_rmse": 31.6543,
+          "points_bias": -0.015,
+          "points_mae": 1.1809,
+          "points_rmse": 2.1335,
+          "samples": 22173,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.0949,
+          "expected_points_mean": 1.1118,
+          "group": "horizon",
+          "minutes_bias": -0.3552,
+          "minutes_mae": 23.8203,
+          "minutes_rmse": 32.0392,
+          "points_bias": -0.0169,
+          "points_mae": 1.1895,
+          "points_rmse": 2.1502,
+          "samples": 22176,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.0968,
+          "expected_points_mean": 1.1114,
+          "group": "horizon",
+          "minutes_bias": -0.3951,
+          "minutes_mae": 23.9457,
+          "minutes_rmse": 32.2022,
+          "points_bias": -0.0146,
+          "points_mae": 1.196,
+          "points_rmse": 2.1613,
+          "samples": 22185,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.1044,
+          "expected_points_mean": 1.1183,
+          "group": "horizon",
+          "minutes_bias": -0.4332,
+          "minutes_mae": 24.224,
+          "minutes_rmse": 32.6815,
+          "points_bias": -0.014,
+          "points_mae": 1.2039,
+          "points_rmse": 2.1759,
+          "samples": 22194,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.105,
+          "expected_points_mean": 1.1185,
+          "group": "horizon",
+          "minutes_bias": -0.4737,
+          "minutes_mae": 24.3296,
+          "minutes_rmse": 32.8074,
+          "points_bias": -0.0135,
+          "points_mae": 1.2075,
+          "points_rmse": 2.1881,
+          "samples": 22197,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 12.3875,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-rules-corrected-v4-h8-evaluation",
+      "overall_points_bias": -0.0152,
+      "overall_points_mae": 1.1796,
+      "samples": 177463,
+      "season_code": "2023-24",
+      "top_100_points_bias": 0.0707,
+      "top_100_points_mae": 2.6027,
+      "unconstrained_top_15_regret": 116.2792
+    },
+    {
+      "backtest_run_id": 358,
+      "baselines": [
+        {
+          "captain_regret": 8.5458,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": -0.0488,
+          "points_mae": 1.2336,
+          "points_rmse": 2.13,
+          "samples": 167196,
+          "unconstrained_top_15_regret": 108.7292
+        },
+        {
+          "captain_regret": 8.9542,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.017,
+          "points_mae": 1.1301,
+          "points_rmse": 2.1277,
+          "samples": 167196,
+          "unconstrained_top_15_regret": 109.4208
+        },
+        {
+          "captain_regret": 10.7167,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0167,
+          "points_mae": 1.1655,
+          "points_rmse": 2.2567,
+          "samples": 167196,
+          "unconstrained_top_15_regret": 112.5583
+        },
+        {
+          "captain_regret": 16.4875,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.089,
+          "points_mae": 1.3394,
+          "points_rmse": 2.9679,
+          "samples": 167196,
+          "unconstrained_top_15_regret": 144.575
+        },
+        {
+          "captain_regret": 16.7542,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.0594,
+          "points_mae": 1.5067,
+          "points_rmse": 2.3648,
+          "samples": 167196,
+          "unconstrained_top_15_regret": 148.6292
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.1702,
+          "expected_points_mean": 1.2151,
+          "group": "horizon",
+          "minutes_bias": -0.1392,
+          "minutes_mae": 23.5133,
+          "minutes_rmse": 30.6053,
+          "points_bias": -0.0449,
+          "points_mae": 1.2039,
+          "points_rmse": 2.0965,
+          "samples": 20990,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.1708,
+          "expected_points_mean": 1.2192,
+          "group": "horizon",
+          "minutes_bias": -0.1979,
+          "minutes_mae": 23.8389,
+          "minutes_rmse": 31.0516,
+          "points_bias": -0.0484,
+          "points_mae": 1.2174,
+          "points_rmse": 2.114,
+          "samples": 20990,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.18,
+          "expected_points_mean": 1.2279,
+          "group": "horizon",
+          "minutes_bias": -0.2771,
+          "minutes_mae": 24.1115,
+          "minutes_rmse": 31.4774,
+          "points_bias": -0.0478,
+          "points_mae": 1.2323,
+          "points_rmse": 2.1353,
+          "samples": 20992,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.1796,
+          "expected_points_mean": 1.2284,
+          "group": "horizon",
+          "minutes_bias": -0.342,
+          "minutes_mae": 24.2472,
+          "minutes_rmse": 31.6506,
+          "points_bias": -0.0488,
+          "points_mae": 1.2361,
+          "points_rmse": 2.1373,
+          "samples": 20843,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.176,
+          "expected_points_mean": 1.2283,
+          "group": "horizon",
+          "minutes_bias": -0.3923,
+          "minutes_mae": 24.4249,
+          "minutes_rmse": 31.874,
+          "points_bias": -0.0523,
+          "points_mae": 1.2378,
+          "points_rmse": 2.1354,
+          "samples": 20842,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.1803,
+          "expected_points_mean": 1.2276,
+          "group": "horizon",
+          "minutes_bias": -0.4221,
+          "minutes_mae": 24.5284,
+          "minutes_rmse": 32.0188,
+          "points_bias": -0.0472,
+          "points_mae": 1.2437,
+          "points_rmse": 2.136,
+          "samples": 20845,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.1762,
+          "expected_points_mean": 1.2273,
+          "group": "horizon",
+          "minutes_bias": -0.4673,
+          "minutes_mae": 24.6753,
+          "minutes_rmse": 32.2,
+          "points_bias": -0.0511,
+          "points_mae": 1.2471,
+          "points_rmse": 2.1391,
+          "samples": 20845,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.1774,
+          "expected_points_mean": 1.227,
+          "group": "horizon",
+          "minutes_bias": -0.5057,
+          "minutes_mae": 24.8045,
+          "minutes_rmse": 32.3583,
+          "points_bias": -0.0496,
+          "points_mae": 1.2505,
+          "points_rmse": 2.146,
+          "samples": 20849,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 8.5458,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-rules-corrected-v4-h8-validation",
+      "overall_points_bias": -0.0488,
+      "overall_points_mae": 1.2336,
+      "samples": 167196,
+      "season_code": "2024-25",
+      "top_100_points_bias": 0.0358,
+      "top_100_points_mae": 2.6273,
+      "unconstrained_top_15_regret": 108.7292
+    },
+    {
+      "backtest_run_id": 359,
+      "baselines": [
+        {
+          "captain_regret": 13.175,
+          "horizon_step": null,
+          "name": "model",
+          "points_bias": 0.0375,
+          "points_mae": 1.2194,
+          "points_rmse": 2.1631,
+          "samples": 183242,
+          "unconstrained_top_15_regret": 122.9583
+        },
+        {
+          "captain_regret": 11.4,
+          "horizon_step": null,
+          "name": "season_points_per_fixture",
+          "points_bias": -0.051,
+          "points_mae": 1.1278,
+          "points_rmse": 2.1548,
+          "samples": 183242,
+          "unconstrained_top_15_regret": 118.9
+        },
+        {
+          "captain_regret": 12.9125,
+          "horizon_step": null,
+          "name": "recent_4_points_per_fixture",
+          "points_bias": -0.0243,
+          "points_mae": 1.1627,
+          "points_rmse": 2.2848,
+          "samples": 183242,
+          "unconstrained_top_15_regret": 123.5
+        },
+        {
+          "captain_regret": 16.5917,
+          "horizon_step": null,
+          "name": "season_points_per_90_model_minutes",
+          "points_bias": -0.0006,
+          "points_mae": 1.2376,
+          "points_rmse": 2.6933,
+          "samples": 183242,
+          "unconstrained_top_15_regret": 146.4083
+        },
+        {
+          "captain_regret": 12.1625,
+          "horizon_step": null,
+          "name": "position_points_per_fixture",
+          "points_bias": -0.0772,
+          "points_mae": 1.5794,
+          "points_rmse": 2.3856,
+          "samples": 183242,
+          "unconstrained_top_15_regret": 151.4667
+        }
+      ],
+      "by_horizon": [
+        {
+          "actual_points_mean": 1.1736,
+          "expected_points_mean": 1.1279,
+          "group": "horizon",
+          "minutes_bias": -0.134,
+          "minutes_mae": 22.0197,
+          "minutes_rmse": 29.6637,
+          "points_bias": 0.0457,
+          "points_mae": 1.1946,
+          "points_rmse": 2.132,
+          "samples": 23060,
+          "value": "1"
+        },
+        {
+          "actual_points_mean": 1.1703,
+          "expected_points_mean": 1.1283,
+          "group": "horizon",
+          "minutes_bias": -0.1931,
+          "minutes_mae": 22.3292,
+          "minutes_rmse": 30.077,
+          "points_bias": 0.0421,
+          "points_mae": 1.2013,
+          "points_rmse": 2.1386,
+          "samples": 23060,
+          "value": "2"
+        },
+        {
+          "actual_points_mean": 1.1803,
+          "expected_points_mean": 1.1388,
+          "group": "horizon",
+          "minutes_bias": -0.2618,
+          "minutes_mae": 22.7287,
+          "minutes_rmse": 30.7401,
+          "points_bias": 0.0415,
+          "points_mae": 1.2168,
+          "points_rmse": 2.1624,
+          "samples": 23059,
+          "value": "3"
+        },
+        {
+          "actual_points_mean": 1.1764,
+          "expected_points_mean": 1.1398,
+          "group": "horizon",
+          "minutes_bias": -0.296,
+          "minutes_mae": 22.8484,
+          "minutes_rmse": 30.9204,
+          "points_bias": 0.0366,
+          "points_mae": 1.2213,
+          "points_rmse": 2.1675,
+          "samples": 22812,
+          "value": "4"
+        },
+        {
+          "actual_points_mean": 1.1756,
+          "expected_points_mean": 1.1401,
+          "group": "horizon",
+          "minutes_bias": -0.3366,
+          "minutes_mae": 22.9785,
+          "minutes_rmse": 31.0995,
+          "points_bias": 0.0355,
+          "points_mae": 1.2246,
+          "points_rmse": 2.1729,
+          "samples": 22812,
+          "value": "5"
+        },
+        {
+          "actual_points_mean": 1.1795,
+          "expected_points_mean": 1.144,
+          "group": "horizon",
+          "minutes_bias": -0.3833,
+          "minutes_mae": 23.1311,
+          "minutes_rmse": 31.3142,
+          "points_bias": 0.0355,
+          "points_mae": 1.2304,
+          "points_rmse": 2.177,
+          "samples": 22812,
+          "value": "6"
+        },
+        {
+          "actual_points_mean": 1.1773,
+          "expected_points_mean": 1.1446,
+          "group": "horizon",
+          "minutes_bias": -0.4208,
+          "minutes_mae": 23.2073,
+          "minutes_rmse": 31.4216,
+          "points_bias": 0.0327,
+          "points_mae": 1.2325,
+          "points_rmse": 2.1797,
+          "samples": 22813,
+          "value": "7"
+        },
+        {
+          "actual_points_mean": 1.1742,
+          "expected_points_mean": 1.1441,
+          "group": "horizon",
+          "minutes_bias": -0.4592,
+          "minutes_mae": 23.2987,
+          "minutes_rmse": 31.5577,
+          "points_bias": 0.0301,
+          "points_mae": 1.2345,
+          "points_rmse": 2.175,
+          "samples": 22814,
+          "value": "8"
+        }
+      ],
+      "captain_regret": 13.175,
+      "horizon_gameweeks": 8,
+      "model_version": "rates-rules-corrected-v4-h8-audit",
+      "overall_points_bias": 0.0375,
+      "overall_points_mae": 1.2194,
+      "samples": 183242,
+      "season_code": "2025-26",
+      "top_100_points_bias": 0.0266,
+      "top_100_points_mae": 2.5639,
+      "unconstrained_top_15_regret": 122.9583
+    }
+  ],
+  "limitations": [
+    "Simple baselines and unconstrained regrets do not enforce squad legality; use evaluate-squad-regret for the expensive legal replay.",
+    "A challenger must pass every per-season gate before validation is queried.",
+    "Historical availability snapshots have unknown timing and cannot validate availability recovery."
+  ]
+}

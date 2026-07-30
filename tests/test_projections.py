@@ -14,6 +14,7 @@ from fpl_engine.history.records import (
     GameweekRecord,
     HistoricalBundle,
     IngestionSource,
+    PlayerFixtureStatsRecord,
     PlayerGameweekSnapshotRecord,
     PlayerRecord,
     PlayerSeasonRecord,
@@ -23,6 +24,7 @@ from fpl_engine.history.records import (
 from fpl_engine.projections import (
     BASELINE_V2_MODEL_CONFIG,
     DEFAULT_MODEL_CONFIG,
+    EXPECTED_EVENTS_V4_MODEL_CONFIG,
     MODEL_VERSION,
     ProjectionModelConfig,
     ProjectionOverride,
@@ -182,6 +184,64 @@ def test_generated_at_resolves_and_enforces_one_ingestion_cutoff(tmp_path) -> No
             "SELECT source_ingestion_run_id FROM projection_runs"
         ).fetchone()[0]
         assert source_run_id == 1
+
+
+def test_expected_event_challenger_uses_xg_and_xa_with_actual_fallback(
+    tmp_path,
+) -> None:
+    evidence = replace(
+        _bundle(),
+        fixture_stats=(
+            PlayerFixtureStatsRecord(
+                "101",
+                "501",
+                minutes=90,
+                goals=0,
+                assists=0,
+                expected_goals=2.0,
+                expected_assists=1.0,
+            ),
+        ),
+    )
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="expected-events",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            evidence,
+        )
+        actual_events = RatesProjectionModel(
+            database,
+            RULES,
+            config=DEFAULT_MODEL_CONFIG,
+        ).project(
+            season_code="2026-27",
+            start_gameweek=2,
+            horizon_gameweeks=1,
+            generated_at=CAPTURED_AT,
+            persist=False,
+        )
+        expected_events = RatesProjectionModel(
+            database,
+            RULES,
+            config=EXPECTED_EVENTS_V4_MODEL_CONFIG,
+        ).project(
+            season_code="2026-27",
+            start_gameweek=2,
+            horizon_gameweeks=1,
+            generated_at=CAPTURED_AT,
+            persist=False,
+        )
+
+        assert expected_events.projections[0].goal_points > (
+            actual_events.projections[0].goal_points
+        )
+        assert expected_events.projections[0].assist_points > (
+            actual_events.projections[0].assist_points
+        )
 
 
 def test_two_stage_minutes_respect_team_fixture_budget(tmp_path) -> None:

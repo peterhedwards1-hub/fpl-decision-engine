@@ -121,6 +121,7 @@ class ProjectionModelConfig:
     enforce_team_minutes: bool = True
     minutes_allocation: str = "team_total"
     scoring_recent_evidence_weight: float = 1.0
+    scoring_event_source: str = "actual"
     defensive_contribution_model: str = "legacy_linear"
     include_penalty_events: bool = False
 
@@ -169,6 +170,14 @@ class ProjectionModelConfig:
             raise ValueError(
                 "Recent scoring evidence weight cannot be below one"
             )
+        if self.scoring_event_source not in {
+            "actual",
+            "expected_with_actual_fallback",
+        }:
+            raise ValueError(
+                "Scoring event source must be 'actual' or "
+                "'expected_with_actual_fallback'"
+            )
         if self.defensive_contribution_model not in {
             "legacy_linear",
             "threshold_poisson",
@@ -201,6 +210,10 @@ CORRECTED_V4_MODEL_CONFIG = replace(
     TUNED_V3_MODEL_CONFIG,
     defensive_contribution_model="threshold_poisson",
     include_penalty_events=True,
+)
+EXPECTED_EVENTS_V4_MODEL_CONFIG = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    scoring_event_source="expected_with_actual_fallback",
 )
 DEFAULT_MODEL_CONFIG = CORRECTED_V4_MODEL_CONFIG
 
@@ -485,6 +498,14 @@ class RatesProjectionModel:
                        COALESCE(SUM(stats.minutes), 0) AS minutes,
                        COALESCE(SUM(stats.goals), 0) AS goals,
                        COALESCE(SUM(stats.assists), 0) AS assists,
+                       COALESCE(
+                           SUM(COALESCE(stats.expected_goals, stats.goals)),
+                           0
+                       ) AS expected_goals,
+                       COALESCE(
+                           SUM(COALESCE(stats.expected_assists, stats.assists)),
+                           0
+                       ) AS expected_assists,
                        COALESCE(SUM(stats.clean_sheet), 0) AS clean_sheets,
                        COALESCE(SUM(stats.saves), 0) AS saves,
                        COALESCE(SUM(stats.bonus), 0) AS bonus,
@@ -529,6 +550,14 @@ class RatesProjectionModel:
                        COALESCE(SUM(stats.minutes), 0) AS recent_minutes,
                        COALESCE(SUM(stats.goals), 0) AS recent_goals,
                        COALESCE(SUM(stats.assists), 0) AS recent_assists,
+                       COALESCE(
+                           SUM(COALESCE(stats.expected_goals, stats.goals)),
+                           0
+                       ) AS recent_expected_goals,
+                       COALESCE(
+                           SUM(COALESCE(stats.expected_assists, stats.assists)),
+                           0
+                       ) AS recent_expected_assists,
                        COALESCE(SUM(stats.clean_sheet), 0)
                            AS recent_clean_sheets,
                        COALESCE(SUM(stats.saves), 0) AS recent_saves,
@@ -571,6 +600,8 @@ class RatesProjectionModel:
                    recent.recent_matches, recent.recent_appearances,
                    recent.recent_sixty_appearances, recent.recent_minutes,
                    recent.recent_goals, recent.recent_assists,
+                   recent.recent_expected_goals,
+                   recent.recent_expected_assists,
                    recent.recent_clean_sheets, recent.recent_saves,
                    recent.recent_bonus,
                    recent.recent_defensive_contributions,
@@ -579,6 +610,7 @@ class RatesProjectionModel:
                    recent.recent_penalties_saved,
                    recent.recent_penalties_missed,
                    career.goals, career.assists,
+                   career.expected_goals, career.expected_assists,
                    career.clean_sheets, career.saves, career.bonus,
                    career.defensive_contributions, career.yellow_cards,
                    career.red_cards, career.own_goals,
@@ -1055,12 +1087,23 @@ class RatesProjectionModel:
             sample_minutes
             + recent_scoring_extra * float(player["recent_minutes"])
         )
+        rate_source_names = {
+            "goals": "expected_goals",
+            "assists": "expected_assists",
+        } if (
+            self.config.scoring_event_source
+            == "expected_with_actual_fallback"
+        ) else {}
         rates = {
             name: (
                 (
-                    float(player[name])
+                    float(player[rate_source_names.get(name, name)])
                     + recent_scoring_extra
-                    * float(player[f"recent_{name}"])
+                    * float(
+                        player[
+                            f"recent_{rate_source_names.get(name, name)}"
+                        ]
+                    )
                 )
                 * 90.0
                 + (

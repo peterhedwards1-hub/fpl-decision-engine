@@ -34,6 +34,7 @@ from .schema import (
     MIGRATE_V9_TO_V10_SQL,
     MIGRATE_V10_TO_V11_SQL,
     MIGRATE_V11_TO_V12_SQL,
+    MIGRATE_V12_TO_V13_SQL,
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
@@ -120,6 +121,9 @@ class HistoricalDatabase:
             current_version = 11
         if current_version == 11:
             self._migrate_v11_to_v12()
+            current_version = 12
+        if current_version == 12:
+            self._migrate_v12_to_v13()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
@@ -319,6 +323,24 @@ class HistoricalDatabase:
             self.connection.rollback()
             raise RuntimeError(
                 f"Version 11 to 12 migration failed safely: {error}"
+            ) from error
+
+    def _migrate_v12_to_v13(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V12_TO_V13_SQL)
+            foreign_key_issues = self.connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 12 to 13 migration produced "
+                    f"{len(foreign_key_issues)} foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(
+                f"Version 12 to 13 migration failed safely: {error}"
             ) from error
 
     def _validate_v3_timing_rows(self) -> dict[int, str | None]:

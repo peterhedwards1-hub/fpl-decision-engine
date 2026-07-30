@@ -49,6 +49,14 @@ class StartingXIResult:
 
 
 @dataclass(frozen=True)
+class GameweekLineupPlan:
+    gameweek_number: int
+    starting_player_ids: frozenset[str]
+    captain_id: str
+    vice_captain_id: str
+
+
+@dataclass(frozen=True)
 class FullSquadResult:
     players: tuple[CandidatePlayer, ...]
     starting_player_ids: frozenset[str]
@@ -60,6 +68,7 @@ class FullSquadResult:
     gameweek_expected_points: float
     expected_bench_contribution: float
     expected_captain_contribution: float
+    gameweek_plans: tuple[GameweekLineupPlan, ...]
     solver_status: str
     proof: str
 
@@ -403,40 +412,49 @@ def optimise_full_squad(
         for player in ordered
         if (squad_vars[player.source_player_id].value() or 0) > 0.5
     )
-    current_gameweek = gameweeks[0]
-    starter_ids = frozenset(
-        player.source_player_id
-        for player in selected
-        if (
-            starter_vars[
-                (current_gameweek, player.source_player_id)
-            ].value()
-            or 0
+    gameweek_plans = tuple(
+        GameweekLineupPlan(
+            gameweek_number=gameweek,
+            starting_player_ids=frozenset(
+                player.source_player_id
+                for player in selected
+                if (
+                    starter_vars[
+                        (gameweek, player.source_player_id)
+                    ].value()
+                    or 0
+                )
+                > 0.5
+            ),
+            captain_id=next(
+                player.source_player_id
+                for player in selected
+                if (
+                    captain_vars[
+                        (gameweek, player.source_player_id)
+                    ].value()
+                    or 0
+                )
+                > 0.5
+            ),
+            vice_captain_id=next(
+                player.source_player_id
+                for player in selected
+                if (
+                    vice_vars[
+                        (gameweek, player.source_player_id)
+                    ].value()
+                    or 0
+                )
+                > 0.5
+            ),
         )
-        > 0.5
+        for gameweek in gameweeks
     )
-    captain_id = next(
-        player.source_player_id
-        for player in selected
-        if (
-            captain_vars[
-                (current_gameweek, player.source_player_id)
-            ].value()
-            or 0
-        )
-        > 0.5
-    )
-    vice_id = next(
-        player.source_player_id
-        for player in selected
-        if (
-            vice_vars[
-                (current_gameweek, player.source_player_id)
-            ].value()
-            or 0
-        )
-        > 0.5
-    )
+    current_plan = gameweek_plans[0]
+    starter_ids = current_plan.starting_player_ids
+    captain_id = current_plan.captain_id
+    vice_id = current_plan.vice_captain_id
     bench = _ordered_bench(selected, starter_ids)
     expected, bench_contribution, captain_contribution = _expected_weekly_score(
         selected,
@@ -477,6 +495,7 @@ def optimise_full_squad(
         gameweek_expected_points=round(expected, 3),
         expected_bench_contribution=round(bench_contribution, 3),
         expected_captain_contribution=round(captain_contribution, 3),
+        gameweek_plans=gameweek_plans,
         solver_status=status,
         proof=(
             "CBC returned Optimal for the projected multi-Gameweek legal-XI "

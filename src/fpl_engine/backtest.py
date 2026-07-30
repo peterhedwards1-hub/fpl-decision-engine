@@ -294,6 +294,8 @@ class ProjectionBacktester:
                             player_season_id,
                             projection.fixture_count,
                             projection.expected_minutes,
+                            projection.appearance_probability,
+                            projection.sixty_probability,
                             actual_minutes,
                             projection.expected_points,
                             actual_points,
@@ -306,9 +308,10 @@ class ProjectionBacktester:
                         INSERT INTO projection_backtest_predictions (
                             backtest_run_id, origin_gameweek, target_gameweek,
                             horizon_step, player_season_id, fixture_count,
-                            expected_minutes, actual_minutes, expected_points,
-                            actual_points, uncertainty
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            expected_minutes, appearance_probability,
+                            sixty_probability, actual_minutes,
+                            expected_points, actual_points, uncertainty
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         rows,
                     )

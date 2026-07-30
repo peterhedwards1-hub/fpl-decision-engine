@@ -2,7 +2,7 @@
 
 **Status date:** 2026-07-30  
 **Incumbent:** `rates-rules-corrected-v4`  
-**Database schema:** 12
+**Database schema:** 13
 
 ## Implemented
 

@@ -11,6 +11,10 @@ from fpl_engine.assumption_audit import run_assumption_audit
 from fpl_engine.backtest import ProjectionBacktester, load_backtest_report
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
+from fpl_engine.evaluation import (
+    build_evaluation_suite,
+    compare_backtest_to_baselines,
+)
 from fpl_engine.history.database import HistoricalDatabase
 from fpl_engine.history.records import (
     FixtureRecord,
@@ -239,6 +243,29 @@ def test_walk_forward_backtest_persists_predictions_and_metrics(tmp_path) -> Non
         assert load_backtest_report(
             database, report.backtest_run_id
         ).as_dict() == report.as_dict()
+        comparison = compare_backtest_to_baselines(
+            database,
+            report.backtest_run_id,
+        )
+        assert {
+            metric.name for metric in comparison.methods
+        } == {
+            "model",
+            "season_points_per_fixture",
+            "recent_4_points_per_fixture",
+            "season_points_per_90_model_minutes",
+            "position_points_per_fixture",
+        }
+        assert {
+            metric.horizon_step for metric in comparison.by_horizon
+        } == {1}
+        assert all(metric.samples == 2 for metric in comparison.methods)
+        suite = build_evaluation_suite(
+            database,
+            (report.backtest_run_id,),
+        )
+        assert suite["incumbent_runs"][0]["season_code"] == "2025-26"
+        assert suite["challenger_comparisons"] == []
 
 
 def test_future_season_results_do_not_leak_into_historical_projection(

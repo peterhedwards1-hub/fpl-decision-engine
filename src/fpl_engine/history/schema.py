@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -437,6 +437,12 @@ CREATE TABLE IF NOT EXISTS projection_backtest_predictions (
     player_season_id INTEGER NOT NULL REFERENCES player_seasons(id) ON DELETE CASCADE,
     fixture_count INTEGER NOT NULL CHECK (fixture_count > 0),
     expected_minutes REAL NOT NULL,
+    appearance_probability REAL NOT NULL DEFAULT 0 CHECK (
+        appearance_probability BETWEEN 0 AND 1
+    ),
+    sixty_probability REAL NOT NULL DEFAULT 0 CHECK (
+        sixty_probability BETWEEN 0 AND 1
+    ),
     actual_minutes INTEGER NOT NULL CHECK (actual_minutes >= 0),
     expected_points REAL NOT NULL,
     actual_points INTEGER NOT NULL,
@@ -1240,5 +1246,20 @@ ALTER TABLE player_gameweek_projections
     CHECK (sixty_probability BETWEEN 0 AND 1);
 
 PRAGMA user_version = 12;
+COMMIT;
+"""
+
+MIGRATE_V12_TO_V13_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+ALTER TABLE projection_backtest_predictions
+    ADD COLUMN appearance_probability REAL NOT NULL DEFAULT 0
+    CHECK (appearance_probability BETWEEN 0 AND 1);
+ALTER TABLE projection_backtest_predictions
+    ADD COLUMN sixty_probability REAL NOT NULL DEFAULT 0
+    CHECK (sixty_probability BETWEEN 0 AND 1);
+
+PRAGMA user_version = 13;
 COMMIT;
 """

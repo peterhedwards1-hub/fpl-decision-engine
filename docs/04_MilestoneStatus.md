@@ -2,7 +2,7 @@
 
 **Roadmap:** `02_ImplementationRoadmap.md`  
 **Status date:** 2026-07-30
-**Database schema:** 12
+**Database schema:** 13
 
 This is the implementation-status companion to the canonical roadmap. It does not redefine
 milestone scope or acceptance criteria.
@@ -13,13 +13,13 @@ milestone scope or acceptance criteria.
 | 1 — Historical foundation | Complete | SQLite core, provenance, identity reconciliation, five pinned-revision Vaastav seasons from 2021/22 through 2025/26, and explicit exclusion of 2024/25 assistant-manager chip rows | Add other sources only when they materially improve modelling |
 | 2 — Live collection | Complete | Deadline-aware official collection, gzip immutable archives, replay, fixture history, season statistics, health report and durable `snapshot-data` workflow | Add a schedule when collection cadence is agreed |
 | 3 — Manager state and basic front end | Complete | Append-only validated manager snapshots, financial/chip state, manual Streamlit editor, reload, pitch/bench view and freshness panel | Authenticated import remains optional |
-| 4 — Projection baseline | Correctness default | Trial-13 parameters carried into corrected v4; eight-Gameweek rates model, two-stage appearance/conditional-minutes estimates, persisted appearance/60-minute probabilities, corrected goal-concession and defensive-contribution scoring, recent-evidence weighting, 990-minute team reconciliation, team strength, fixture/location effects, availability, overrides, persistence and explorer | Re-run locked multi-season tuning/validation after the scoring correction; add dedicated preseason/set-piece inputs and learned probability challengers |
+| 4 — Projection baseline | Evaluated correctness default | Trial-13 parameters carried into corrected v4; five-season GW+1–GW+8 evaluation, simple baselines, two-stage appearance/conditional-minutes estimates, persisted appearance/60-minute probabilities, corrected scoring, recent evidence, team strength, availability, overrides and explorer | Recalibrate on development data without repeatedly reusing inspected validation seasons; add dedicated preseason/set-piece inputs |
 | 5 — Best starting XI | Complete | Exact CBC optimisation, deterministic tie handling, near-selected list and exhaustive-enumeration test | None for milestone scope |
 | 6 — Full squad and weekly lineup | Complete | Exact 15-player squad selection against each projected Gameweek's legal XI and captain value, ordered bench and exact current-week autosub/captain-fallback expectation | Add distribution-aware future autosub value when calibrated |
 | 7 — Opening squad | Complete baseline | Multi-Gameweek legal-XI/captain objective, alternatives, rerun triggers and browser report; uncertainty and residual value disclosed without arbitrary objective weights | Calibrate decision-risk and terminal-value terms before pricing them |
 | 8 — Transfer recommender | Complete initial scope | Ranked roll and exact legal routes through the configured transfer cap, hits, selling prices, bank, future free transfers, post-route lineup and browser comparison | Add multi-week transfer scheduling and measured option value |
 | 9 — Two-pass workflow | Substantially complete | Strict news-v2 provenance, human review, automatic paired pre/post-news projection runs, final-run evidence enforcement, immutable decisions, actual-action capture and paired uplift scoring | Automate public post-deadline action reconciliation, news research execution and scheduled scoring |
-| 10 — Full system | In progress | Five-season store, corrected v4 incumbent with reproducible v3 predecessor, completed 100-trial locked rolling study, leakage-checked gradient-boosting points challenger, completed development-only football-assumption audit, horizon-stratified model health, decision-focused backtests, dynamic 1–8 GW horizon, exact optimisation and comparable chip-specific recommendations | Add separate learned appearance/minutes/rate models, xG/team-strength challengers, ensembles and end-to-end optimiser-regret replay, deepen transfer/chip planning and justify private hosting |
+| 10 — Full system | In progress | Five-season store, corrected v4 incumbent with reproducible predecessors, completed rolling study and football-assumption audit, horizon-stratified simple baselines, isolated xG/xA challenger, captain/top-15 and legal persistent-squad regret, dynamic 1–8 GW horizon, exact optimisation and comparable chip recommendations | Add separate learned appearance/minutes/rate models, player-share/team-xG challengers, ensembles and transfer-continuity regret, collect live availability/news evidence, deepen planning and justify private hosting |
 
 ## Current delivery gate
 
@@ -39,8 +39,8 @@ exact-solver and tuning tests), schema-version-11 initialisation, dependency val
 workflow-YAML parsing and a headless Streamlit launch. The remaining repository-level
 qualification is a successful run of the updated GitHub Actions workflow.
 
-Correctness hardening on 2026-07-30 passes Ruff and all 86 tests, including
-schema-version-12 migration, projection provenance/probability persistence, caller-budget
+Correctness hardening on 2026-07-30 passes Ruff and all 87 tests, including
+schema-version-13 migration, projection provenance/probability persistence, caller-budget
 validation, configurable chip cooldowns and multi-Gameweek optimisation coverage.
 
 The original tuning experiment is documented in `05_ProjectionTuningRecord.md`; it remains
