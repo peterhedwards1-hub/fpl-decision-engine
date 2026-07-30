@@ -2,7 +2,7 @@
 
 **Status date:** 2026-07-30  
 **Incumbent:** `rates-rules-corrected-v4`  
-**Database schema:** 13
+**Database schema:** 15
 
 ## Implemented
 
@@ -137,24 +137,35 @@ remains readable.
 Negative paired MAE change means the reviewed news layer improved the forecast. These
 paired results are included in model health and displayed in the weekly workflow.
 
+## Component challengers and forward gate
+
+The remaining engineering route in `09_ModellingAndEvaluationPlan.md` is now implemented
+and measured in `11_ComponentModelsAndForwardQualification.md`.
+
+- The logistic four-part playing-time hurdle is the leading forward candidate. It
+  materially improved probability and minutes scores on historical design data, but its
+  global top-one sensitivity worsened.
+- The coherent share-xG challenger removed team-strength double-counting and passed its
+  reconciliation tests, but failed historical RMSE/top-player bias design checks.
+- Joint squad simulation, proper distribution scoring, constrained OOF ensembles,
+  continuous transfer replay, empirical free-transfer option value and automatic chip
+  timing are available.
+- Schema 15 immutably records candidate configs and promotion policies.
+
+Three candidate declarations were made before 2026/27 GW1 outcomes. Corrected v4 remains
+the incumbent.
+
 ## Remaining route to the strongest model
 
-The current implementation creates a reliable incumbent, a first learned points
-challenger and the evaluation harness; it does not assume either is the final model. The
-next challenger stage is:
+The remaining route is now evidence collection and a narrow player-allocation redesign,
+not another broad modelling build:
 
-1. complete the development-only football-assumption audit in
-   `07_FootballAssumptionAudit.md`;
-2. use its evidence to design separate learned appearance, conditional-minutes and
-   scoring-rate challengers;
-3. compare transparent, learned and ensemble forecasts on identical rolling folds;
-4. add xG/xA and opponent-adjusted team-strength challengers after measuring historical
-   feature coverage;
-5. promote only a challenger that improves top-player accuracy and calibration on a
-   genuinely forward test without unacceptable position-specific regressions;
-6. collect paired pre/post-news forecasts throughout 2026/27;
-7. learn news adjustment calibration only after enough timestamped examples exist;
-8. add downstream squad, transfer and captaincy regret to model qualification.
+1. capture paired incumbent/candidate projections throughout 2026/27;
+2. score hurdle calibration, points, distributions and decisions as outcomes arrive;
+3. estimate free-transfer option value only after enough actual actions exist;
+4. use the player-event oracle to redesign player shares/rates if Stage 3 is revisited;
+5. learn news/availability calibration only from timestamped prospective examples;
+6. promote only through the immutable forward gate, with no position regression.
 
 The robust rolling study completed 100 trials and selected trial 71. On the locked
 2024/25 validation season it improved overall points MAE by 0.0214 and minutes MAE by

@@ -1,6 +1,10 @@
 name: Collect and verify FPL data
 
 on:
+  schedule:
+    # Monday, Thursday and Friday during the FPL season. Multiple weekly
+    # captures protect midweek and shifted deadlines.
+    - cron: "15 12 * 1-5,7-12 1,4,5"
   workflow_dispatch:
     inputs:
       season_code:
@@ -16,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: fpl-snapshot-${{ inputs.season_code }}
+  group: fpl-snapshot-${{ inputs.season_code || '2026-27' }}
   cancel-in-progress: false
 
 jobs:
@@ -25,8 +29,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      SEASON_CODE: ${{ inputs.season_code }}
-      SEASON_NAME: ${{ inputs.season_name }}
+      SEASON_CODE: ${{ inputs.season_code || '2026-27' }}
+      SEASON_NAME: ${{ inputs.season_name || '2026/27' }}
 
     steps:
       - name: Check out repository

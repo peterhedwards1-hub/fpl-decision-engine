@@ -535,7 +535,10 @@ def calculate_player_points(
     points += min(max(stats.bonus, 0), scoring.bonus_max)
 
     threshold = scoring.defensive_contribution_thresholds[position]
-    if stats.defensive_contributions >= threshold:
+    if (
+        threshold is not None
+        and stats.defensive_contributions >= threshold
+    ):
         points += scoring.defensive_contribution_points
 
     return points

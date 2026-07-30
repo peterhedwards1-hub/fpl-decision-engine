@@ -130,6 +130,16 @@ class ProjectionBacktester:
             raise ValueError("Backtest horizon must be positive")
         if evidence_policy not in {"performance_only", "pre_deadline_only"}:
             raise ValueError(f"Unknown evidence policy {evidence_policy!r}")
+        if (
+            self.config.defensive_contribution_model
+            == "empirical_2025_minutes_band"
+            and season_code <= "2025-26"
+        ):
+            raise ValueError(
+                "The empirical defensive-contribution challenger is "
+                "calibrated on full-season 2025/26 outcomes and is restricted "
+                "to genuinely forward seasons"
+            )
         season = self.database.connection.execute(
             "SELECT id FROM seasons WHERE code = ?", (season_code,)
         ).fetchone()
@@ -300,6 +310,43 @@ class ProjectionBacktester:
                             projection.expected_points,
                             actual_points,
                             projection.uncertainty,
+                            json.dumps(
+                                {
+                                    "_appearance_under_60_rule": (
+                                        self.rules.scoring
+                                        .appearance_under_60
+                                    ),
+                                    "_appearance_60_or_more_rule": (
+                                        self.rules.scoring
+                                        .appearance_60_or_more
+                                    ),
+                                    "_goal_rule": (
+                                        self.rules.scoring.goals[
+                                            projection.position.value
+                                        ]
+                                    ),
+                                    "_assist_rule": (
+                                        self.rules.scoring.assists
+                                    ),
+                                    "_latent_expectations": (
+                                        projection.latent_expectations
+                                    ),
+                                    "appearance": projection.appearance_points,
+                                    "goal": projection.goal_points,
+                                    "assist": projection.assist_points,
+                                    "clean_sheet": (
+                                        projection.clean_sheet_points
+                                    ),
+                                    "save": projection.save_points,
+                                    "defensive_contribution": (
+                                        projection
+                                        .defensive_contribution_points
+                                    ),
+                                    "bonus": projection.bonus_points,
+                                    "deduction": projection.deduction_points,
+                                },
+                                sort_keys=True,
+                            ),
                         )
                     )
                 with self.database.transaction():
@@ -310,8 +357,9 @@ class ProjectionBacktester:
                             horizon_step, player_season_id, fixture_count,
                             expected_minutes, appearance_probability,
                             sixty_probability, actual_minutes,
-                            expected_points, actual_points, uncertainty
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            expected_points, actual_points, uncertainty,
+                            component_points_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         rows,
                     )

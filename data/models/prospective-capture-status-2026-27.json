@@ -1,0 +1,1349 @@
+{
+  "checked_at": "2026-07-30T11:46:30.050601+00:00",
+  "gameweeks": [
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 1,
+          "version_matched_runs": 1
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 1,
+          "version_matched_runs": 1
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 1,
+          "version_matched_runs": 1
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 1,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-08-21T17:30:00Z",
+      "gameweek": 1,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-08-28T17:30:00Z",
+      "gameweek": 2,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-09-04T17:30:00Z",
+      "gameweek": 3,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-09-12T12:30:00Z",
+      "gameweek": 4,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-09-18T17:30:00Z",
+      "gameweek": 5,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-10-10T12:30:00Z",
+      "gameweek": 6,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-10-17T12:30:00Z",
+      "gameweek": 7,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-10-24T12:30:00Z",
+      "gameweek": 8,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-10-31T13:30:00Z",
+      "gameweek": 9,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-11-07T13:30:00Z",
+      "gameweek": 10,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-11-21T13:30:00Z",
+      "gameweek": 11,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-11-28T13:30:00Z",
+      "gameweek": 12,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-12-02T18:30:00Z",
+      "gameweek": 13,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-12-05T13:30:00Z",
+      "gameweek": 14,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-12-12T13:30:00Z",
+      "gameweek": 15,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-12-19T13:30:00Z",
+      "gameweek": 16,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-12-26T13:30:00Z",
+      "gameweek": 17,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2026-12-30T18:30:00Z",
+      "gameweek": 18,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-01-02T13:30:00Z",
+      "gameweek": 19,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-01-06T18:30:00Z",
+      "gameweek": 20,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-01-16T13:30:00Z",
+      "gameweek": 21,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-01-23T13:30:00Z",
+      "gameweek": 22,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-01-30T13:30:00Z",
+      "gameweek": 23,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-02-06T13:30:00Z",
+      "gameweek": 24,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-02-10T18:30:00Z",
+      "gameweek": 25,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-02-20T13:30:00Z",
+      "gameweek": 26,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-02-27T13:30:00Z",
+      "gameweek": 27,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-03-03T18:30:00Z",
+      "gameweek": 28,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-03-13T13:30:00Z",
+      "gameweek": 29,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-03-20T13:30:00Z",
+      "gameweek": 30,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-04-10T12:30:00Z",
+      "gameweek": 31,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-04-17T12:30:00Z",
+      "gameweek": 32,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-04-24T12:30:00Z",
+      "gameweek": 33,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-05-01T12:30:00Z",
+      "gameweek": 34,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-05-08T12:30:00Z",
+      "gameweek": 35,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-05-15T12:30:00Z",
+      "gameweek": 36,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-05-23T12:30:00Z",
+      "gameweek": 37,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    },
+    {
+      "candidate_projections": {
+        "defensive-empirical-v1": {
+          "model_version": "rates-defensive-empirical-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "playing-time-hurdle-logistic-v1": {
+          "model_version": "rates-playing-time-hurdle-logistic-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        },
+        "team-share-xg-v1": {
+          "model_version": "rates-team-share-xg-v1",
+          "valid_pre_deadline_runs": 0,
+          "version_matched_runs": 0
+        }
+      },
+      "counts": {
+        "actual_action": 0,
+        "final_decision": 0,
+        "manager_snapshot": 0,
+        "paired_news_projections": 0,
+        "post_gameweek_snapshot": 0,
+        "pre_deadline_snapshot": 0,
+        "recorded_outcomes": 0,
+        "weekly_evaluation": 0
+      },
+      "deadline_passed": false,
+      "deadline_time": "2027-05-30T13:30:00Z",
+      "gameweek": 38,
+      "is_finished": false,
+      "missing_required": [],
+      "status": "upcoming"
+    }
+  ],
+  "policy": [
+    "A passed deadline requires an exact pre-deadline official snapshot, manager state, paired pre/post-news projections, a frozen decision and the actual action.",
+    "A finished Gameweek additionally requires a completed-fixture capture with cumulative player outcomes and decision evaluation.",
+    "Every declared forward candidate requires a pre-deadline projection whose model version and canonical config match its immutable registration."
+  ],
+  "season_code": "2026-27",
+  "season_name": "2026/27",
+  "summary": {
+    "complete_gameweeks": 0,
+    "incomplete_gameweeks": 0,
+    "no_missed_required_evidence_to_date": true,
+    "promotion_grade_capture_complete": false,
+    "upcoming_gameweeks": 38
+  }
+}

@@ -25,6 +25,86 @@ class ChipRecommendation:
     captain_id: str | None = None
 
 
+@dataclass(frozen=True)
+class ChipTimingOption:
+    gameweek_number: int
+    gross_incremental_points: float
+    future_opportunity_cost: float
+    net_value_versus_best_later: float
+
+
+@dataclass(frozen=True)
+class ChipTimingRecommendation:
+    chip: Chip
+    recommended_gameweek: int
+    options: tuple[ChipTimingOption, ...]
+    recommendation: ChipRecommendation
+    explanation: str
+
+
+def recommend_chip_timing(
+    chip: Chip,
+    candidates: tuple[CandidatePlayer, ...],
+    *,
+    candidate_gameweeks: tuple[int, ...],
+    previous_chip_gameweeks: tuple[int, ...],
+    budget_tenths: int,
+    rules: SeasonRules,
+    current_player_ids: frozenset[str],
+) -> ChipTimingRecommendation:
+    """Value a chip at every supplied horizon step instead of manual cost."""
+
+    gameweeks = tuple(sorted(set(candidate_gameweeks)))
+    if not gameweeks:
+        raise ValueError("At least one candidate Gameweek is required")
+    gross: dict[int, ChipRecommendation] = {}
+    for gameweek in gameweeks:
+        eligible = _candidates_from_gameweek(candidates, gameweek)
+        gross[gameweek] = recommend_chip(
+            chip,
+            eligible,
+            gameweek_number=gameweek,
+            previous_chip_gameweeks=previous_chip_gameweeks,
+            budget_tenths=budget_tenths,
+            rules=rules,
+            current_player_ids=current_player_ids,
+        )
+    best_gameweek = max(
+        gameweeks,
+        key=lambda gameweek: (
+            gross[gameweek].expected_incremental_points,
+            -gameweek,
+        ),
+    )
+    options = []
+    for gameweek in gameweeks:
+        later_values = [
+            gross[later].expected_incremental_points for later in gameweeks if later > gameweek
+        ]
+        opportunity_cost = max(later_values, default=0.0)
+        options.append(
+            ChipTimingOption(
+                gameweek_number=gameweek,
+                gross_incremental_points=(gross[gameweek].expected_incremental_points),
+                future_opportunity_cost=round(opportunity_cost, 3),
+                net_value_versus_best_later=round(
+                    gross[gameweek].expected_incremental_points - opportunity_cost,
+                    3,
+                ),
+            )
+        )
+    return ChipTimingRecommendation(
+        chip=chip,
+        recommended_gameweek=best_gameweek,
+        options=tuple(options),
+        recommendation=gross[best_gameweek],
+        explanation=(
+            f"{chip.value} is strongest in GW{best_gameweek}; every option "
+            "is compared with the best still-available later opportunity."
+        ),
+    )
+
+
 def recommend_chip(
     chip: Chip,
     candidates: tuple[CandidatePlayer, ...],
@@ -51,37 +131,20 @@ def recommend_chip(
             )
             else frozenset()
         ),
-        previous_gameweek_chip=(
-            chip
-            if gameweek_number - 1 in previous_chip_gameweeks
-            else None
-        ),
-        last_used_gameweek=(
-            max(previous_chip_gameweeks)
-            if previous_chip_gameweeks
-            else None
-        ),
+        previous_gameweek_chip=(chip if gameweek_number - 1 in previous_chip_gameweeks else None),
+        last_used_gameweek=(max(previous_chip_gameweeks) if previous_chip_gameweeks else None),
     )
     if errors:
         raise ValueError("; ".join(error.message for error in errors))
     eligible = candidates
-    if (
-        current_player_ids is not None
-        and chip in {Chip.TRIPLE_CAPTAIN, Chip.BENCH_BOOST}
-    ):
+    if current_player_ids is not None and chip in {Chip.TRIPLE_CAPTAIN, Chip.BENCH_BOOST}:
         eligible = tuple(
-            player
-            for player in candidates
-            if player.source_player_id in current_player_ids
+            player for player in candidates if player.source_player_id in current_player_ids
         )
     if current_player_ids is None:
-        raise ValueError(
-            "Comparable chip recommendations require the current squad"
-        )
+        raise ValueError("Comparable chip recommendations require the current squad")
     current = tuple(
-        player
-        for player in candidates
-        if player.source_player_id in current_player_ids
+        player for player in candidates if player.source_player_id in current_player_ids
     )
     if len(current) != rules.squad.squad_size:
         raise ValueError("Current squad must contain every configured squad player")
@@ -148,14 +211,11 @@ def recommend_chip(
         rules=rules,
     )
     if chip == Chip.BENCH_BOOST:
-        all_fifteen = sum(
-            _gameweek_points(player) for player in baseline.players
-        ) + baseline.expected_captain_contribution
-        value = (
-            all_fifteen
-            - baseline.gameweek_expected_points
-            - future_opportunity_cost
+        all_fifteen = (
+            sum(_gameweek_points(player) for player in baseline.players)
+            + baseline.expected_captain_contribution
         )
+        value = all_fifteen - baseline.gameweek_expected_points - future_opportunity_cost
         squad = baseline
         explanation = (
             "Bench Boost value is all 15 expected scores minus the normal XI "
@@ -187,3 +247,44 @@ def _gameweek_points(player: CandidatePlayer) -> float:
         if player.gameweek_expected_points is None
         else player.gameweek_expected_points
     )
+
+
+def _candidates_from_gameweek(
+    candidates: tuple[CandidatePlayer, ...],
+    gameweek: int,
+) -> tuple[CandidatePlayer, ...]:
+    result = []
+    for player in candidates:
+        values = tuple(
+            value for value in player.gameweek_values if value.gameweek_number >= gameweek
+        )
+        target = next(
+            (value for value in values if value.gameweek_number == gameweek),
+            None,
+        )
+        if player.gameweek_values and target is None:
+            raise ValueError(f"Player {player.source_player_id} has no GW{gameweek} value")
+        target_points = _gameweek_points(player) if target is None else target.expected_points
+        result.append(
+            CandidatePlayer(
+                source_player_id=player.source_player_id,
+                web_name=player.web_name,
+                team_id=player.team_id,
+                team_short_name=player.team_short_name,
+                position=player.position,
+                price_tenths=player.price_tenths,
+                expected_points=(
+                    sum(value.expected_points for value in values) if values else target_points
+                ),
+                gameweek_expected_points=target_points,
+                appearance_probability=(
+                    player.appearance_probability
+                    if target is None
+                    else target.appearance_probability
+                ),
+                uncertainty=player.uncertainty,
+                residual_value=player.residual_value,
+                gameweek_values=values,
+            )
+        )
+    return tuple(result)

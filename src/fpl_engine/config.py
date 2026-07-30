@@ -33,7 +33,7 @@ class ScoringRules:
     red_card: int
     own_goal: int
     bonus_max: int
-    defensive_contribution_thresholds: dict[str, int]
+    defensive_contribution_thresholds: dict[str, int | None]
     defensive_contribution_points: int
 
 
@@ -138,7 +138,7 @@ def load_season_rules(path: str | Path) -> SeasonRules:
             own_goal=int(_required(scoring_raw, "own_goal")),
             bonus_max=int(_required(scoring_raw, "bonus_max")),
             defensive_contribution_thresholds={
-                k: int(v)
+                k: None if v is None else int(v)
                 for k, v in _required(scoring_raw, "defensive_contribution_thresholds").items()
             },
             defensive_contribution_points=int(
@@ -247,6 +247,17 @@ def _validate_rules(rules: SeasonRules) -> None:
         raise ValueError("Free transfers per Gameweek must be positive")
     if rules.transfers.transfer_hit_cost <= 0:
         raise ValueError("Transfer hit cost must be positive")
+    invalid_defensive_thresholds = {
+        position: threshold
+        for position, threshold in (
+            rules.scoring.defensive_contribution_thresholds.items()
+        )
+        if threshold is not None and threshold <= 0
+    }
+    if invalid_defensive_thresholds:
+        raise ValueError(
+            "Defensive-contribution thresholds must be positive or null"
+        )
     if rules.selling_prices.profit_step_tenths <= 0:
         raise ValueError("Selling-price profit step must be positive")
     if not 0 < rules.selling_prices.profit_return_tenths <= (

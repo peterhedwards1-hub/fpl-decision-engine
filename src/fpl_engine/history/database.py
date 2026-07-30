@@ -35,6 +35,8 @@ from .schema import (
     MIGRATE_V10_TO_V11_SQL,
     MIGRATE_V11_TO_V12_SQL,
     MIGRATE_V12_TO_V13_SQL,
+    MIGRATE_V13_TO_V14_SQL,
+    MIGRATE_V14_TO_V15_SQL,
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
@@ -124,6 +126,12 @@ class HistoricalDatabase:
             current_version = 12
         if current_version == 12:
             self._migrate_v12_to_v13()
+            current_version = 13
+        if current_version == 13:
+            self._migrate_v13_to_v14()
+            current_version = 14
+        if current_version == 14:
+            self._migrate_v14_to_v15()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
@@ -138,9 +146,7 @@ class HistoricalDatabase:
         try:
             self.connection.execute("PRAGMA foreign_keys = OFF")
             self.connection.executescript(MIGRATE_V2_TO_V3_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 self.connection.rollback()
                 raise RuntimeError(
@@ -175,9 +181,7 @@ class HistoricalDatabase:
                     "UPDATE ingestion_runs SET retrieved_at = ? WHERE id = ?",
                     (retrieved_at, run_id),
                 )
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 self.connection.rollback()
                 raise RuntimeError(
@@ -194,9 +198,7 @@ class HistoricalDatabase:
     def _migrate_v4_to_v5(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V4_TO_V5_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 4 to 5 migration produced {len(foreign_key_issues)} "
@@ -210,9 +212,7 @@ class HistoricalDatabase:
     def _migrate_v5_to_v6(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V5_TO_V6_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 5 to 6 migration produced {len(foreign_key_issues)} "
@@ -226,9 +226,7 @@ class HistoricalDatabase:
     def _migrate_v6_to_v7(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V6_TO_V7_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 6 to 7 migration produced {len(foreign_key_issues)} "
@@ -242,9 +240,7 @@ class HistoricalDatabase:
     def _migrate_v7_to_v8(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V7_TO_V8_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 7 to 8 migration produced {len(foreign_key_issues)} "
@@ -258,9 +254,7 @@ class HistoricalDatabase:
     def _migrate_v8_to_v9(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V8_TO_V9_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 8 to 9 migration produced {len(foreign_key_issues)} "
@@ -274,9 +268,7 @@ class HistoricalDatabase:
     def _migrate_v9_to_v10(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V9_TO_V10_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 9 to 10 migration produced {len(foreign_key_issues)} "
@@ -285,16 +277,12 @@ class HistoricalDatabase:
             self.connection.commit()
         except Exception as error:
             self.connection.rollback()
-            raise RuntimeError(
-                f"Version 9 to 10 migration failed safely: {error}"
-            ) from error
+            raise RuntimeError(f"Version 9 to 10 migration failed safely: {error}") from error
 
     def _migrate_v10_to_v11(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V10_TO_V11_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 10 to 11 migration produced "
@@ -303,16 +291,12 @@ class HistoricalDatabase:
             self.connection.commit()
         except Exception as error:
             self.connection.rollback()
-            raise RuntimeError(
-                f"Version 10 to 11 migration failed safely: {error}"
-            ) from error
+            raise RuntimeError(f"Version 10 to 11 migration failed safely: {error}") from error
 
     def _migrate_v11_to_v12(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V11_TO_V12_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 11 to 12 migration produced "
@@ -321,16 +305,12 @@ class HistoricalDatabase:
             self.connection.commit()
         except Exception as error:
             self.connection.rollback()
-            raise RuntimeError(
-                f"Version 11 to 12 migration failed safely: {error}"
-            ) from error
+            raise RuntimeError(f"Version 11 to 12 migration failed safely: {error}") from error
 
     def _migrate_v12_to_v13(self) -> None:
         try:
             self.connection.executescript(MIGRATE_V12_TO_V13_SQL)
-            foreign_key_issues = self.connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_issues:
                 raise RuntimeError(
                     f"Version 12 to 13 migration produced "
@@ -339,9 +319,35 @@ class HistoricalDatabase:
             self.connection.commit()
         except Exception as error:
             self.connection.rollback()
-            raise RuntimeError(
-                f"Version 12 to 13 migration failed safely: {error}"
-            ) from error
+            raise RuntimeError(f"Version 12 to 13 migration failed safely: {error}") from error
+
+    def _migrate_v13_to_v14(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V13_TO_V14_SQL)
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 13 to 14 migration produced "
+                    f"{len(foreign_key_issues)} foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 13 to 14 migration failed safely: {error}") from error
+
+    def _migrate_v14_to_v15(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V14_TO_V15_SQL)
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 14 to 15 migration produced "
+                    f"{len(foreign_key_issues)} foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 14 to 15 migration failed safely: {error}") from error
 
     def _validate_v3_timing_rows(self) -> dict[int, str | None]:
         rows = self.connection.execute(
@@ -388,9 +394,7 @@ class HistoricalDatabase:
                     f"Version 3 observation row {row_id} has a naive observed_at "
                     f"value {observed_at!r}"
                 )
-            normalized[row_id] = (
-                parsed.astimezone(UTC).isoformat() if quality == "exact" else None
-            )
+            normalized[row_id] = parsed.astimezone(UTC).isoformat() if quality == "exact" else None
         return normalized
 
     def _validate_v3_ingestion_timestamps(self) -> dict[int, str]:
@@ -482,9 +486,7 @@ class HistoricalDatabase:
                 season_id = self.upsert_season(bundle.season)
                 player_ids: dict[str, int] = {}
                 for record in bundle.teams:
-                    self.upsert_team(
-                        season_id, source.identifier_namespace, record, run_id
-                    )
+                    self.upsert_team(season_id, source.identifier_namespace, record, run_id)
                     row_count += 1
                 for record in bundle.players:
                     player_ids[record.source_player_id] = self.upsert_player(
@@ -507,9 +509,7 @@ class HistoricalDatabase:
                     self.upsert_gameweek(season_id, record, run_id)
                     row_count += 1
                 for record in bundle.fixtures:
-                    self.upsert_fixture(
-                        season_id, source.identifier_namespace, record, run_id
-                    )
+                    self.upsert_fixture(season_id, source.identifier_namespace, record, run_id)
                     row_count += 1
                 for record in bundle.fixture_stats:
                     self.upsert_fixture_stats(
@@ -570,8 +570,7 @@ class HistoricalDatabase:
             (season_id, identifier_namespace, record.source_team_id),
         ).fetchone()
         if existing is not None and (
-            existing["name"] != record.name
-            or existing["short_name"] != record.short_name
+            existing["name"] != record.name or existing["short_name"] != record.short_name
         ):
             raise ValueError(
                 f"Contradictory team identity for namespace {identifier_namespace!r}, "
@@ -887,9 +886,7 @@ class HistoricalDatabase:
             ),
         )
 
-    def upsert_gameweek(
-        self, season_id: int, record: GameweekRecord, run_id: int
-    ) -> int:
+    def upsert_gameweek(self, season_id: int, record: GameweekRecord, run_id: int) -> int:
         return self._upsert_id(
             """
             INSERT INTO gameweeks (
@@ -917,12 +914,8 @@ class HistoricalDatabase:
         record: FixtureRecord,
         run_id: int,
     ) -> int:
-        home_team_id = self._team_id(
-            season_id, identifier_namespace, record.home_team_source_id
-        )
-        away_team_id = self._team_id(
-            season_id, identifier_namespace, record.away_team_source_id
-        )
+        home_team_id = self._team_id(season_id, identifier_namespace, record.home_team_source_id)
+        away_team_id = self._team_id(season_id, identifier_namespace, record.away_team_source_id)
         existing = self.connection.execute(
             """
             SELECT home_team_id, away_team_id
@@ -932,8 +925,7 @@ class HistoricalDatabase:
             (season_id, identifier_namespace, record.source_fixture_id),
         ).fetchone()
         if existing is not None and (
-            existing["home_team_id"] != home_team_id
-            or existing["away_team_id"] != away_team_id
+            existing["home_team_id"] != home_team_id or existing["away_team_id"] != away_team_id
         ):
             raise ValueError(
                 f"Contradictory fixture identity for namespace {identifier_namespace!r}, "
@@ -1009,9 +1001,7 @@ class HistoricalDatabase:
         player_season_id = self._player_season_id(
             season_id, identifier_namespace, record.source_player_id
         )
-        fixture_id = self._fixture_id(
-            season_id, identifier_namespace, record.source_fixture_id
-        )
+        fixture_id = self._fixture_id(season_id, identifier_namespace, record.source_fixture_id)
         values = (
             player_season_id,
             fixture_id,
@@ -1084,9 +1074,7 @@ class HistoricalDatabase:
         player_season_id = self._player_season_id(
             season_id, identifier_namespace, record.source_player_id
         )
-        observed_at = _utc_timestamp(
-            record.observed_at, "season stats observed_at"
-        )
+        observed_at = _utc_timestamp(record.observed_at, "season stats observed_at")
         return self._upsert_id(
             """
             INSERT INTO player_season_stats_observations (
@@ -1364,17 +1352,13 @@ class HistoricalDatabase:
             raise RuntimeError("Upsert did not return an identifier")
         return int(row[0])
 
-    def _required_id(
-        self, sql: str, values: tuple[object, ...], entity_name: str
-    ) -> int:
+    def _required_id(self, sql: str, values: tuple[object, ...], entity_name: str) -> int:
         row = self.connection.execute(sql, values).fetchone()
         if row is None:
             raise ValueError(f"Referenced {entity_name} does not exist")
         return int(row[0])
 
-    def _team_id(
-        self, season_id: int, identifier_namespace: str, source_team_id: str
-    ) -> int:
+    def _team_id(self, season_id: int, identifier_namespace: str, source_team_id: str) -> int:
         return self._required_id(
             """
             SELECT id FROM teams
@@ -1391,9 +1375,7 @@ class HistoricalDatabase:
             "gameweek",
         )
 
-    def _fixture_id(
-        self, season_id: int, identifier_namespace: str, source_fixture_id: str
-    ) -> int:
+    def _fixture_id(self, season_id: int, identifier_namespace: str, source_fixture_id: str) -> int:
         return self._required_id(
             """
             SELECT id FROM fixtures

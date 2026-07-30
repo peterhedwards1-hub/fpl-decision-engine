@@ -2,10 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from fpl_engine.chips import recommend_chip
+from fpl_engine.chips import recommend_chip, recommend_chip_timing
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Chip, Position
-from fpl_engine.optimisation import CandidatePlayer, optimise_full_squad
+from fpl_engine.optimisation import (
+    CandidatePlayer,
+    GameweekPlayerValue,
+    optimise_full_squad,
+)
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
 
@@ -124,3 +128,60 @@ def test_chip_recommendations_share_season_rules_and_solver() -> None:
             budget_tenths=1000,
             rules=RULES,
         )
+
+
+def test_chip_timing_computes_future_opportunity_cost() -> None:
+    current_ids = frozenset(
+        {
+            "1",
+            "2",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+        }
+    )
+    candidates = tuple(
+        CandidatePlayer(
+            **{
+                **player.__dict__,
+                "expected_points": 12.0,
+                "gameweek_expected_points": 4.0,
+                "gameweek_values": (
+                    GameweekPlayerValue(2, 4.0, 0.9),
+                    GameweekPlayerValue(
+                        3,
+                        9.0
+                        if player.source_player_id == "22"
+                        else 5.0,
+                        0.9,
+                    ),
+                ),
+            }
+        )
+        for player in _candidates()
+    )
+
+    timing = recommend_chip_timing(
+        Chip.TRIPLE_CAPTAIN,
+        candidates,
+        candidate_gameweeks=(2, 3),
+        previous_chip_gameweeks=(),
+        budget_tenths=1000,
+        rules=RULES,
+        current_player_ids=current_ids,
+    )
+
+    assert timing.recommended_gameweek == 3
+    current = timing.options[0]
+    assert current.future_opportunity_cost > 0
+    assert current.net_value_versus_best_later < 0

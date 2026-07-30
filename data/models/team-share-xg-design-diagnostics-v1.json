@@ -1,0 +1,990 @@
+{
+  "baseline_method": "season_points_per_fixture",
+  "calibration": {
+    "appearance": {
+      "bins": [
+        {
+          "lower": 0.0,
+          "mean_predicted": 0.0473,
+          "observed_frequency": 0.0285,
+          "samples": 5508,
+          "upper": 0.1
+        },
+        {
+          "lower": 0.1,
+          "mean_predicted": 0.1455,
+          "observed_frequency": 0.1394,
+          "samples": 2417,
+          "upper": 0.2
+        },
+        {
+          "lower": 0.2,
+          "mean_predicted": 0.2504,
+          "observed_frequency": 0.2308,
+          "samples": 1950,
+          "upper": 0.3
+        },
+        {
+          "lower": 0.3,
+          "mean_predicted": 0.3512,
+          "observed_frequency": 0.3521,
+          "samples": 2309,
+          "upper": 0.4
+        },
+        {
+          "lower": 0.4,
+          "mean_predicted": 0.4535,
+          "observed_frequency": 0.459,
+          "samples": 2649,
+          "upper": 0.5
+        },
+        {
+          "lower": 0.5,
+          "mean_predicted": 0.5485,
+          "observed_frequency": 0.5411,
+          "samples": 2796,
+          "upper": 0.6
+        },
+        {
+          "lower": 0.6,
+          "mean_predicted": 0.6508,
+          "observed_frequency": 0.6915,
+          "samples": 3404,
+          "upper": 0.7
+        },
+        {
+          "lower": 0.7,
+          "mean_predicted": 0.75,
+          "observed_frequency": 0.8152,
+          "samples": 2835,
+          "upper": 0.8
+        },
+        {
+          "lower": 0.8,
+          "mean_predicted": 0.8414,
+          "observed_frequency": 0.8543,
+          "samples": 1579,
+          "upper": 0.9
+        },
+        {
+          "lower": 0.9,
+          "mean_predicted": 0.9376,
+          "observed_frequency": 0.9228,
+          "samples": 492,
+          "upper": 1.0
+        }
+      ],
+      "brier_score": 0.1561,
+      "excluded_multi_fixture_rows": 364,
+      "log_loss": 0.477451,
+      "samples": 25939
+    },
+    "points": {
+      "by_horizon": {
+        "1": [
+          {
+            "bias_actual_minus_predicted": -0.0468,
+            "decile": 1,
+            "mean_actual": 0.0186,
+            "mean_predicted": 0.0654,
+            "samples": 2631
+          },
+          {
+            "bias_actual_minus_predicted": -0.0876,
+            "decile": 2,
+            "mean_actual": 0.0559,
+            "mean_predicted": 0.1435,
+            "samples": 2630
+          },
+          {
+            "bias_actual_minus_predicted": -0.0899,
+            "decile": 3,
+            "mean_actual": 0.2034,
+            "mean_predicted": 0.2934,
+            "samples": 2630
+          },
+          {
+            "bias_actual_minus_predicted": -0.0459,
+            "decile": 4,
+            "mean_actual": 0.5306,
+            "mean_predicted": 0.5765,
+            "samples": 2631
+          },
+          {
+            "bias_actual_minus_predicted": -0.1391,
+            "decile": 5,
+            "mean_actual": 0.7354,
+            "mean_predicted": 0.8745,
+            "samples": 2630
+          },
+          {
+            "bias_actual_minus_predicted": -0.0169,
+            "decile": 6,
+            "mean_actual": 1.1441,
+            "mean_predicted": 1.161,
+            "samples": 2630
+          },
+          {
+            "bias_actual_minus_predicted": -0.0505,
+            "decile": 7,
+            "mean_actual": 1.3907,
+            "mean_predicted": 1.4412,
+            "samples": 2631
+          },
+          {
+            "bias_actual_minus_predicted": -0.0821,
+            "decile": 8,
+            "mean_actual": 1.6817,
+            "mean_predicted": 1.7639,
+            "samples": 2630
+          },
+          {
+            "bias_actual_minus_predicted": 0.1961,
+            "decile": 9,
+            "mean_actual": 2.3597,
+            "mean_predicted": 2.1636,
+            "samples": 2630
+          },
+          {
+            "bias_actual_minus_predicted": 0.504,
+            "decile": 10,
+            "mean_actual": 3.4681,
+            "mean_predicted": 2.964,
+            "samples": 2630
+          }
+        ]
+      },
+      "by_position": {
+        "DEF": [
+          {
+            "bias_actual_minus_predicted": -0.0403,
+            "decile": 1,
+            "mean_actual": 0.0306,
+            "mean_predicted": 0.0708,
+            "samples": 883
+          },
+          {
+            "bias_actual_minus_predicted": -0.0569,
+            "decile": 2,
+            "mean_actual": 0.0964,
+            "mean_predicted": 0.1533,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": -0.0804,
+            "decile": 3,
+            "mean_actual": 0.2914,
+            "mean_predicted": 0.3718,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": -0.1481,
+            "decile": 4,
+            "mean_actual": 0.5295,
+            "mean_predicted": 0.6776,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": -0.2263,
+            "decile": 5,
+            "mean_actual": 0.6655,
+            "mean_predicted": 0.8918,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": -0.0777,
+            "decile": 6,
+            "mean_actual": 1.0215,
+            "mean_predicted": 1.0993,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": -0.1527,
+            "decile": 7,
+            "mean_actual": 1.178,
+            "mean_predicted": 1.3307,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": -0.2092,
+            "decile": 8,
+            "mean_actual": 1.3968,
+            "mean_predicted": 1.6061,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": 0.1301,
+            "decile": 9,
+            "mean_actual": 2.1077,
+            "mean_predicted": 1.9776,
+            "samples": 882
+          },
+          {
+            "bias_actual_minus_predicted": 0.1313,
+            "decile": 10,
+            "mean_actual": 2.8492,
+            "mean_predicted": 2.7179,
+            "samples": 882
+          }
+        ],
+        "FWD": [
+          {
+            "bias_actual_minus_predicted": -0.0603,
+            "decile": 1,
+            "mean_actual": 0.0274,
+            "mean_predicted": 0.0877,
+            "samples": 292
+          },
+          {
+            "bias_actual_minus_predicted": -0.1126,
+            "decile": 2,
+            "mean_actual": 0.0653,
+            "mean_predicted": 0.1779,
+            "samples": 291
+          },
+          {
+            "bias_actual_minus_predicted": -0.1488,
+            "decile": 3,
+            "mean_actual": 0.1787,
+            "mean_predicted": 0.3275,
+            "samples": 291
+          },
+          {
+            "bias_actual_minus_predicted": -0.155,
+            "decile": 4,
+            "mean_actual": 0.4521,
+            "mean_predicted": 0.607,
+            "samples": 292
+          },
+          {
+            "bias_actual_minus_predicted": -0.0099,
+            "decile": 5,
+            "mean_actual": 0.9313,
+            "mean_predicted": 0.9412,
+            "samples": 291
+          },
+          {
+            "bias_actual_minus_predicted": -0.0919,
+            "decile": 6,
+            "mean_actual": 1.1718,
+            "mean_predicted": 1.2637,
+            "samples": 291
+          },
+          {
+            "bias_actual_minus_predicted": -0.4104,
+            "decile": 7,
+            "mean_actual": 1.1404,
+            "mean_predicted": 1.5508,
+            "samples": 292
+          },
+          {
+            "bias_actual_minus_predicted": 0.1442,
+            "decile": 8,
+            "mean_actual": 2.079,
+            "mean_predicted": 1.9348,
+            "samples": 291
+          },
+          {
+            "bias_actual_minus_predicted": 0.8232,
+            "decile": 9,
+            "mean_actual": 3.1684,
+            "mean_predicted": 2.3452,
+            "samples": 291
+          },
+          {
+            "bias_actual_minus_predicted": 1.3337,
+            "decile": 10,
+            "mean_actual": 4.4124,
+            "mean_predicted": 3.0787,
+            "samples": 291
+          }
+        ],
+        "GK": [
+          {
+            "bias_actual_minus_predicted": -0.0308,
+            "decile": 1,
+            "mean_actual": 0.0036,
+            "mean_predicted": 0.0345,
+            "samples": 277
+          },
+          {
+            "bias_actual_minus_predicted": -0.0566,
+            "decile": 2,
+            "mean_actual": 0.0036,
+            "mean_predicted": 0.0602,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.0961,
+            "decile": 3,
+            "mean_actual": 0.0181,
+            "mean_predicted": 0.1142,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.1057,
+            "decile": 4,
+            "mean_actual": 0.1123,
+            "mean_predicted": 0.218,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.2487,
+            "decile": 5,
+            "mean_actual": 0.1703,
+            "mean_predicted": 0.419,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.3322,
+            "decile": 6,
+            "mean_actual": 0.413,
+            "mean_predicted": 0.7452,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.2447,
+            "decile": 7,
+            "mean_actual": 0.942,
+            "mean_predicted": 1.1868,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.2784,
+            "decile": 8,
+            "mean_actual": 1.5761,
+            "mean_predicted": 1.8545,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.2907,
+            "decile": 9,
+            "mean_actual": 2.2826,
+            "mean_predicted": 2.5733,
+            "samples": 276
+          },
+          {
+            "bias_actual_minus_predicted": -0.1067,
+            "decile": 10,
+            "mean_actual": 3.4167,
+            "mean_predicted": 3.5234,
+            "samples": 276
+          }
+        ],
+        "MID": [
+          {
+            "bias_actual_minus_predicted": -0.0591,
+            "decile": 1,
+            "mean_actual": 0.0169,
+            "mean_predicted": 0.076,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": -0.0917,
+            "decile": 2,
+            "mean_actual": 0.0686,
+            "mean_predicted": 0.1603,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": -0.0543,
+            "decile": 3,
+            "mean_actual": 0.2599,
+            "mean_predicted": 0.3142,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": 0.0197,
+            "decile": 4,
+            "mean_actual": 0.6164,
+            "mean_predicted": 0.5967,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": 0.0543,
+            "decile": 5,
+            "mean_actual": 1.0,
+            "mean_predicted": 0.9457,
+            "samples": 1180
+          },
+          {
+            "bias_actual_minus_predicted": 0.2164,
+            "decile": 6,
+            "mean_actual": 1.4801,
+            "mean_predicted": 1.2637,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": 0.0612,
+            "decile": 7,
+            "mean_actual": 1.5936,
+            "mean_predicted": 1.5323,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": -0.1138,
+            "decile": 8,
+            "mean_actual": 1.718,
+            "mean_predicted": 1.8318,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": 0.1725,
+            "decile": 9,
+            "mean_actual": 2.3539,
+            "mean_predicted": 2.1814,
+            "samples": 1181
+          },
+          {
+            "bias_actual_minus_predicted": 0.7509,
+            "decile": 10,
+            "mean_actual": 3.6636,
+            "mean_predicted": 2.9127,
+            "samples": 1180
+          }
+        ]
+      },
+      "overall": [
+        {
+          "bias_actual_minus_predicted": -0.0468,
+          "decile": 1,
+          "mean_actual": 0.0186,
+          "mean_predicted": 0.0654,
+          "samples": 2631
+        },
+        {
+          "bias_actual_minus_predicted": -0.0876,
+          "decile": 2,
+          "mean_actual": 0.0559,
+          "mean_predicted": 0.1435,
+          "samples": 2630
+        },
+        {
+          "bias_actual_minus_predicted": -0.0899,
+          "decile": 3,
+          "mean_actual": 0.2034,
+          "mean_predicted": 0.2934,
+          "samples": 2630
+        },
+        {
+          "bias_actual_minus_predicted": -0.0459,
+          "decile": 4,
+          "mean_actual": 0.5306,
+          "mean_predicted": 0.5765,
+          "samples": 2631
+        },
+        {
+          "bias_actual_minus_predicted": -0.1391,
+          "decile": 5,
+          "mean_actual": 0.7354,
+          "mean_predicted": 0.8745,
+          "samples": 2630
+        },
+        {
+          "bias_actual_minus_predicted": -0.0169,
+          "decile": 6,
+          "mean_actual": 1.1441,
+          "mean_predicted": 1.161,
+          "samples": 2630
+        },
+        {
+          "bias_actual_minus_predicted": -0.0505,
+          "decile": 7,
+          "mean_actual": 1.3907,
+          "mean_predicted": 1.4412,
+          "samples": 2631
+        },
+        {
+          "bias_actual_minus_predicted": -0.0821,
+          "decile": 8,
+          "mean_actual": 1.6817,
+          "mean_predicted": 1.7639,
+          "samples": 2630
+        },
+        {
+          "bias_actual_minus_predicted": 0.1961,
+          "decile": 9,
+          "mean_actual": 2.3597,
+          "mean_predicted": 2.1636,
+          "samples": 2630
+        },
+        {
+          "bias_actual_minus_predicted": 0.504,
+          "decile": 10,
+          "mean_actual": 3.4681,
+          "mean_predicted": 2.964,
+          "samples": 2630
+        }
+      ]
+    },
+    "sixty_minutes": {
+      "bins": [
+        {
+          "lower": 0.0,
+          "mean_predicted": 0.0354,
+          "observed_frequency": 0.0267,
+          "samples": 8766,
+          "upper": 0.1
+        },
+        {
+          "lower": 0.1,
+          "mean_predicted": 0.1507,
+          "observed_frequency": 0.151,
+          "samples": 2847,
+          "upper": 0.2
+        },
+        {
+          "lower": 0.2,
+          "mean_predicted": 0.2517,
+          "observed_frequency": 0.2376,
+          "samples": 3018,
+          "upper": 0.3
+        },
+        {
+          "lower": 0.3,
+          "mean_predicted": 0.3504,
+          "observed_frequency": 0.3418,
+          "samples": 3157,
+          "upper": 0.4
+        },
+        {
+          "lower": 0.4,
+          "mean_predicted": 0.4488,
+          "observed_frequency": 0.4258,
+          "samples": 2485,
+          "upper": 0.5
+        },
+        {
+          "lower": 0.5,
+          "mean_predicted": 0.5481,
+          "observed_frequency": 0.5486,
+          "samples": 2047,
+          "upper": 0.6
+        },
+        {
+          "lower": 0.6,
+          "mean_predicted": 0.649,
+          "observed_frequency": 0.7007,
+          "samples": 1754,
+          "upper": 0.7
+        },
+        {
+          "lower": 0.7,
+          "mean_predicted": 0.7399,
+          "observed_frequency": 0.7813,
+          "samples": 1125,
+          "upper": 0.8
+        },
+        {
+          "lower": 0.8,
+          "mean_predicted": 0.8476,
+          "observed_frequency": 0.8519,
+          "samples": 513,
+          "upper": 0.9
+        },
+        {
+          "lower": 0.9,
+          "mean_predicted": 0.9356,
+          "observed_frequency": 0.9559,
+          "samples": 227,
+          "upper": 1.0
+        }
+      ],
+      "brier_score": 0.138385,
+      "excluded_multi_fixture_rows": 364,
+      "log_loss": 0.420566,
+      "samples": 25939
+    }
+  },
+  "limitations": [
+    "Bootstrap resamples seasons and consecutive target-Gameweek blocks; five seasons still provide weak between-season uncertainty.",
+    "Probability calibration excludes double Gameweeks because persisted appearance probabilities describe at-least-one appearance there.",
+    "Global top-one regret is a forecast-ranking diagnostic, not a captain choice from a manager's owned squad.",
+    "Residual slices omit fixture difficulty, promoted-club and role-change labels until those origin-time features are persisted.",
+    "Oracle estimates are sensitivity bounds and are not additive error attributions."
+  ],
+  "oracle_sensitivity": {
+    "excluded_multi_fixture_or_legacy_rows": 364,
+    "interpretation": [
+      "actual_appearance conditions the existing forecast on whether the player appeared.",
+      "actual_appearance_and_minutes also substitutes realised minutes into linear components and the clean-sheet 60-minute gate.",
+      "actual_team_goals rescales projected goal and assist components by realised team goals where team-share latent expectations exist.",
+      "actual_player_goals_and_assists replaces only the player's scoring-event components with realised events.",
+      "These interacting counterfactuals are sensitivity bounds, not additive attribution."
+    ],
+    "latent_component_samples": 25939,
+    "metrics": {
+      "actual_appearance": {
+        "bias_actual_minus_predicted": -0.0185,
+        "mae": 0.8412,
+        "rmse": 1.8049,
+        "samples": 25939
+      },
+      "actual_appearance_and_minutes": {
+        "bias_actual_minus_predicted": 0.0014,
+        "mae": 0.747,
+        "rmse": 1.6948,
+        "samples": 25939
+      },
+      "actual_player_goals_and_assists": {
+        "bias_actual_minus_predicted": -0.0255,
+        "mae": 0.8201,
+        "rmse": 1.3352,
+        "samples": 25939
+      },
+      "actual_team_goals": {
+        "bias_actual_minus_predicted": -0.0078,
+        "mae": 1.143,
+        "rmse": 2.0023,
+        "samples": 25939
+      },
+      "model": {
+        "bias_actual_minus_predicted": 0.009,
+        "mae": 1.1563,
+        "rmse": 2.0604,
+        "samples": 25939
+      }
+    },
+    "samples": 25939,
+    "status": "available"
+  },
+  "paired_moving_block_bootstrap": {
+    "bootstrap_samples": 500,
+    "metrics": {
+      "absolute_points_bias": {
+        "difference_model_minus_baseline": -0.0017,
+        "interval_80": [
+          -0.0241,
+          0.0203
+        ],
+        "interval_95": [
+          -0.0308,
+          0.028
+        ],
+        "lower_is_better": true,
+        "mean_paired_block_difference": -0.0038,
+        "median_paired_block_difference": -0.0006,
+        "percentage_target_gameweek_blocks_won": 54.1,
+        "season_differences": {
+          "2024-25": -0.0017
+        },
+        "worst_season": {
+          "difference": -0.0017,
+          "season_code": "2024-25"
+        }
+      },
+      "global_top_1_regret": {
+        "difference_model_minus_baseline": -0.1351,
+        "interval_80": [
+          -0.8919,
+          0.6486
+        ],
+        "interval_95": [
+          -1.3926,
+          1.0284
+        ],
+        "lower_is_better": true,
+        "mean_paired_block_difference": -0.1351,
+        "median_paired_block_difference": 0.0,
+        "percentage_target_gameweek_blocks_won": 13.5,
+        "season_differences": {
+          "2024-25": -0.1351
+        },
+        "worst_season": {
+          "difference": -0.1351,
+          "season_code": "2024-25"
+        }
+      },
+      "points_rmse": {
+        "by_position": [
+          {
+            "baseline_rmse": 1.9688,
+            "difference_model_minus_baseline": 0.0128,
+            "model_rmse": 1.9816,
+            "position": "DEF",
+            "samples": 8821
+          },
+          {
+            "baseline_rmse": 2.3839,
+            "difference_model_minus_baseline": 0.058,
+            "model_rmse": 2.4419,
+            "position": "FWD",
+            "samples": 2913
+          },
+          {
+            "baseline_rmse": 1.7227,
+            "difference_model_minus_baseline": 0.022,
+            "model_rmse": 1.7447,
+            "position": "GK",
+            "samples": 2761
+          },
+          {
+            "baseline_rmse": 2.0892,
+            "difference_model_minus_baseline": 0.0686,
+            "model_rmse": 2.1578,
+            "position": "MID",
+            "samples": 11808
+          }
+        ],
+        "difference_model_minus_baseline": 0.045,
+        "interval_80": [
+          0.0229,
+          0.068
+        ],
+        "interval_95": [
+          0.008,
+          0.0752
+        ],
+        "lower_is_better": true,
+        "mean_paired_block_difference": 0.0451,
+        "median_paired_block_difference": 0.0444,
+        "percentage_target_gameweek_blocks_won": 18.9,
+        "season_differences": {
+          "2024-25": 0.045
+        },
+        "worst_season": {
+          "difference": 0.045,
+          "season_code": "2024-25"
+        }
+      },
+      "unconstrained_top_15_regret": {
+        "difference_model_minus_baseline": 1.0541,
+        "interval_80": [
+          -3.2973,
+          4.9568
+        ],
+        "interval_95": [
+          -5.7723,
+          6.8291
+        ],
+        "lower_is_better": true,
+        "mean_paired_block_difference": 1.0541,
+        "median_paired_block_difference": 2.0,
+        "percentage_target_gameweek_blocks_won": 40.5,
+        "season_differences": {
+          "2024-25": 1.0541
+        },
+        "worst_season": {
+          "difference": 1.0541,
+          "season_code": "2024-25"
+        }
+      }
+    },
+    "resampling_unit": "season plus circular moving blocks of 3 target Gameweeks",
+    "seed": 20260730,
+    "target_gameweek_blocks": 37
+  },
+  "purpose": "Historical design diagnostics only; this report is not a new promotion holdout.",
+  "residual_slices": [
+    {
+      "bias_actual_minus_predicted": -0.073,
+      "dimension": "position",
+      "mae": 1.1897,
+      "mean_actual": 1.0166,
+      "mean_predicted": 1.0896,
+      "rmse": 1.9816,
+      "samples": 8821,
+      "value": "DEF"
+    },
+    {
+      "bias_actual_minus_predicted": 0.1309,
+      "dimension": "position",
+      "mae": 1.3501,
+      "mean_actual": 1.3618,
+      "mean_predicted": 1.2309,
+      "rmse": 2.4419,
+      "samples": 2913,
+      "value": "FWD"
+    },
+    {
+      "bias_actual_minus_predicted": -0.179,
+      "dimension": "position",
+      "mae": 0.9894,
+      "mean_actual": 0.8935,
+      "mean_predicted": 1.0725,
+      "rmse": 1.7447,
+      "samples": 2761,
+      "value": "GK"
+    },
+    {
+      "bias_actual_minus_predicted": 0.0956,
+      "dimension": "position",
+      "mae": 1.1559,
+      "mean_actual": 1.2769,
+      "mean_predicted": 1.1814,
+      "rmse": 2.1578,
+      "samples": 11808,
+      "value": "MID"
+    },
+    {
+      "bias_actual_minus_predicted": -0.0448,
+      "dimension": "predicted_minutes",
+      "mae": 0.6323,
+      "mean_actual": 0.456,
+      "mean_predicted": 0.5008,
+      "rmse": 1.3487,
+      "samples": 14969,
+      "value": "0_to_29"
+    },
+    {
+      "bias_actual_minus_predicted": 0.0555,
+      "dimension": "predicted_minutes",
+      "mae": 1.7511,
+      "mean_actual": 1.8123,
+      "mean_predicted": 1.7568,
+      "rmse": 2.6476,
+      "samples": 8625,
+      "value": "30_to_59"
+    },
+    {
+      "bias_actual_minus_predicted": 0.1848,
+      "dimension": "predicted_minutes",
+      "mae": 2.1597,
+      "mean_actual": 2.7244,
+      "mean_predicted": 2.5396,
+      "rmse": 3.0406,
+      "samples": 2021,
+      "value": "60_to_74"
+    },
+    {
+      "bias_actual_minus_predicted": 0.2749,
+      "dimension": "predicted_minutes",
+      "mae": 2.7246,
+      "mean_actual": 3.657,
+      "mean_predicted": 3.3821,
+      "rmse": 3.6208,
+      "samples": 688,
+      "value": "75_plus"
+    },
+    {
+      "bias_actual_minus_predicted": -0.7026,
+      "dimension": "participation",
+      "mae": 0.7026,
+      "mean_actual": -0.0001,
+      "mean_predicted": 0.7025,
+      "rmse": 0.9875,
+      "samples": 15179,
+      "value": "dnp"
+    },
+    {
+      "bias_actual_minus_predicted": 0.9921,
+      "dimension": "participation",
+      "mae": 1.8108,
+      "mean_actual": 2.74,
+      "mean_predicted": 1.7479,
+      "rmse": 3.0071,
+      "samples": 11124,
+      "value": "played"
+    },
+    {
+      "bias_actual_minus_predicted": 0.3797,
+      "dimension": "fixture_count",
+      "mae": 2.2396,
+      "mean_actual": 2.6978,
+      "mean_predicted": 2.3181,
+      "rmse": 3.806,
+      "samples": 364,
+      "value": "double_or_more"
+    },
+    {
+      "bias_actual_minus_predicted": 0.009,
+      "dimension": "fixture_count",
+      "mae": 1.1563,
+      "mean_actual": 1.1372,
+      "mean_predicted": 1.1282,
+      "rmse": 2.0604,
+      "samples": 25939,
+      "value": "single"
+    },
+    {
+      "bias_actual_minus_predicted": -0.0179,
+      "dimension": "season_phase",
+      "mae": 1.2217,
+      "mean_actual": 1.2084,
+      "mean_predicted": 1.2264,
+      "rmse": 2.1057,
+      "samples": 7298,
+      "value": "early"
+    },
+    {
+      "bias_actual_minus_predicted": 0.0204,
+      "dimension": "season_phase",
+      "mae": 1.1058,
+      "mean_actual": 1.0974,
+      "mean_predicted": 1.077,
+      "rmse": 2.0093,
+      "samples": 9775,
+      "value": "late"
+    },
+    {
+      "bias_actual_minus_predicted": 0.0328,
+      "dimension": "season_phase",
+      "mae": 1.2007,
+      "mean_actual": 1.1845,
+      "mean_predicted": 1.1517,
+      "rmse": 2.1726,
+      "samples": 9230,
+      "value": "middle"
+    },
+    {
+      "bias_actual_minus_predicted": 0.464,
+      "dimension": "forecast_rank",
+      "mae": 2.5356,
+      "mean_actual": 3.3375,
+      "mean_predicted": 2.8734,
+      "rmse": 3.41,
+      "samples": 1295,
+      "value": "16_to_50"
+    },
+    {
+      "bias_actual_minus_predicted": 0.3605,
+      "dimension": "forecast_rank",
+      "mae": 2.2264,
+      "mean_actual": 2.7351,
+      "mean_predicted": 2.3747,
+      "rmse": 3.2345,
+      "samples": 1850,
+      "value": "51_to_100"
+    },
+    {
+      "bias_actual_minus_predicted": -0.0574,
+      "dimension": "forecast_rank",
+      "mae": 0.9538,
+      "mean_actual": 0.8221,
+      "mean_predicted": 0.8795,
+      "rmse": 1.757,
+      "samples": 22603,
+      "value": "outside_100"
+    },
+    {
+      "bias_actual_minus_predicted": 0.7227,
+      "dimension": "forecast_rank",
+      "mae": 3.3282,
+      "mean_actual": 4.5333,
+      "mean_predicted": 3.8107,
+      "rmse": 4.4925,
+      "samples": 555,
+      "value": "top_15"
+    },
+    {
+      "bias_actual_minus_predicted": 0.0141,
+      "dimension": "horizon",
+      "mae": 1.1713,
+      "mean_actual": 1.1588,
+      "mean_predicted": 1.1447,
+      "rmse": 2.0945,
+      "samples": 26303,
+      "value": "GW+1"
+    }
+  ],
+  "runs": [
+    {
+      "backtest_run_id": 364,
+      "horizon_gameweeks": 1,
+      "model_version": "rates-team-share-xg-design-v1",
+      "samples": 26303,
+      "season_code": "2024-25"
+    }
+  ],
+  "schema_version": 1
+}

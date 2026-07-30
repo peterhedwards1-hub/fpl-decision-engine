@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .config import SeasonRules
 from .domain import Position
+from .history.database import HistoricalDatabase
 from .optimisation import (
     CandidatePlayer,
     FullSquadResult,
@@ -54,6 +57,7 @@ def recommend_transfers(
     *,
     rules: SeasonRules,
     max_transfers: int | None = None,
+    future_transfer_needs: Mapping[int, float] | None = None,
 ) -> TransferRecommendation:
     """Compare rolling and exact best routes for each transfer count."""
 
@@ -70,9 +74,7 @@ def recommend_transfers(
     if set(current.selling_prices_tenths) != current.player_ids:
         raise ValueError("Selling prices must be supplied for every current player")
     search_limit = (
-        rules.transfers.maximum_free_transfers
-        if max_transfers is None
-        else max_transfers
+        rules.transfers.maximum_free_transfers if max_transfers is None else max_transfers
     )
     if not 0 <= search_limit <= rules.squad.squad_size:
         raise ValueError("Maximum transfers is outside the legal squad range")
@@ -90,6 +92,7 @@ def recommend_transfers(
             current,
             rules,
             transfer_count=0,
+            future_transfer_needs=future_transfer_needs,
         )
     ]
     for transfer_count in range(1, search_limit + 1):
@@ -125,6 +128,7 @@ def recommend_transfers(
                 bank_tenths=money_available
                 - sum(by_id[player_id].price_tenths for player_id in incoming),
                 baseline=baseline,
+                future_transfer_needs=future_transfer_needs,
             )
         )
     ordered = tuple(
@@ -143,7 +147,13 @@ def recommend_transfers(
         baseline_horizon_points=baseline.horizon_expected_points,
         search_scope=(
             f"Roll and exact best legal routes for 1–{max_transfers} transfers; "
-            "one optimum per transfer count"
+            "one optimum per transfer count; "
+            + (
+                "free-transfer option value uses the supplied empirical future-need distribution"
+                if future_transfer_needs is not None
+                else "free-transfer option value is omitted because no "
+                "empirical future-need distribution was supplied"
+            )
         ),
     )
 
@@ -158,9 +168,7 @@ def _best_transfer_squad(
     ordered = tuple(sorted(candidates, key=lambda player: player.source_player_id))
     problem = pulp.LpProblem(f"transfer_route_{transfer_count}", pulp.LpMaximize)
     selected = {
-        player.source_player_id: pulp.LpVariable(
-            f"selected_{index}", cat=pulp.LpBinary
-        )
+        player.source_player_id: pulp.LpVariable(f"selected_{index}", cat=pulp.LpBinary)
         for index, player in enumerate(ordered)
     }
     gameweeks = _optimisation_gameweeks(ordered)
@@ -217,42 +225,24 @@ def _best_transfer_squad(
                 for player in ordered
                 if player.position == position
             )
-            problem += (
-                position_starters
-                >= rules.squad.formation_min[position.value]
-            )
-            problem += (
-                position_starters
-                <= rules.squad.formation_max[position.value]
-            )
+            problem += position_starters >= rules.squad.formation_min[position.value]
+            problem += position_starters <= rules.squad.formation_max[position.value]
     for gameweek in gameweeks:
         problem += (
-            pulp.lpSum(
-                starters[(gameweek, player.source_player_id)]
-                for player in ordered
-            )
+            pulp.lpSum(starters[(gameweek, player.source_player_id)] for player in ordered)
             == rules.squad.starting_size
         )
         problem += (
-            pulp.lpSum(
-                captains[(gameweek, player.source_player_id)]
-                for player in ordered
-            )
-            == 1
+            pulp.lpSum(captains[(gameweek, player.source_player_id)] for player in ordered) == 1
         )
         for player in ordered:
             player_id = player.source_player_id
             problem += starters[(gameweek, player_id)] <= selected[player_id]
-            problem += (
-                captains[(gameweek, player_id)]
-                <= starters[(gameweek, player_id)]
-            )
+            problem += captains[(gameweek, player_id)] <= starters[(gameweek, player_id)]
     for team_id in sorted({player.team_id for player in ordered}):
         problem += (
             pulp.lpSum(
-                selected[player.source_player_id]
-                for player in ordered
-                if player.team_id == team_id
+                selected[player.source_player_id] for player in ordered if player.team_id == team_id
             )
             <= rules.squad.max_players_per_team
         )
@@ -261,8 +251,7 @@ def _best_transfer_squad(
         return None
     if pulp.LpStatus[status_code] != "Optimal":
         raise OptimisationError(
-            "Transfer optimisation did not prove an optimum: "
-            f"{pulp.LpStatus[status_code]}"
+            f"Transfer optimisation did not prove an optimum: {pulp.LpStatus[status_code]}"
         )
     return frozenset(
         player.source_player_id
@@ -282,23 +271,23 @@ def _route(
     transfers_in: tuple[CandidatePlayer, ...] = (),
     bank_tenths: int | None = None,
     baseline: FullSquadResult | None = None,
+    future_transfer_needs: Mapping[int, float] | None = None,
 ) -> TransferRoute:
     baseline_result = resulting if baseline is None else baseline
-    hit = calculate_transfer_cost(
-        transfer_count, current.free_transfers, rules
-    )
-    next_free = next_free_transfer_count(
-        current.free_transfers, transfer_count, rules
-    )
+    hit = calculate_transfer_cost(transfer_count, current.free_transfers, rules)
+    next_free = next_free_transfer_count(current.free_transfers, transfer_count, rules)
     final_bank = current.bank_tenths if bank_tenths is None else bank_tenths
-    # Retained transfers and money remain visible state, but are not assigned
-    # arbitrary flat points values in the recommendation objective.
-    flexibility = 0.0
-    gain = (
-        resulting.horizon_expected_points
-        - baseline_result.horizon_expected_points
+    flexibility = (
+        0.0
+        if future_transfer_needs is None
+        else free_transfer_option_value(
+            next_free,
+            future_transfer_needs,
+            rules,
+        )
     )
-    score = gain - hit
+    gain = resulting.horizon_expected_points - baseline_result.horizon_expected_points
+    score = gain - hit + flexibility
     action = (
         "Roll the transfer"
         if transfer_count == 0
@@ -308,12 +297,8 @@ def _route(
         )
     )
     return TransferRoute(
-        transfers_out=tuple(
-            sorted(transfers_out, key=lambda player: player.web_name)
-        ),
-        transfers_in=tuple(
-            sorted(transfers_in, key=lambda player: player.web_name)
-        ),
+        transfers_out=tuple(sorted(transfers_out, key=lambda player: player.web_name)),
+        transfers_in=tuple(sorted(transfers_in, key=lambda player: player.web_name)),
         resulting_squad=resulting,
         transfer_count=transfer_count,
         points_hit=hit,
@@ -324,6 +309,79 @@ def _route(
         route_score=round(score, 3),
         explanation=(
             f"{action}. Horizon gain {gain:.2f}, hit {hit}, "
-            f"next-GW free transfers {next_free}; bank £{final_bank / 10:.1f}m."
+            f"next-GW free transfers {next_free}, option value "
+            f"{flexibility:.2f}; bank £{final_bank / 10:.1f}m."
         ),
     )
+
+
+def free_transfer_option_value(
+    available_free_transfers: int,
+    future_transfer_needs: Mapping[int, float],
+    rules: SeasonRules,
+) -> float:
+    """Expected hit cost avoided versus entering next week with one FT."""
+
+    if not 0 <= available_free_transfers <= rules.transfers.maximum_free_transfers:
+        raise ValueError("Available free transfers are outside the configured range")
+    if not future_transfer_needs:
+        raise ValueError("A future transfer-need distribution is required")
+    if any(count < 0 or probability < 0 for count, probability in future_transfer_needs.items()):
+        raise ValueError("Transfer needs and probabilities cannot be negative")
+    total_probability = sum(future_transfer_needs.values())
+    if abs(total_probability - 1.0) > 1e-6:
+        raise ValueError("Future transfer-need probabilities must sum to one")
+    reference = rules.transfers.initial_free_transfers
+    avoided = sum(
+        probability
+        * (
+            calculate_transfer_cost(count, reference, rules)
+            - calculate_transfer_cost(
+                count,
+                available_free_transfers,
+                rules,
+            )
+        )
+        for count, probability in future_transfer_needs.items()
+    )
+    return round(avoided, 6)
+
+
+def empirical_transfer_need_distribution(
+    database: HistoricalDatabase,
+    season_codes: tuple[str, ...],
+    *,
+    minimum_samples: int = 8,
+) -> dict[int, float]:
+    """Estimate next-week transfer counts from recorded prospective actions."""
+
+    if not season_codes:
+        raise ValueError("At least one season is required")
+    placeholders = ",".join("?" for _ in season_codes)
+    rows = database.connection.execute(
+        f"""
+        SELECT actions.action_json
+        FROM actual_actions actions
+        JOIN weekly_decision_runs decisions
+          ON decisions.id = actions.weekly_decision_run_id
+        JOIN seasons ON seasons.id = decisions.season_id
+        WHERE seasons.code IN ({placeholders})
+        ORDER BY actions.recorded_at
+        """,
+        season_codes,
+    ).fetchall()
+    counts: list[int] = []
+    for row in rows:
+        action = json.loads(row["action_json"])
+        transfers = action.get("transfers")
+        if isinstance(transfers, list):
+            counts.append(len(transfers))
+        elif isinstance(action.get("transfer_count"), int):
+            counts.append(int(action["transfer_count"]))
+    if len(counts) < minimum_samples:
+        raise ValueError(
+            "Insufficient recorded actual actions to estimate transfer option "
+            f"value: {len(counts)} < {minimum_samples}"
+        )
+    frequencies = {count: counts.count(count) / len(counts) for count in sorted(set(counts))}
+    return frequencies

@@ -127,6 +127,17 @@ def test_goalkeeper_points_include_saves_and_penalty_save() -> None:
     assert calculate_player_points(player, stats, RULES) == 15
 
 
+def test_ineligible_position_has_no_defensive_contribution_threshold() -> None:
+    player = Player(1, "Goalkeeper", 1, Position.GK, 50)
+    stats = PlayerGameweekStats(
+        minutes=90,
+        defensive_contributions=1_000_000,
+    )
+
+    assert RULES.scoring.defensive_contribution_thresholds["GK"] is None
+    assert calculate_player_points(player, stats, RULES) == 2
+
+
 def test_goals_conceded_deduction_uses_complete_pairs() -> None:
     player = Player(1, "Defender", 1, Position.DEF, 50)
 

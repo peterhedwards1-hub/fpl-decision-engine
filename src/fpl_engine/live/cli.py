@@ -28,6 +28,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open the latest verification report in the default browser",
     )
+    parser.add_argument(
+        "--require-pre-deadline",
+        action="store_true",
+        help=(
+            "Fail before archiving or ingestion unless the capture precedes "
+            "the next deadline"
+        ),
+    )
     return parser
 
 
@@ -50,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         result = collector.collect(
             season_code=args.season_code,
             season_name=args.season_name,
+            require_pre_deadline=args.require_pre_deadline,
         )
     print(
         f"Collected {result.players} players, {result.teams} teams and "

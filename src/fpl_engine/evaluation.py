@@ -230,76 +230,11 @@ def compare_backtest_to_baselines(
 ) -> BaselineComparisonReport:
     """Compare a persisted forecast with transparent expanding-window baselines."""
 
-    run = database.connection.execute(
-        """
-        SELECT runs.model_version, runs.horizon_gameweeks,
-               seasons.id AS season_id, seasons.code AS season_code
-        FROM projection_backtest_runs runs
-        JOIN seasons ON seasons.id = runs.season_id
-        WHERE runs.id = ? AND runs.status = 'completed'
-        """,
-        (backtest_run_id,),
-    ).fetchone()
-    if run is None:
-        raise ValueError(
-            f"Completed backtest run {backtest_run_id} is unavailable"
-        )
-    rows = [
-        dict(row)
-        for row in database.connection.execute(
-            """
-            SELECT predictions.origin_gameweek,
-                   predictions.target_gameweek,
-                   predictions.horizon_step,
-                   predictions.player_season_id,
-                   predictions.fixture_count,
-                   predictions.expected_minutes,
-                   predictions.expected_points,
-                   predictions.actual_points,
-                   player_seasons.position
-            FROM projection_backtest_predictions predictions
-            JOIN player_seasons
-              ON player_seasons.id = predictions.player_season_id
-            WHERE predictions.backtest_run_id = ?
-            ORDER BY predictions.origin_gameweek,
-                     predictions.target_gameweek,
-                     predictions.player_season_id
-            """,
-            (backtest_run_id,),
-        )
-    ]
-    if not rows:
-        raise ValueError("Backtest has no predictions to benchmark")
-    player_history, position_history = _historical_prefixes(
+    run, forecasts = load_backtest_benchmark_rows(
         database,
-        int(run["season_id"]),
+        backtest_run_id,
     )
-    forecasts: dict[str, list[dict[str, Any]]] = {
-        "model": [],
-        "season_points_per_fixture": [],
-        "recent_4_points_per_fixture": [],
-        "season_points_per_90_model_minutes": [],
-        "position_points_per_fixture": [],
-    }
-    for row in rows:
-        player_id = int(row["player_season_id"])
-        origin = int(row["origin_gameweek"])
-        position = str(row["position"])
-        player_prefix = player_history.get(player_id, _empty_prefix())
-        position_prefix = position_history.get(position, _empty_prefix())
-        values = _baseline_point_forecasts(
-            row,
-            player_prefix,
-            position_prefix,
-            origin,
-        )
-        for name, expected_points in values.items():
-            forecasts[name].append(
-                {
-                    **row,
-                    "benchmark_expected_points": expected_points,
-                }
-            )
+    rows = forecasts["model"]
 
     methods = tuple(
         _benchmark_metrics(name, method_rows, horizon_step=None)
@@ -331,10 +266,98 @@ def compare_backtest_to_baselines(
         limitations=(
             "Baselines use only player-fixture evidence before each forecast origin.",
             "The points-per-90 baseline borrows the evaluated model's expected minutes.",
-            "Captain and top-15 regret use the common forecast sample but do not enforce "
+            "The field captain_regret is retained for compatibility but measures "
+            "global top-one forecast regret, not captain choice from a manager squad.",
+            "Top-one and top-15 regret use the common forecast sample but do not enforce "
             "budget, formation or club constraints.",
         ),
     )
+
+
+def load_backtest_benchmark_rows(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
+    """Return aligned model and leakage-controlled baseline prediction rows."""
+
+    run_row = database.connection.execute(
+        """
+        SELECT runs.model_version, runs.horizon_gameweeks,
+               seasons.id AS season_id, seasons.code AS season_code
+        FROM projection_backtest_runs runs
+        JOIN seasons ON seasons.id = runs.season_id
+        WHERE runs.id = ? AND runs.status = 'completed'
+        """,
+        (backtest_run_id,),
+    ).fetchone()
+    if run_row is None:
+        raise ValueError(
+            f"Completed backtest run {backtest_run_id} is unavailable"
+        )
+    run = dict(run_row)
+    rows = [
+        dict(row)
+        for row in database.connection.execute(
+            """
+            SELECT predictions.origin_gameweek,
+                   predictions.target_gameweek,
+                   predictions.horizon_step,
+                   predictions.player_season_id,
+                   predictions.fixture_count,
+                   predictions.expected_minutes,
+                   predictions.appearance_probability,
+                   predictions.sixty_probability,
+                   predictions.expected_points,
+                   predictions.actual_minutes,
+                   predictions.actual_points,
+                   predictions.component_points_json,
+                   player_seasons.position
+            FROM projection_backtest_predictions predictions
+            JOIN player_seasons
+              ON player_seasons.id = predictions.player_season_id
+            WHERE predictions.backtest_run_id = ?
+            ORDER BY predictions.origin_gameweek,
+                     predictions.target_gameweek,
+                     predictions.player_season_id
+            """,
+            (backtest_run_id,),
+        )
+    ]
+    if not rows:
+        raise ValueError("Backtest has no predictions to benchmark")
+    player_history, position_history = _historical_prefixes(
+        database,
+        int(run["season_id"]),
+    )
+    forecasts: dict[str, list[dict[str, Any]]] = {
+        "model": [],
+        "season_points_per_fixture": [],
+        "recent_4_points_per_fixture": [],
+        "season_points_per_90_model_minutes": [],
+        "position_points_per_fixture": [],
+    }
+    for row in rows:
+        row["backtest_run_id"] = backtest_run_id
+        row["season_code"] = str(run["season_code"])
+        player_id = int(row["player_season_id"])
+        origin = int(row["origin_gameweek"])
+        position = str(row["position"])
+        player_prefix = player_history.get(player_id, _empty_prefix())
+        position_prefix = position_history.get(position, _empty_prefix())
+        values = _baseline_point_forecasts(
+            row,
+            player_prefix,
+            position_prefix,
+            origin,
+        )
+        for name, expected_points in values.items():
+            forecasts[name].append(
+                {
+                    **row,
+                    "benchmark_expected_points": expected_points,
+                }
+            )
+    return run, forecasts
 
 
 def _evaluation_run_summary(

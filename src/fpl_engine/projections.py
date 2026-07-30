@@ -82,6 +82,16 @@ DEFENSIVE_CONTRIBUTION_COUNT_PRIORS: dict[Position, float] = {
     Position.FWD: 3.0,
 }
 
+# Forward-only calibration from 2025/26. Each pair is the threshold hit rate
+# conditional on an appearance below 60 minutes and at least 60 minutes:
+# DEF 5/924 and 816/3026; MID 2/2082 and 585/3265; FWD 0/663 and 9/765.
+DEFENSIVE_CONTRIBUTION_HIT_RATES_2025: dict[Position, tuple[float, float]] = {
+    Position.GK: (0.0, 0.0),
+    Position.DEF: (5 / 924, 816 / 3026),
+    Position.MID: (2 / 2082, 585 / 3265),
+    Position.FWD: (0.0, 9 / 765),
+}
+
 MINUTES_PRIORS: dict[Position, dict[str, float]] = {
     Position.GK: {
         "conditional_minutes": 88.0,
@@ -112,6 +122,7 @@ class ProjectionModelConfig:
     minimum_team_multiplier: float = 0.60
     maximum_team_multiplier: float = 1.50
     minutes_model: str = "two_stage"
+    playing_time_artifact: str | None = None
     recent_gameweeks: int = 3
     recent_evidence_weight: float = 4.0
     appearance_prior_matches: float = 1.0
@@ -122,6 +133,8 @@ class ProjectionModelConfig:
     minutes_allocation: str = "team_total"
     scoring_recent_evidence_weight: float = 1.0
     scoring_event_source: str = "actual"
+    team_form_half_life_gameweeks: float = 8.0
+    team_assist_per_goal_prior: float = 0.72
     defensive_contribution_model: str = "legacy_linear"
     include_penalty_events: bool = False
 
@@ -139,11 +152,23 @@ class ProjectionModelConfig:
         if self.minimum_team_multiplier <= 0:
             raise ValueError("Minimum team multiplier must be positive")
         if self.maximum_team_multiplier < self.minimum_team_multiplier:
+            raise ValueError("Maximum team multiplier cannot be below the minimum")
+        if self.minutes_model not in {
+            "legacy",
+            "two_stage",
+            "learned_hurdle",
+        }:
             raise ValueError(
-                "Maximum team multiplier cannot be below the minimum"
+                "Minutes model must be 'legacy', 'two_stage' or "
+                "'learned_hurdle'"
             )
-        if self.minutes_model not in {"legacy", "two_stage"}:
-            raise ValueError("Minutes model must be 'legacy' or 'two_stage'")
+        if (
+            self.minutes_model == "learned_hurdle"
+            and not self.playing_time_artifact
+        ):
+            raise ValueError(
+                "Learned hurdle minutes require an artifact path"
+            )
         if self.recent_gameweeks <= 0:
             raise ValueError("Recent Gameweeks must be positive")
         if self.recent_evidence_weight < 1:
@@ -153,38 +178,38 @@ class ProjectionModelConfig:
         if not 0 < self.appearance_prior_probability < 1:
             raise ValueError("Appearance prior probability must be between zero and one")
         if self.conditional_minutes_prior_appearances <= 0:
-            raise ValueError(
-                "Conditional-minutes prior appearances must be positive"
-            )
+            raise ValueError("Conditional-minutes prior appearances must be positive")
         if self.team_minutes_per_fixture <= 0:
             raise ValueError("Team minutes per fixture must be positive")
         if self.minutes_allocation not in {
             "team_total",
             "position_aware",
         }:
-            raise ValueError(
-                "Minutes allocation must be 'team_total' or "
-                "'position_aware'"
-            )
+            raise ValueError("Minutes allocation must be 'team_total' or 'position_aware'")
         if self.scoring_recent_evidence_weight < 1:
-            raise ValueError(
-                "Recent scoring evidence weight cannot be below one"
-            )
+            raise ValueError("Recent scoring evidence weight cannot be below one")
         if self.scoring_event_source not in {
             "actual",
             "expected_with_actual_fallback",
+            "team_share_expected",
         }:
             raise ValueError(
                 "Scoring event source must be 'actual' or "
-                "'expected_with_actual_fallback'"
+                "'expected_with_actual_fallback', or "
+                "'team_share_expected'"
             )
+        if self.team_form_half_life_gameweeks <= 0:
+            raise ValueError("Team form half-life must be positive")
+        if not 0 <= self.team_assist_per_goal_prior <= 1:
+            raise ValueError("Team assist-per-goal prior must be between zero and one")
         if self.defensive_contribution_model not in {
             "legacy_linear",
             "threshold_poisson",
+            "empirical_2025_minutes_band",
         }:
             raise ValueError(
-                "Defensive contribution model must be 'legacy_linear' "
-                "or 'threshold_poisson'"
+                "Defensive contribution model must be 'legacy_linear', "
+                "'threshold_poisson', or 'empirical_2025_minutes_band'"
             )
 
 
@@ -214,6 +239,14 @@ CORRECTED_V4_MODEL_CONFIG = replace(
 EXPECTED_EVENTS_V4_MODEL_CONFIG = replace(
     CORRECTED_V4_MODEL_CONFIG,
     scoring_event_source="expected_with_actual_fallback",
+)
+TEAM_SHARE_XG_V5_MODEL_CONFIG = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    scoring_event_source="team_share_expected",
+)
+DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    defensive_contribution_model="empirical_2025_minutes_band",
 )
 DEFAULT_MODEL_CONFIG = CORRECTED_V4_MODEL_CONFIG
 
@@ -275,6 +308,7 @@ class PlayerGameweekProjection:
     uncertainty: float
     assumptions: tuple[str, ...]
     override_rationale: str | None = None
+    latent_expectations: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -343,7 +377,14 @@ class RatesProjectionModel:
             observation_mode=observation_mode,
             maximum_ingestion_run_id=source_ingestion_run_id,
         )
-        self._prepare_minutes(players, use_availability=use_availability)
+        self._prepare_minutes(
+            players,
+            season_code=season_code,
+            start_gameweek=start_gameweek,
+            use_availability=use_availability,
+        )
+        if self.config.scoring_event_source == "team_share_expected":
+            self._prepare_team_event_shares(players)
         fixtures = self._fixtures(
             season_code,
             start_gameweek,
@@ -429,9 +470,7 @@ class RatesProjectionModel:
                 if requested_run_id is not None
                 else f" as of {generated_at.astimezone(UTC).isoformat()}"
             )
-            raise ValueError(
-                f"No completed projection source ingestion run{qualifier}"
-            )
+            raise ValueError(f"No completed projection source ingestion run{qualifier}")
         return int(row["id"])
 
     def _players(
@@ -726,6 +765,12 @@ class RatesProjectionModel:
         as_of: datetime | None = None,
         maximum_ingestion_run_id: int | None = None,
     ) -> dict[str, dict[str, float]]:
+        if self.config.scoring_event_source == "team_share_expected":
+            return self._expected_goal_team_strengths(
+                season_code,
+                start_gameweek,
+                overrides,
+            )
         if as_of is None:
             aggregate = self.database.connection.execute(
                 """
@@ -839,12 +884,12 @@ class RatesProjectionModel:
         result: dict[str, dict[str, float]] = {}
         for row in aggregate:
             matches = int(row["matches"])
-            attack_rate = (
-                float(row["goals_for"]) + prior_matches * league_average
-            ) / (matches + prior_matches)
-            defence_rate = (
-                float(row["goals_against"]) + prior_matches * league_average
-            ) / (matches + prior_matches)
+            attack_rate = (float(row["goals_for"]) + prior_matches * league_average) / (
+                matches + prior_matches
+            )
+            defence_rate = (float(row["goals_against"]) + prior_matches * league_average) / (
+                matches + prior_matches
+            )
             result[str(row["team_id"])] = {
                 "attack": _clamp(
                     attack_rate / league_average,
@@ -859,28 +904,219 @@ class RatesProjectionModel:
                 "matches": float(matches),
                 "league_average_goals": league_average,
             }
-        by_source = {
-            str(row["source_team_id"]): str(row["team_id"]) for row in aggregate
-        }
+        by_source = {str(row["source_team_id"]): str(row["team_id"]) for row in aggregate}
         for override in overrides:
             team_id = by_source.get(override.source_team_id)
             if team_id is None:
-                raise ValueError(
-                    f"Unknown team override {override.source_team_id!r}"
-                )
+                raise ValueError(f"Unknown team override {override.source_team_id!r}")
             result[team_id]["attack"] = override.attack_multiplier
             result[team_id]["defence"] = override.defence_susceptibility
             result[team_id]["overridden"] = 1.0
         return result
 
+    def _expected_goal_team_strengths(
+        self,
+        season_code: str,
+        start_gameweek: int,
+        overrides: tuple[TeamStrengthOverride, ...],
+    ) -> dict[str, dict[str, float]]:
+        """Opponent-adjusted, decayed team xG strengths using prior fixtures only."""
+
+        rows = self.database.connection.execute(
+            """
+            WITH fixture_events AS (
+                SELECT fixtures.id AS fixture_id,
+                       gameweeks.number AS gameweek_number,
+                       fixtures.home_team_id,
+                       fixtures.away_team_id,
+                       fixtures.home_score,
+                       fixtures.away_score,
+                       SUM(
+                           CASE WHEN player_seasons.team_id = fixtures.home_team_id
+                                THEN COALESCE(stats.expected_goals, stats.goals)
+                                ELSE 0 END
+                       ) AS home_xg,
+                       SUM(
+                           CASE WHEN player_seasons.team_id = fixtures.away_team_id
+                                THEN COALESCE(stats.expected_goals, stats.goals)
+                                ELSE 0 END
+                       ) AS away_xg,
+                       SUM(
+                           CASE WHEN player_seasons.team_id = fixtures.home_team_id
+                                THEN COALESCE(stats.expected_assists, stats.assists)
+                                ELSE 0 END
+                       ) AS home_xa,
+                       SUM(
+                           CASE WHEN player_seasons.team_id = fixtures.away_team_id
+                                THEN COALESCE(stats.expected_assists, stats.assists)
+                                ELSE 0 END
+                       ) AS away_xa
+                FROM fixtures
+                JOIN seasons ON seasons.id = fixtures.season_id
+                JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                LEFT JOIN player_fixture_stats stats
+                  ON stats.fixture_id = fixtures.id
+                LEFT JOIN player_seasons
+                  ON player_seasons.id = stats.player_season_id
+                WHERE seasons.code = ?
+                  AND gameweeks.number < ?
+                  AND fixtures.finished = 1
+                GROUP BY fixtures.id
+            ),
+            team_events AS (
+                SELECT gameweek_number, home_team_id AS team_id,
+                       home_xg AS xg_for, away_xg AS xg_against,
+                       home_xa AS xa_for
+                FROM fixture_events
+                UNION ALL
+                SELECT gameweek_number, away_team_id,
+                       away_xg, home_xg, away_xa
+                FROM fixture_events
+            )
+            SELECT teams.id AS team_id, teams.source_team_id,
+                   team_events.gameweek_number,
+                   team_events.xg_for, team_events.xg_against,
+                   team_events.xa_for
+            FROM teams
+            JOIN seasons ON seasons.id = teams.season_id
+            LEFT JOIN team_events ON team_events.team_id = teams.id
+            WHERE seasons.code = ?
+            ORDER BY teams.id, team_events.gameweek_number
+            """,
+            (season_code, start_gameweek, season_code),
+        ).fetchall()
+        team_rows: dict[str, list[Any]] = {}
+        by_source: dict[str, str] = {}
+        for row in rows:
+            team_id = str(row["team_id"])
+            team_rows.setdefault(team_id, [])
+            by_source[str(row["source_team_id"])] = team_id
+            if row["gameweek_number"] is not None:
+                team_rows[team_id].append(row)
+
+        weighted_xg = 0.0
+        weighted_matches = 0.0
+        weighted_xa = 0.0
+        for values in team_rows.values():
+            for row in values:
+                weight = _decay_weight(
+                    start_gameweek - int(row["gameweek_number"]),
+                    self.config.team_form_half_life_gameweeks,
+                )
+                weighted_xg += float(row["xg_for"]) * weight
+                weighted_xa += float(row["xa_for"]) * weight
+                weighted_matches += weight
+        league_average = weighted_xg / weighted_matches if weighted_matches else 1.4
+        assist_per_goal = (
+            (
+                weighted_xa
+                + self.config.team_prior_matches
+                * league_average
+                * self.config.team_assist_per_goal_prior
+            )
+            / (weighted_xg + self.config.team_prior_matches * league_average)
+            if league_average > 0
+            else self.config.team_assist_per_goal_prior
+        )
+        assist_per_goal = _clamp(assist_per_goal, 0.0, 1.0)
+        result: dict[str, dict[str, float]] = {}
+        for team_id, values in team_rows.items():
+            matches = 0.0
+            xg_for = 0.0
+            xg_against = 0.0
+            for row in values:
+                weight = _decay_weight(
+                    start_gameweek - int(row["gameweek_number"]),
+                    self.config.team_form_half_life_gameweeks,
+                )
+                matches += weight
+                xg_for += float(row["xg_for"]) * weight
+                xg_against += float(row["xg_against"]) * weight
+            prior = self.config.team_prior_matches
+            attack_rate = (xg_for + prior * league_average) / (matches + prior)
+            defence_rate = (xg_against + prior * league_average) / (matches + prior)
+            result[team_id] = {
+                "attack": _clamp(
+                    attack_rate / league_average,
+                    self.config.minimum_team_multiplier,
+                    self.config.maximum_team_multiplier,
+                ),
+                "defence": _clamp(
+                    defence_rate / league_average,
+                    self.config.minimum_team_multiplier,
+                    self.config.maximum_team_multiplier,
+                ),
+                "matches": matches,
+                "league_average_goals": league_average,
+                "assist_per_goal": assist_per_goal,
+                "source_is_expected_goals": 1.0,
+            }
+        for override in overrides:
+            team_id = by_source.get(override.source_team_id)
+            if team_id is None:
+                raise ValueError(f"Unknown team override {override.source_team_id!r}")
+            result[team_id]["attack"] = override.attack_multiplier
+            result[team_id]["defence"] = override.defence_susceptibility
+            result[team_id]["overridden"] = 1.0
+        return result
+
+    def _prepare_team_event_shares(
+        self,
+        players: list[dict[str, Any]],
+    ) -> None:
+        """Create coherent player shares without reapplying team strength."""
+
+        raw: dict[str, list[tuple[dict[str, Any], float, float]]] = {}
+        prior_minutes = self.config.player_rate_prior_minutes
+        for player in players:
+            position = Position(player["position"])
+            sample_minutes = float(player["minutes"])
+            goal_rate = (
+                float(player["expected_goals"]) * 90.0
+                + POSITION_PRIORS[position]["goals"] * prior_minutes
+            ) / (sample_minutes + prior_minutes)
+            assist_rate = (
+                float(player["expected_assists"]) * 90.0
+                + POSITION_PRIORS[position]["assists"] * prior_minutes
+            ) / (sample_minutes + prior_minutes)
+            minute_factor = float(player["_expected_minutes_per_fixture"]) / 90.0
+            raw.setdefault(str(player["team_id"]), []).append(
+                (
+                    player,
+                    max(0.0, goal_rate * minute_factor),
+                    max(0.0, assist_rate * minute_factor),
+                )
+            )
+        for team_players in raw.values():
+            total_goals = sum(value[1] for value in team_players)
+            total_assists = sum(value[2] for value in team_players)
+            for player, goal_weight, assist_weight in team_players:
+                player["_goal_share"] = goal_weight / total_goals if total_goals > 0 else 0.0
+                player["_assist_share"] = (
+                    assist_weight / total_assists if total_assists > 0 else 0.0
+                )
+
     def _prepare_minutes(
         self,
         players: list[dict[str, Any]],
         *,
+        season_code: str,
+        start_gameweek: int,
         use_availability: bool,
     ) -> None:
         """Estimate appearance and conditional minutes before team reconciliation."""
 
+        learned_predictions = None
+        if self.config.minutes_model == "learned_hurdle":
+            from .playing_time import predict_live_hurdles
+
+            learned_predictions = predict_live_hurdles(
+                self.database,
+                str(self.config.playing_time_artifact),
+                season_code=season_code,
+                start_gameweek=start_gameweek,
+                players=players,
+            )
         for player in players:
             position = Position(player["position"])
             availability = (
@@ -891,15 +1127,40 @@ class RatesProjectionModel:
                 if use_availability
                 else 1.0
             )
-            if self.config.minutes_model == "legacy":
+            if learned_predictions is not None:
+                (
+                    appearance_probability,
+                    start_probability,
+                    sixty_probability,
+                    conditional_minutes,
+                ) = learned_predictions[int(player["player_season_id"])]
+                appearance_probability = _clamp(
+                    appearance_probability * availability,
+                    0.0,
+                    1.0,
+                )
+                sixty_probability = min(
+                    appearance_probability,
+                    sixty_probability * availability,
+                )
+                sixty_given_appearance = (
+                    sixty_probability / appearance_probability
+                    if appearance_probability > 0
+                    else 0.0
+                )
+                expected_minutes = (
+                    appearance_probability * conditional_minutes
+                )
+                player["_start_probability"] = min(
+                    appearance_probability,
+                    start_probability * availability,
+                )
+            elif self.config.minutes_model == "legacy":
                 prior_matches = self.config.minutes_prior_matches
                 expected_minutes = (
-                    float(player["minutes"])
-                    + POSITION_PRIORS[position]["minutes"] * prior_matches
+                    float(player["minutes"]) + POSITION_PRIORS[position]["minutes"] * prior_matches
                 ) / (int(player["matches"]) + prior_matches)
-                expected_minutes = _clamp(
-                    expected_minutes * availability, 0.0, 90.0
-                )
+                expected_minutes = _clamp(expected_minutes * availability, 0.0, 90.0)
                 conditional_minutes = max(
                     expected_minutes,
                     MINUTES_PRIORS[position]["conditional_minutes"],
@@ -910,131 +1171,91 @@ class RatesProjectionModel:
                     1.0,
                 )
                 sixty_given_appearance = _clamp(
-                    MINUTES_PRIORS[position][
-                        "sixty_probability_given_appearance"
-                    ],
+                    MINUTES_PRIORS[position]["sixty_probability_given_appearance"],
                     0.0,
                     1.0,
                 )
             else:
-                extra_recent_weight = (
-                    self.config.recent_evidence_weight - 1.0
+                extra_recent_weight = self.config.recent_evidence_weight - 1.0
+                weighted_matches = float(player["matches"]) + extra_recent_weight * float(
+                    player["recent_matches"]
                 )
-                weighted_matches = (
-                    float(player["matches"])
-                    + extra_recent_weight
-                    * float(player["recent_matches"])
+                weighted_appearances = float(player["appearances"]) + extra_recent_weight * float(
+                    player["recent_appearances"]
                 )
-                weighted_appearances = (
-                    float(player["appearances"])
-                    + extra_recent_weight
-                    * float(player["recent_appearances"])
+                weighted_sixty = float(player["sixty_appearances"]) + extra_recent_weight * float(
+                    player["recent_sixty_appearances"]
                 )
-                weighted_sixty = (
-                    float(player["sixty_appearances"])
-                    + extra_recent_weight
-                    * float(player["recent_sixty_appearances"])
-                )
-                weighted_minutes = (
-                    float(player["minutes"])
-                    + extra_recent_weight
-                    * float(player["recent_minutes"])
+                weighted_minutes = float(player["minutes"]) + extra_recent_weight * float(
+                    player["recent_minutes"]
                 )
                 appearance_probability = (
                     weighted_appearances
                     + self.config.appearance_prior_matches
                     * self.config.appearance_prior_probability
-                ) / (
-                    weighted_matches
-                    + self.config.appearance_prior_matches
-                )
-                appearance_probability = _clamp(
-                    appearance_probability * availability, 0.0, 1.0
-                )
-                conditional_prior = (
-                    self.config.conditional_minutes_prior_appearances
-                )
+                ) / (weighted_matches + self.config.appearance_prior_matches)
+                appearance_probability = _clamp(appearance_probability * availability, 0.0, 1.0)
+                conditional_prior = self.config.conditional_minutes_prior_appearances
                 conditional_minutes = (
                     weighted_minutes
-                    + conditional_prior
-                    * MINUTES_PRIORS[position]["conditional_minutes"]
+                    + conditional_prior * MINUTES_PRIORS[position]["conditional_minutes"]
                 ) / (weighted_appearances + conditional_prior)
-                conditional_minutes = _clamp(
-                    conditional_minutes, 1.0, 90.0
-                )
+                conditional_minutes = _clamp(conditional_minutes, 1.0, 90.0)
                 sixty_given_appearance = (
                     weighted_sixty
                     + conditional_prior
-                    * MINUTES_PRIORS[position][
-                        "sixty_probability_given_appearance"
-                    ]
+                    * MINUTES_PRIORS[position]["sixty_probability_given_appearance"]
                 ) / (weighted_appearances + conditional_prior)
-                sixty_given_appearance = _clamp(
-                    sixty_given_appearance, 0.0, 1.0
-                )
-                expected_minutes = (
-                    appearance_probability * conditional_minutes
-                )
+                sixty_given_appearance = _clamp(sixty_given_appearance, 0.0, 1.0)
+                expected_minutes = appearance_probability * conditional_minutes
 
             player["_availability"] = availability
             player["_conditional_minutes"] = conditional_minutes
             player["_appearance_probability"] = appearance_probability
             player["_sixty_given_appearance"] = sixty_given_appearance
-            player["_sixty_probability"] = (
-                appearance_probability * sixty_given_appearance
-            )
+            player["_sixty_probability"] = appearance_probability * sixty_given_appearance
             player["_expected_minutes_per_fixture"] = expected_minutes
 
-        if (
-            self.config.minutes_model != "two_stage"
-            or not self.config.enforce_team_minutes
-        ):
+        if self.config.minutes_model == "legacy" or not self.config.enforce_team_minutes:
             return
 
         players_by_team: dict[str, list[dict[str, Any]]] = {}
         for player in players:
-            players_by_team.setdefault(str(player["team_id"]), []).append(
-                player
-            )
+            players_by_team.setdefault(str(player["team_id"]), []).append(player)
         for team_players in players_by_team.values():
             allocation_groups = (
                 (
                     (
-                        player
-                        for player in team_players
-                        if player["position"] == Position.GK.value
+                        (
+                            player
+                            for player in team_players
+                            if player["position"] == Position.GK.value
+                        ),
+                        90.0,
                     ),
-                    90.0,
-                ),
-                (
                     (
-                        player
-                        for player in team_players
-                        if player["position"] != Position.GK.value
+                        (
+                            player
+                            for player in team_players
+                            if player["position"] != Position.GK.value
+                        ),
+                        self.config.team_minutes_per_fixture - 90.0,
                     ),
-                    self.config.team_minutes_per_fixture - 90.0,
-                ),
-            ) if self.config.minutes_allocation == "position_aware" else (
-                (iter(team_players), self.config.team_minutes_per_fixture),
+                )
+                if self.config.minutes_allocation == "position_aware"
+                else ((iter(team_players), self.config.team_minutes_per_fixture),)
             )
             reconciled: list[tuple[dict[str, Any], float]] = []
             for group, target in allocation_groups:
                 group_players = list(group)
                 allocations = _allocate_capped_minutes(
-                    [
-                        float(player["_expected_minutes_per_fixture"])
-                        for player in group_players
-                    ],
+                    [float(player["_expected_minutes_per_fixture"]) for player in group_players],
                     target=target,
                     cap=90.0,
                 )
-                reconciled.extend(
-                    zip(group_players, allocations, strict=True)
-                )
+                reconciled.extend(zip(group_players, allocations, strict=True))
             for player, expected_minutes in reconciled:
-                conditional_minutes = float(
-                    player["_conditional_minutes"]
-                )
+                conditional_minutes = float(player["_conditional_minutes"])
                 appearance_probability = _clamp(
                     expected_minutes / max(conditional_minutes, 1.0),
                     0.0,
@@ -1044,8 +1265,7 @@ class RatesProjectionModel:
                 player["_appearance_probability"] = appearance_probability
                 player["_sixty_probability"] = min(
                     appearance_probability,
-                    appearance_probability
-                    * float(player["_sixty_given_appearance"]),
+                    appearance_probability * float(player["_sixty_given_appearance"]),
                 )
 
     def _project_player(
@@ -1080,38 +1300,31 @@ class RatesProjectionModel:
             "penalties_saved",
             "penalties_missed",
         )
-        recent_scoring_extra = (
-            self.config.scoring_recent_evidence_weight - 1.0
+        recent_scoring_extra = self.config.scoring_recent_evidence_weight - 1.0
+        scoring_sample_minutes = sample_minutes + recent_scoring_extra * float(
+            player["recent_minutes"]
         )
-        scoring_sample_minutes = (
-            sample_minutes
-            + recent_scoring_extra * float(player["recent_minutes"])
+        rate_source_names = (
+            {
+                "goals": "expected_goals",
+                "assists": "expected_assists",
+            }
+            if (self.config.scoring_event_source == "expected_with_actual_fallback")
+            else {}
         )
-        rate_source_names = {
-            "goals": "expected_goals",
-            "assists": "expected_assists",
-        } if (
-            self.config.scoring_event_source
-            == "expected_with_actual_fallback"
-        ) else {}
         rates = {
             name: (
                 (
                     float(player[rate_source_names.get(name, name)])
                     + recent_scoring_extra
-                    * float(
-                        player[
-                            f"recent_{rate_source_names.get(name, name)}"
-                        ]
-                    )
+                    * float(player[f"recent_{rate_source_names.get(name, name)}"])
                 )
                 * 90.0
                 + (
                     DEFENSIVE_CONTRIBUTION_COUNT_PRIORS[position]
                     if (
                         name == "defensive_contributions"
-                        and self.config.defensive_contribution_model
-                        == "threshold_poisson"
+                        and self.config.defensive_contribution_model == "threshold_poisson"
                     )
                     else prior[name]
                 )
@@ -1125,22 +1338,17 @@ class RatesProjectionModel:
             player_fixtures = [
                 fixture
                 for fixture in fixtures[gameweek]
-                if player["team_id"]
-                in (fixture["home_team_id"], fixture["away_team_id"])
+                if player["team_id"] in (fixture["home_team_id"], fixture["away_team_id"])
             ]
             fixture_count = len(player_fixtures)
             override = overrides.get((player["source_player_id"], gameweek))
             expected_minutes = minutes_per_fixture * fixture_count
             if override is not None:
-                expected_minutes = _clamp(
-                    override.expected_minutes, 0.0, 90.0 * fixture_count
-                )
-            per_fixture_minutes = (
-                0.0 if fixture_count == 0 else expected_minutes / fixture_count
-            )
+                expected_minutes = _clamp(override.expected_minutes, 0.0, 90.0 * fixture_count)
+            per_fixture_minutes = 0.0 if fixture_count == 0 else expected_minutes / fixture_count
             fixture_appearance_probability = appearance_probability
             fixture_sixty_probability = sixty_probability
-            if override is not None and self.config.minutes_model == "two_stage":
+            if override is not None and self.config.minutes_model != "legacy":
                 fixture_appearance_probability = _clamp(
                     per_fixture_minutes / max(conditional_minutes, 1.0),
                     0.0,
@@ -1148,8 +1356,7 @@ class RatesProjectionModel:
                 )
                 fixture_sixty_probability = min(
                     fixture_appearance_probability,
-                    fixture_appearance_probability
-                    * float(player["_sixty_given_appearance"]),
+                    fixture_appearance_probability * float(player["_sixty_given_appearance"]),
                 )
             components = {
                 "appearance": 0.0,
@@ -1161,12 +1368,16 @@ class RatesProjectionModel:
                 "bonus": 0.0,
                 "deduction": 0.0,
             }
+            latent = {
+                "team_expected_goals": 0.0,
+                "opponent_expected_goals": 0.0,
+                "goal_share": float(player.get("_goal_share", 0.0)),
+                "assist_share": float(player.get("_assist_share", 0.0)),
+            }
             fixture_notes = []
             for fixture in player_fixtures:
                 is_home = player["team_id"] == fixture["home_team_id"]
-                opponent_id = str(
-                    fixture["away_team_id"] if is_home else fixture["home_team_id"]
-                )
+                opponent_id = str(fixture["away_team_id"] if is_home else fixture["home_team_id"])
                 team_strength = strengths[str(player["team_id"])]
                 opponent_strength = strengths[opponent_id]
                 venue_attack = (
@@ -1175,10 +1386,9 @@ class RatesProjectionModel:
                     else self.config.away_attack_multiplier
                 )
                 scoring_factor = (
-                    team_strength["attack"]
-                    * opponent_strength["defence"]
-                    * venue_attack
+                    team_strength["attack"] * opponent_strength["defence"] * venue_attack
                 )
+                team_lambda = team_strength["league_average_goals"] * scoring_factor
                 opponent_lambda = (
                     team_strength["league_average_goals"]
                     * opponent_strength["attack"]
@@ -1189,77 +1399,92 @@ class RatesProjectionModel:
                         else self.config.home_attack_multiplier
                     )
                 )
+                latent["team_expected_goals"] += team_lambda
+                latent["opponent_expected_goals"] += opponent_lambda
                 minute_factor = per_fixture_minutes / 90.0
                 if self.config.minutes_model == "legacy":
-                    sixty_factor = _clamp(
-                        per_fixture_minutes / 60.0, 0.0, 1.0
-                    )
-                    components["appearance"] += min(
-                        per_fixture_minutes / 30.0, 2.0
-                    )
+                    sixty_factor = _clamp(per_fixture_minutes / 60.0, 0.0, 1.0)
+                    components["appearance"] += min(per_fixture_minutes / 30.0, 2.0)
                 else:
                     sixty_factor = fixture_sixty_probability
                     components["appearance"] += (
-                        fixture_appearance_probability
-                        + fixture_sixty_probability
+                        (fixture_appearance_probability - fixture_sixty_probability)
+                        * self.rules.scoring.appearance_under_60
+                        + fixture_sixty_probability * self.rules.scoring.appearance_60_or_more
                     )
-                components["goal"] += (
-                    rates["goals"]
-                    * minute_factor
-                    * scoring_factor
-                    * self.rules.scoring.goals[position.value]
-                )
-                components["assist"] += (
-                    rates["assists"]
-                    * minute_factor
-                    * scoring_factor
-                    * self.rules.scoring.assists
-                )
+                if self.config.scoring_event_source == "team_share_expected":
+                    components["goal"] += (
+                        team_lambda
+                        * float(player["_goal_share"])
+                        * self.rules.scoring.goals[position.value]
+                    )
+                    components["assist"] += (
+                        team_lambda
+                        * team_strength["assist_per_goal"]
+                        * float(player["_assist_share"])
+                        * self.rules.scoring.assists
+                    )
+                else:
+                    components["goal"] += (
+                        rates["goals"]
+                        * minute_factor
+                        * scoring_factor
+                        * self.rules.scoring.goals[position.value]
+                    )
+                    components["assist"] += (
+                        rates["assists"]
+                        * minute_factor
+                        * scoring_factor
+                        * self.rules.scoring.assists
+                    )
                 components["clean"] += (
                     math.exp(-opponent_lambda)
                     * sixty_factor
                     * self.rules.scoring.clean_sheets[position.value]
                 )
                 components["save"] += (
-                    rates["saves"]
-                    * minute_factor
-                    / self.rules.scoring.saves_per_point
+                    rates["saves"] * minute_factor / self.rules.scoring.saves_per_point
                 )
-                if (
-                    self.config.defensive_contribution_model
-                    == "threshold_poisson"
-                ):
-                    contribution_threshold = (
-                        self.rules.scoring
-                        .defensive_contribution_thresholds[position.value]
-                    )
-                    contribution_lambda = (
-                        rates["defensive_contributions"]
-                        * conditional_minutes
-                        / 90.0
-                    )
-                    components["defensive"] += (
-                        fixture_appearance_probability
-                        * _poisson_at_least(
-                            contribution_lambda,
-                            contribution_threshold,
+                if self.config.defensive_contribution_model == "threshold_poisson":
+                    contribution_threshold = self.rules.scoring.defensive_contribution_thresholds[
+                        position.value
+                    ]
+                    if contribution_threshold is not None:
+                        contribution_lambda = (
+                            rates["defensive_contributions"] * conditional_minutes / 90.0
                         )
-                        * self.rules.scoring.defensive_contribution_points
-                    )
+                        components["defensive"] += (
+                            fixture_appearance_probability
+                            * _poisson_at_least(
+                                contribution_lambda,
+                                contribution_threshold,
+                            )
+                            * self.rules.scoring.defensive_contribution_points
+                        )
+                elif self.config.defensive_contribution_model == "empirical_2025_minutes_band":
+                    contribution_threshold = self.rules.scoring.defensive_contribution_thresholds[
+                        position.value
+                    ]
+                    if contribution_threshold is not None:
+                        under_sixty_rate, sixty_rate = DEFENSIVE_CONTRIBUTION_HIT_RATES_2025[
+                            position
+                        ]
+                        components["defensive"] += (
+                            max(
+                                0.0,
+                                fixture_appearance_probability - fixture_sixty_probability,
+                            )
+                            * under_sixty_rate
+                            + fixture_sixty_probability * sixty_rate
+                        ) * (self.rules.scoring.defensive_contribution_points)
                 else:
-                    components["defensive"] += (
-                        rates["defensive_contributions"] * minute_factor
-                    )
+                    components["defensive"] += rates["defensive_contributions"] * minute_factor
                 if self.config.include_penalty_events:
                     components["save"] += (
-                        rates["penalties_saved"]
-                        * minute_factor
-                        * self.rules.scoring.penalty_save
+                        rates["penalties_saved"] * minute_factor * self.rules.scoring.penalty_save
                     )
                     components["deduction"] += (
-                        rates["penalties_missed"]
-                        * minute_factor
-                        * self.rules.scoring.penalty_miss
+                        rates["penalties_missed"] * minute_factor * self.rules.scoring.penalty_miss
                     )
                 components["bonus"] += rates["bonus"] * minute_factor
                 components["deduction"] -= (
@@ -1268,32 +1493,27 @@ class RatesProjectionModel:
                     + 2.0 * rates["own_goals"] * minute_factor
                 )
                 if position in (Position.GK, Position.DEF):
-                    if self.config.minutes_model == "two_stage":
-                        conceded_lambda = (
-                            opponent_lambda * conditional_minutes / 90.0
-                        )
+                    if self.config.minutes_model != "legacy":
+                        conceded_lambda = opponent_lambda * conditional_minutes / 90.0
                         expected_conceded_pairs = (
                             fixture_appearance_probability
-                            * _poisson_expected_complete_pairs(
-                                conceded_lambda
-                            )
+                            * _poisson_expected_complete_pairs(conceded_lambda)
                         )
                     else:
-                        expected_conceded_pairs = (
-                            _poisson_expected_complete_pairs(
-                                opponent_lambda * minute_factor
-                            )
+                        expected_conceded_pairs = _poisson_expected_complete_pairs(
+                            opponent_lambda * minute_factor
                         )
                     components["deduction"] += (
                         expected_conceded_pairs
-                        * self.rules.scoring.goals_conceded_per_two[
-                            position.value
-                        ]
+                        * self.rules.scoring.goals_conceded_per_two[position.value]
                     )
                 fixture_notes.append(
-                    f"{'home' if is_home else 'away'} fixture factor "
-                    f"{scoring_factor:.2f}"
+                    f"{'home' if is_home else 'away'} fixture factor {scoring_factor:.2f}"
                 )
+                if self.config.scoring_event_source == "team_share_expected":
+                    fixture_notes.append(
+                        f"team xG {team_lambda:.2f}, goal share {float(player['_goal_share']):.3f}"
+                    )
             expected_points = sum(components.values())
             uncertainty = (
                 1.25
@@ -1319,17 +1539,11 @@ class RatesProjectionModel:
                     fixture_count=fixture_count,
                     expected_minutes=round(expected_minutes, 2),
                     appearance_probability=round(
-                        1.0
-                        - (
-                            1.0 - fixture_appearance_probability
-                        )
-                        ** fixture_count,
+                        1.0 - (1.0 - fixture_appearance_probability) ** fixture_count,
                         6,
                     ),
                     sixty_probability=round(
-                        1.0
-                        - (1.0 - fixture_sixty_probability)
-                        ** fixture_count,
+                        1.0 - (1.0 - fixture_sixty_probability) ** fixture_count,
                         6,
                     ),
                     appearance_points=round(components["appearance"], 3),
@@ -1337,15 +1551,14 @@ class RatesProjectionModel:
                     assist_points=round(components["assist"], 3),
                     clean_sheet_points=round(components["clean"], 3),
                     save_points=round(components["save"], 3),
-                    defensive_contribution_points=round(
-                        components["defensive"], 3
-                    ),
+                    defensive_contribution_points=round(components["defensive"], 3),
                     bonus_points=round(components["bonus"], 3),
                     deduction_points=round(components["deduction"], 3),
                     expected_points=round(expected_points, 3),
                     uncertainty=round(uncertainty, 3),
                     assumptions=assumptions,
                     override_rationale=None if override is None else override.rationale,
+                    latent_expectations={name: round(value, 8) for name, value in latent.items()},
                 )
             )
         return tuple(projections)
@@ -1378,9 +1591,7 @@ class RatesProjectionModel:
             ).fetchone()
         )
         if source_ingestion_run_id is not None and source_run is None:
-            raise ValueError(
-                "Projection source ingestion run is missing or incomplete"
-            )
+            raise ValueError("Projection source ingestion run is missing or incomplete")
         assumptions = {
             "position_priors": POSITION_PRIORS,
             "team_strengths": strengths,
@@ -1486,9 +1697,7 @@ def projection_totals(
         row["expected_minutes"] = round(row["expected_minutes"], 1)
         row["expected_points"] = round(row["expected_points"], 2)
         row["uncertainty"] = round(row["uncertainty"], 2)
-    return sorted(
-        totals.values(), key=lambda row: row["expected_points"], reverse=True
-    )
+    return sorted(totals.values(), key=lambda row: row["expected_points"], reverse=True)
 
 
 def _availability_multiplier(status: str | None, chance: int | None) -> float:
@@ -1521,16 +1730,10 @@ def _allocate_capped_minutes(
     while active and remaining > 1e-9:
         total_weight = sum(max(raw_values[index], 1e-9) for index in active)
         scale = remaining / total_weight
-        capped = {
-            index
-            for index in active
-            if max(raw_values[index], 1e-9) * scale >= cap
-        }
+        capped = {index for index in active if max(raw_values[index], 1e-9) * scale >= cap}
         if not capped:
             for index in active:
-                allocations[index] = (
-                    max(raw_values[index], 1e-9) * scale
-                )
+                allocations[index] = max(raw_values[index], 1e-9) * scale
             remaining = 0.0
             break
         for index in capped:
@@ -1561,6 +1764,10 @@ def _poisson_expected_complete_pairs(rate: float) -> float:
     if rate <= 0:
         return 0.0
     return rate / 2.0 - (1.0 - math.exp(-2.0 * rate)) / 4.0
+
+
+def _decay_weight(age_gameweeks: int, half_life_gameweeks: float) -> float:
+    return math.exp(-math.log(2.0) * max(0, age_gameweeks - 1) / half_life_gameweeks)
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:

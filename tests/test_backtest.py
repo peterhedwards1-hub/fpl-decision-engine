@@ -10,6 +10,7 @@ import pytest
 from fpl_engine.assumption_audit import run_assumption_audit
 from fpl_engine.backtest import ProjectionBacktester, load_backtest_report
 from fpl_engine.config import load_season_rules
+from fpl_engine.diagnostics import build_stage_one_diagnostics
 from fpl_engine.domain import Position
 from fpl_engine.evaluation import (
     build_evaluation_suite,
@@ -31,7 +32,11 @@ from fpl_engine.history.records import (
 from fpl_engine.learned_challenger import (
     train_and_evaluate_learned_challenger,
 )
-from fpl_engine.projections import ProjectionModelConfig, RatesProjectionModel
+from fpl_engine.projections import (
+    DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG,
+    ProjectionModelConfig,
+    RatesProjectionModel,
+)
 from fpl_engine.tuning import (
     tune_projection_model,
     tune_projection_model_rolling,
@@ -266,6 +271,30 @@ def test_walk_forward_backtest_persists_predictions_and_metrics(tmp_path) -> Non
         )
         assert suite["incumbent_runs"][0]["season_code"] == "2025-26"
         assert suite["challenger_comparisons"] == []
+        diagnostics = build_stage_one_diagnostics(
+            database,
+            (report.backtest_run_id,),
+            bootstrap_samples=20,
+            moving_block_gameweeks=1,
+            minimum_slice_samples=1,
+            seed=1,
+        )
+        bootstrap = diagnostics["paired_moving_block_bootstrap"]
+        assert bootstrap["bootstrap_samples"] == 20
+        assert "points_rmse" in bootstrap["metrics"]
+        assert diagnostics["calibration"]["appearance"]["samples"] == 2
+        assert diagnostics["residual_slices"]
+        assert diagnostics["oracle_sensitivity"]["status"] == "available"
+        component_json = database.connection.execute(
+            """
+            SELECT component_points_json
+            FROM projection_backtest_predictions
+            WHERE backtest_run_id = ?
+            LIMIT 1
+            """,
+            (report.backtest_run_id,),
+        ).fetchone()[0]
+        assert component_json is not None
 
 
 def test_future_season_results_do_not_leak_into_historical_projection(
@@ -295,6 +324,24 @@ def test_future_season_results_do_not_leak_into_historical_projection(
         assert after.expected_minutes == before.expected_minutes
         assert after.goal_points == before.goal_points
         assert after.expected_points == before.expected_points
+
+
+def test_empirical_defensive_contribution_model_is_forward_only(
+    tmp_path,
+) -> None:
+    with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(SOURCE, _historical_bundle())
+        with pytest.raises(ValueError, match="restricted to genuinely forward"):
+            ProjectionBacktester(
+                database,
+                RULES,
+                config=DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG,
+            ).run(
+                season_code="2025-26",
+                origin_gameweek_start=2,
+                origin_gameweek_end=2,
+            )
 
 
 def test_assumption_variants_change_recent_and_threshold_scoring(

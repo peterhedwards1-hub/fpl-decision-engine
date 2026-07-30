@@ -78,7 +78,11 @@ class LiveSnapshotCollector:
         self.clock = clock or (lambda: datetime.now(UTC))
 
     def collect(
-        self, *, season_code: str, season_name: str | None = None
+        self,
+        *,
+        season_code: str,
+        season_name: str | None = None,
+        require_pre_deadline: bool = False,
     ) -> CollectionResult:
         captured_at = self.clock()
         bootstrap = self.client.bootstrap_static()
@@ -87,6 +91,11 @@ class LiveSnapshotCollector:
         gameweek_number, deadline_time, observation_kind = self._snapshot_target(
             bootstrap.data["events"], captured_at
         )
+        if require_pre_deadline and observation_kind != "live_pre_deadline":
+            raise ValueError(
+                "Capture is not before the next deadline; refusing to record "
+                "it as prospective pre-deadline evidence"
+            )
 
         digest = hashlib.sha256(bootstrap.body + b"\n" + fixtures.body).hexdigest()
         archive_directory = self._archive(

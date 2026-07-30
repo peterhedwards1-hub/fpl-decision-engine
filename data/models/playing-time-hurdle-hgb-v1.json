@@ -1,0 +1,74 @@
+{
+  "artifact_path": "data\\models\\playing-time-hurdle-hgb-v1.joblib",
+  "metadata_path": "data\\models\\playing-time-hurdle-hgb-v1.json",
+  "family": "histogram_gradient_boosting",
+  "training_seasons": [
+    "2021-22",
+    "2022-23",
+    "2023-24"
+  ],
+  "validation_season": "2024-25",
+  "feature_names": [
+    "gameweek_fraction",
+    "price_tenths",
+    "is_gk",
+    "is_def",
+    "is_mid",
+    "is_fwd",
+    "player_appearance_rate",
+    "player_start_rate",
+    "player_sixty_given_appearance",
+    "player_conditional_minutes",
+    "position_appearance_rate",
+    "team_appearance_rate",
+    "previous_minutes",
+    "previous_started",
+    "absence_streak",
+    "substitute_run_length",
+    "new_club",
+    "position_change"
+  ],
+  "chronological_oof_samples": 15736,
+  "calibration_method": "isotonic_on_strictly_chronological_oof",
+  "baseline": {
+    "samples": 26919,
+    "appearance_brier": 0.123705,
+    "appearance_log_loss": 0.41105,
+    "start_brier": 0.119524,
+    "start_log_loss": 0.401254,
+    "sixty_brier": 0.114158,
+    "sixty_log_loss": 0.378101,
+    "expected_minutes_rmse": 28.033098,
+    "expected_minutes_bias": -10.302758,
+    "conditional_minutes_rmse": 38.746789
+  },
+  "challenger": {
+    "samples": 26919,
+    "appearance_brier": 0.095949,
+    "appearance_log_loss": 0.316565,
+    "start_brier": 0.104998,
+    "start_log_loss": 0.327993,
+    "sixty_brier": 0.090243,
+    "sixty_log_loss": 0.28714,
+    "expected_minutes_rmse": 23.65085,
+    "expected_minutes_bias": -0.870401,
+    "conditional_minutes_rmse": 25.220989
+  },
+  "downstream_points": {
+    "samples": 25939,
+    "baseline_rmse": 2.056884,
+    "hurdle_rmse": 1.907299,
+    "rmse_change": -0.149585,
+    "baseline_bias": -0.043676,
+    "hurdle_bias": -0.065142,
+    "global_top_one_regret_change": 0.567568,
+    "unconstrained_top_15_regret_change": -8.675676,
+    "method": "Component-backed sensitivity: replace appearance scoring, scale linear components by expected minutes and clean sheets by 60-minute probability."
+  },
+  "limitations": [
+    "Historical availability snapshots have unknown timing and are excluded.",
+    "Manager-change data is not yet present, so no manager-change feature is fitted.",
+    "Starts are predicted unconditionally; the 60-minute model is conditional on appearance.",
+    "Historical results are design evidence only; promotion requires forward 2026/27 rows."
+  ]
+}

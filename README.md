@@ -42,13 +42,20 @@ Implemented:
 - leakage-controlled walk-forward projection backtesting with persisted scorecards;
 - five imported seasons, locked rolling multi-season tuning and paired news-uplift scoring;
 - a leakage-checked histogram gradient-boosting points challenger and auditable artifact;
+- chronologically calibrated four-part playing-time hurdle challengers;
+- a coherent share-of-team-xG scoring challenger with latent-component oracles;
+- shared-outcome Monte Carlo squad simulation and constrained OOF ensembles;
+- continuous transfer replay, empirical free-transfer option value and automatic chip timing;
+- immutable forward-candidate registration and executable two-tier promotion gates;
 - automated tests and GitHub Actions CI.
 
-Schema version 13 includes the hardened identity and observation foundation, fixture-state
+Schema version 15 includes the hardened identity and observation foundation, fixture-state
 history, manager state, projections, weekly decision records and historical backtests. The
 latest schema also records versioned team-news provenance, review governance and paired
 pre/post-news projection evaluations, plus persisted appearance and 60-minute
-probabilities for live optimisation and historical decision replay. The
+probabilities for live optimisation and historical decision replay and component
+expectations for oracle diagnostics. It also stores immutable model-candidate declarations,
+canonical configuration hashes and gate policies. The
 database supports in-place version-2 migration, stable player
 identity links, explicit identifier namespaces and delivery-source provenance, timestamped
 multi-observation Gameweek history, selected-manager counts, and strict CSV contract
@@ -137,6 +144,7 @@ fpl-collect \
   --report-root data/reports/fpl \
   --season-code 2026-27 \
   --season-name "2026/27" \
+  --require-pre-deadline \
   --open-report
 ```
 
@@ -154,6 +162,8 @@ Each run:
 Live verification reports explicitly select the latest pre-deadline observation, even when
 post-Gameweek observations are already present. Generic historical queries can still use
 `latest_available` when that is the intended view.
+`--require-pre-deadline` is intended for scheduled prospective collection: it fails before
+archive or ingestion if the request no longer precedes the next deadline.
 
 The latest report is written to:
 
@@ -225,6 +235,13 @@ Model constants are command options, so variants can be given distinct
 the appearance/recent-evidence options control the two-stage expected-minutes model.
 The model estimates appearance probability separately from minutes conditional on
 appearing, then reconciles every team to 990 expected player-minutes per fixture.
+A forward-only `--defensive-contribution-model empirical_2025_minutes_band`
+challenger replaces the underdispersed Poisson tail with 2025/26 position/minutes-band
+hit rates. The backtester rejects that challenger on 2025/26 and earlier because those
+outcomes supplied its calibration.
+A share-based xG design is available with
+`--scoring-event-source team_share_expected`. A trained Stage 2 artifact can be applied
+with `--minutes-model learned_hurdle --playing-time-artifact <path>`.
 A completed report can
 be printed again with:
 
@@ -238,6 +255,63 @@ Compare the same persisted forecast sample with leakage-controlled simple baseli
 fpl-history --database data/fpl_history.sqlite3 \
   compare-backtest-baselines <run-id>
 ```
+
+Compile Stage 1 diagnostics across completed seasonal runs:
+
+```bash
+fpl-history --database data/fpl.sqlite3 stage-one-diagnostics \
+  --run-ids <run-id-1> <run-id-2> \
+  --baseline season_points_per_fixture \
+  --output data/models/stage-one-diagnostics.json
+```
+
+This reports season-aware paired moving-block bootstrap intervals, appearance and
+60-minute probability calibration, points-decile calibration, residual slices and
+appearance, minutes, team-goal and player-event oracle sensitivities.
+
+Train the selected Stage 2 design:
+
+```bash
+fpl-history --database data/fpl.sqlite3 train-playing-time-hurdle \
+  --training-seasons 2021-22 2022-23 2023-24 \
+  --validation-season 2024-25 \
+  --family logistic \
+  --artifact data/models/playing-time-hurdle-logistic-v1.joblib
+```
+
+Register a candidate before outcomes and later apply the matched forward gate:
+
+```bash
+fpl-history --database data/fpl.sqlite3 register-forward-candidate \
+  playing-time-hurdle-logistic-v1 \
+  --season-code 2026-27 \
+  --model-version rates-playing-time-hurdle-logistic-v1 \
+  --model-config config/model_candidates/playing-time-hurdle-logistic-v1.json \
+  --gate-policy config/model_candidates/forward-promotion-policy-v1.json
+```
+
+Historical output is design evidence, not a replacement holdout. Schema 15 persists
+point components and candidate declarations; older backtests must be regenerated for
+component oracle sensitivity.
+
+Generate a declared candidate before the deadline:
+
+```bash
+fpl-history --database data/fpl.sqlite3 project-forward-candidate \
+  playing-time-hurdle-logistic-v1 --start-gameweek 1 --horizon 8
+```
+
+Audit prospective evidence completeness after each deadline:
+
+```bash
+fpl-history --database data/fpl.sqlite3 \
+  prospective-capture-status 2026-27
+```
+
+The status report checks exact pre-deadline snapshots, completed-fixture captures with
+cumulative player outcomes, manager state, paired pre/post-news projections, frozen
+decisions, actual actions and evaluations. The durable GitHub workflow is scheduled on
+Monday, Thursday and Friday during season months, while remaining manually dispatchable.
 
 The expensive legal decision gate replays a £100m persistent squad, legal weekly XIs and
 captaincy:
@@ -281,7 +355,9 @@ The database now contains the complete 2021/22–2025/26 five-season window. The
 rolling evaluation command, corrected-v4 default and team-news integration are documented
 in [the strongest-model route](docs/06_StrongestModelRoute.md). The completed
 five-season, eight-Gameweek evaluation and xG/xA challenger decision are recorded in
-[the corrected-v4 model evaluation](docs/08_ModelEvaluation.md).
+[the corrected-v4 model evaluation](docs/08_ModelEvaluation.md). The season-aware
+bootstrap, calibration, residual-slice and prospective-capture results are recorded in
+[the Stage 1 diagnostic results](docs/10_StageOneDiagnostics.md).
 
 Football assumptions can be tested without reopening the locked holdout:
 

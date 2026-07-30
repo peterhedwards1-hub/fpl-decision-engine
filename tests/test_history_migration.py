@@ -127,7 +127,7 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
     with HistoricalDatabase(database_path) as database:
         database.initialise()
 
-        assert database.schema_version == 13
+        assert database.schema_version == 15
         assert database.connection.execute(
             "SELECT COUNT(*) FROM seasons"
         ).fetchone()[0] == 1
@@ -160,7 +160,7 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
         assert not database.connection.execute("PRAGMA foreign_key_check").fetchall()
 
         database.initialise()
-        assert database.schema_version == 13
+        assert database.schema_version == 15
         assert database.connection.execute(
             "SELECT COUNT(*) FROM player_gameweek_observations"
         ).fetchone()[0] == 1
@@ -169,7 +169,7 @@ def test_populated_v2_database_migrates_in_place_without_data_loss(tmp_path) -> 
 def test_newer_schema_versions_are_rejected(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "history.sqlite3") as database:
         database.initialise()
-        database.connection.execute("PRAGMA user_version = 14")
+        database.connection.execute("PRAGMA user_version = 16")
         database.connection.commit()
 
         try:
@@ -178,6 +178,36 @@ def test_newer_schema_versions_are_rejected(tmp_path) -> None:
             assert "newer than supported" in str(error)
         else:
             raise AssertionError("Newer schema version should be rejected")
+
+
+def test_version_14_adds_immutable_candidate_registry(tmp_path) -> None:
+    database_path = tmp_path / "history.sqlite3"
+    with HistoricalDatabase(database_path) as database:
+        database.initialise()
+        database.connection.executescript(
+            """
+            DROP TRIGGER prevent_candidate_declaration_change;
+            DROP INDEX idx_candidate_registrations_season;
+            DROP TABLE model_candidate_registrations;
+            PRAGMA user_version = 14;
+            """
+        )
+        database.connection.commit()
+
+        database.initialise()
+
+        assert database.schema_version == 15
+        table = database.connection.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'model_candidate_registrations'
+            """
+        ).fetchone()
+        assert table is not None
+        assert not database.connection.execute(
+            "PRAGMA foreign_key_check"
+        ).fetchall()
 
 
 def test_version_3_migrates_populated_timing_rows_to_version_4(tmp_path) -> None:
@@ -191,7 +221,7 @@ def test_version_3_migrates_populated_timing_rows_to_version_4(tmp_path) -> None
     with HistoricalDatabase(database_path) as database:
         assert database.schema_version == 3
         database.initialise()
-        assert database.schema_version == 13
+        assert database.schema_version == 15
         rows = database.connection.execute(
             """
             SELECT id, timing_quality, observed_at, observed_on
@@ -212,7 +242,7 @@ def test_version_3_migrates_populated_timing_rows_to_version_4(tmp_path) -> None
         ).fetchone()[0] == "2025-08-16T00:00:00+00:00"
         assert not database.connection.execute("PRAGMA foreign_key_check").fetchall()
         database.initialise()
-        assert database.schema_version == 13
+        assert database.schema_version == 15
 
 
 def test_version_3_migration_rejects_ambiguous_timing_rows(tmp_path) -> None:

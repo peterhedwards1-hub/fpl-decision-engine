@@ -5,9 +5,12 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
+import pytest
+
 from fpl_engine.history.database import HistoricalDatabase
 from fpl_engine.live.client import ApiPayload
 from fpl_engine.live.collector import LiveSnapshotCollector
+from fpl_engine.prospective import build_prospective_capture_status
 
 
 class FakeClient:
@@ -419,3 +422,107 @@ def test_capture_after_final_deadline_is_not_labelled_pre_deadline(tmp_path) -> 
     assert "All checks passed" in result.latest_report_index.read_text(
         encoding="utf-8"
     )
+
+
+def test_required_pre_deadline_capture_fails_before_writing(tmp_path) -> None:
+    bootstrap = _bootstrap()
+    for event in bootstrap["events"]:
+        event["is_next"] = False
+        event["is_current"] = False
+
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        collector = LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(bootstrap, _fixtures()),
+            clock=lambda: datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+        )
+        with pytest.raises(ValueError, match="not before the next deadline"):
+            collector.collect(
+                season_code="2026-27",
+                require_pre_deadline=True,
+            )
+        assert database.connection.execute(
+            "SELECT COUNT(*) FROM ingestion_runs"
+        ).fetchone()[0] == 0
+        assert not (tmp_path / "raw").exists()
+
+
+def test_prospective_status_exposes_unrecoverable_workflow_gaps(tmp_path) -> None:
+    captured_at = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(_bootstrap(), _fixtures()),
+            clock=lambda: captured_at,
+        ).collect(season_code="2026-27")
+
+        upcoming = build_prospective_capture_status(
+            database,
+            "2026-27",
+            as_of=captured_at,
+        )
+        assert upcoming["gameweeks"][0]["status"] == "upcoming"
+
+        after_deadline = build_prospective_capture_status(
+            database,
+            "2026-27",
+            as_of=datetime(2026, 8, 15, 12, 0, tzinfo=UTC),
+        )
+        gameweek = after_deadline["gameweeks"][0]
+        assert gameweek["status"] == "incomplete"
+        assert gameweek["counts"]["pre_deadline_snapshot"] == 1
+        assert "pre_deadline_snapshot" not in gameweek["missing_required"]
+        assert "paired_news_projections" in gameweek["missing_required"]
+        assert "actual_action" in gameweek["missing_required"]
+
+
+def test_next_pre_deadline_capture_supplies_completed_gameweek_outcomes(
+    tmp_path,
+) -> None:
+    first_at = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+    second_at = datetime(2026, 8, 16, 12, 0, tzinfo=UTC)
+    completed_bootstrap = _bootstrap()
+    completed_bootstrap["events"][0]["finished"] = True
+    completed_bootstrap["events"][0]["is_next"] = False
+    completed_bootstrap["events"][1]["is_next"] = True
+    completed_bootstrap["elements"][0]["minutes"] = 90
+    completed_bootstrap["elements"][0]["total_points"] = 8
+    completed_fixtures = _fixtures()
+    completed_fixtures[0]["team_h_score"] = 2
+    completed_fixtures[0]["team_a_score"] = 0
+    completed_fixtures[0]["finished"] = True
+
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(_bootstrap(), _fixtures()),
+            clock=lambda: first_at,
+        ).collect(season_code="2026-27")
+        second = LiveSnapshotCollector(
+            database,
+            archive_root=tmp_path / "raw",
+            report_root=tmp_path / "reports",
+            client=FakeClient(completed_bootstrap, completed_fixtures),
+            clock=lambda: second_at,
+        ).collect(season_code="2026-27")
+        status = build_prospective_capture_status(
+            database,
+            "2026-27",
+            as_of=second_at,
+        )
+
+    assert second.gameweek_number == 2
+    gameweek_one = status["gameweeks"][0]
+    assert gameweek_one["is_finished"] is True
+    assert gameweek_one["counts"]["recorded_outcomes"] == 1
+    assert "recorded_outcomes" not in gameweek_one["missing_required"]
+    assert "post_gameweek_snapshot" not in gameweek_one["missing_required"]

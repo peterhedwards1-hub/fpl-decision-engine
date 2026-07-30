@@ -1,6 +1,6 @@
 """SQLite schema and migrations for historical FPL data."""
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 15
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -447,8 +447,32 @@ CREATE TABLE IF NOT EXISTS projection_backtest_predictions (
     expected_points REAL NOT NULL,
     actual_points INTEGER NOT NULL,
     uncertainty REAL NOT NULL CHECK (uncertainty >= 0),
+    component_points_json TEXT,
     UNIQUE (
         backtest_run_id, origin_gameweek, target_gameweek, player_season_id
+    )
+);
+
+CREATE TABLE IF NOT EXISTS model_candidate_registrations (
+    id INTEGER PRIMARY KEY,
+    candidate_key TEXT NOT NULL UNIQUE,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    model_version TEXT NOT NULL,
+    registered_at TEXT NOT NULL,
+    model_config_json TEXT NOT NULL,
+    model_config_sha256 TEXT NOT NULL,
+    gate_policy_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'declared' CHECK (
+        status IN ('declared', 'qualified', 'rejected')
+    ),
+    evaluated_at TEXT,
+    evaluation_report_json TEXT,
+    CHECK (
+        (status = 'declared' AND evaluated_at IS NULL
+         AND evaluation_report_json IS NULL)
+        OR (status IN ('qualified', 'rejected')
+            AND evaluated_at IS NOT NULL
+            AND evaluation_report_json IS NOT NULL)
     )
 );
 
@@ -481,6 +505,8 @@ CREATE INDEX IF NOT EXISTS idx_backtest_runs_season
     ON projection_backtest_runs(season_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_backtest_predictions_run
     ON projection_backtest_predictions(backtest_run_id, horizon_step);
+CREATE INDEX IF NOT EXISTS idx_candidate_registrations_season
+    ON model_candidate_registrations(season_id, status, registered_at);
 
 CREATE TRIGGER IF NOT EXISTS prevent_final_weekly_run_update
 BEFORE UPDATE ON weekly_decision_runs
@@ -494,6 +520,14 @@ BEFORE DELETE ON weekly_decision_runs
 WHEN OLD.mode = 'final'
 BEGIN
     SELECT RAISE(ABORT, 'final weekly decision runs are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prevent_candidate_declaration_change
+BEFORE UPDATE OF candidate_key, season_id, model_version, registered_at,
+                 model_config_json, model_config_sha256, gate_policy_json
+ON model_candidate_registrations
+BEGIN
+    SELECT RAISE(ABORT, 'model candidate declarations are immutable');
 END;
 
 CREATE VIEW IF NOT EXISTS player_gameweek_snapshots AS
@@ -1261,5 +1295,58 @@ ALTER TABLE projection_backtest_predictions
     CHECK (sixty_probability BETWEEN 0 AND 1);
 
 PRAGMA user_version = 13;
+COMMIT;
+"""
+
+MIGRATE_V13_TO_V14_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+ALTER TABLE projection_backtest_predictions
+    ADD COLUMN component_points_json TEXT;
+
+PRAGMA user_version = 14;
+COMMIT;
+"""
+
+MIGRATE_V14_TO_V15_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+CREATE TABLE model_candidate_registrations (
+    id INTEGER PRIMARY KEY,
+    candidate_key TEXT NOT NULL UNIQUE,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    model_version TEXT NOT NULL,
+    registered_at TEXT NOT NULL,
+    model_config_json TEXT NOT NULL,
+    model_config_sha256 TEXT NOT NULL,
+    gate_policy_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'declared' CHECK (
+        status IN ('declared', 'qualified', 'rejected')
+    ),
+    evaluated_at TEXT,
+    evaluation_report_json TEXT,
+    CHECK (
+        (status = 'declared' AND evaluated_at IS NULL
+         AND evaluation_report_json IS NULL)
+        OR (status IN ('qualified', 'rejected')
+            AND evaluated_at IS NOT NULL
+            AND evaluation_report_json IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_candidate_registrations_season
+    ON model_candidate_registrations(season_id, status, registered_at);
+
+CREATE TRIGGER prevent_candidate_declaration_change
+BEFORE UPDATE OF candidate_key, season_id, model_version, registered_at,
+                 model_config_json, model_config_sha256, gate_policy_json
+ON model_candidate_registrations
+BEGIN
+    SELECT RAISE(ABORT, 'model candidate declarations are immutable');
+END;
+
+PRAGMA user_version = 15;
 COMMIT;
 """

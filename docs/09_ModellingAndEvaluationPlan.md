@@ -1,15 +1,30 @@
 # Modelling and evaluation plan (revised)
 
-**Status:** Proposed
-**Version:** 1.1
+**Status:** Stages 0–4 and decision/promotion infrastructure implemented;
+forward qualification remains open
+**Version:** 1.3
 **Date:** 2026-07-30
-**Relates to:** `06_StrongestModelRoute.md` (implemented state), `07_FootballAssumptionAudit.md` (assumption audit), `08_ModelEvaluation.md` (multi-horizon evaluation), `00_ProjectSpecification.md` §4, §11–13, §17
+**Relates to:** `06_StrongestModelRoute.md` (implemented state),
+`07_FootballAssumptionAudit.md` (assumption audit), `08_ModelEvaluation.md`
+(multi-horizon evaluation), `10_StageOneDiagnostics.md` (implemented diagnostics),
+`00_ProjectSpecification.md` §4, §11–13, §17
 
-**Changes in 1.1:** revised in response to the corrected-v4 multi-horizon evaluation. MAE
-demoted in the forecast gate (§8.1); paired block bootstrap promoted to the top remaining
-diagnostic (§4.1); availability decay and xG/xA moved out of Stage 0 (§3.4); Stage 1
-marked partially complete with measured results (§4); document renumbered from 08 to
-avoid collision with `08_ModelEvaluation.md`.
+**Changes in 1.3:** implements the remaining engineering route without promoting a
+historically designed challenger. Stage 2 now has chronological, calibrated four-part
+hurdle models and live artifact application. Stage 3 has the coherent share-of-team-xG
+challenger and latent-component oracles. Stage 4 has joint fixture/squad Monte Carlo,
+proper-score validation and a constrained OOF ensemble. Stage 5 has immutable
+pre-registration and executable forward gates. Track A now has continuous transfer
+replay, empirical free-transfer option value and automatic chip timing. The genuinely
+forward result is still unavailable.
+
+**Changes in 1.2:** reconciles the plan with the implemented correctness work. Configured
+appearance scoring and nullable defensive-contribution eligibility are complete; the
+count-per-90 DC priors and correlated horizon-uncertainty aggregation were already
+complete. Stage 1 now has a reproducible paired moving-block bootstrap, probability and
+points calibration, core residual slices and component-backed appearance/minutes oracle
+sensitivities. Prospective capture now has a fail-closed pre-deadline mode and a
+Gameweek-level completeness report. Historical diagnostics remain design evidence only.
 
 ---
 
@@ -72,58 +87,48 @@ Oracle decomposition (§4.2) attributes error to subsystems. A dimensional error
 subsystem is misread as evidence that the subsystem needs a learned model, and the next
 stage then builds one to fit around a broken constant.
 
-### 3.2 Defensive contributions — measured over-correction, still open
+### 3.2 Defensive contributions — forward challenger delivered
 
-Verified unchanged as of the evaluation-phase commit. The v4 `corrected_scoring` change
-replaced the earlier linear-count bug with a threshold-Poisson, which is the correct
-*shape*. The priors were never rescaled, so the component is now near zero:
+The count-unit error is closed. `DEFENSIVE_CONTRIBUTION_COUNT_PRIORS` supplies
+position-level count-per-90 priors to the threshold model. The remaining concern is the
+distributional tail: 2025/26 defender appearances have mean 6.16 contributions and
+variance 17.16, so a Poisson model is materially underdispersed. Observed threshold hit
+rates are 20.8% for all defender appearances, 27.0% for appearances of at least 60
+minutes, and 28.8% among defenders recording at least 2,800 season minutes. The previous
+unqualified "nearer 35%" value is therefore withdrawn.
 
-| Defender (true rate ≈ 7.0 DC per 90) | v4 DC points per match |
-|---|---:|
-| Established centre-back, 2,800 min | **0.007** |
-| Squad centre-back, 900 min | 0.000 |
-| New signing, 270 min | 0.000 |
-| Realistic value | **≈ 0.70** |
+The one available season may calibrate a model for forward 2026/27 use, but it cannot
+both estimate a fixed empirical prior and validate that prior on an earlier 2025/26
+origin. A historical diagnostic must estimate any empirical rate chronologically using
+only data before the origin. Otherwise the result is labelled in-sample calibration, not
+validation.
 
-Two compounding causes:
+`empirical_2025_minutes_band` is now an isolated challenger. It uses separate threshold
+hit rates below 60 and from 60 minutes onward: DEF 5/924 and 816/3026, MID 2/2082 and
+585/3265, and FWD 0/663 and 9/765. The normal backtest command rejects this configuration
+for 2025/26 and earlier, making the leakage boundary executable rather than documentary.
+Corrected v4 remains the incumbent until genuinely forward results exist.
 
-1. **Prior units.** `POSITION_PRIORS[DEF]["defensive_contributions"] = 0.30` is expressed
-   in threshold-hit-*probability* units while the data it shrinks toward is a *count*
-   (≈7 per 90) — roughly 23× off. With `player_rate_prior_minutes = 1776.7`, shrinkage
-   drags a true 7.0/90 to 4.40 for an established player and 1.18 for a new signing.
-2. **Distributional tail.** Even with a correctly scaled prior, Poisson λ=5.6 gives
-   P(X ≥ 10) = 0.059 → 0.12 points, against a real defender hit-rate nearer 35%. CBIT
-   counts are strongly overdispersed because they are game-state dependent — a team
-   protecting a lead accumulates clearances — so a Poisson tail at threshold 10/12 is far
-   too thin.
-
-Net effect: the component moved from roughly **+4.40 points per match too high** to
-**≈0.7 too low**, and now systematically undervalues defenders — the players the 2025/26
-rule was introduced to promote.
-
-**Two reasons this is now the critical path:**
+**Why it remains important:**
 
 - **It would pass the current audit gate.** The gate in `07_FootballAssumptionAudit.md`
   tests overall MAE, top-100 MAE, top-100 absolute bias and captain regret. Defenders
   rarely appear in the top-100 by projected points and are never captains, so a
   defender-only regression is invisible to it. See §8.3.
-- **It confounds the newest results.** 2025/26 is the only season carrying the
-  defensive-contribution rule, and it is also the season where the incumbent looks worst
-  against the baseline on both regret measures (captain 13.18 vs 11.40; top-15 122.96 vs
-  118.90). No causal claim is made — captains and top-15 picks are rarely defenders — but
-  that season must be re-run after the units fix before its results are treated as
-  evidence that the regret advantage is unstable.
+- **It affects forward defender valuation.** 2025/26 is the only season carrying the
+  rule. Its data can design and calibrate a challenger, but the same season cannot then
+  provide independent evidence that the challenger improved decisions.
 
 ### 3.3 Stage 0 work items
 
 | # | Item | Rationale |
 |---|---|---|
-| 0.1 | Rescale DC priors to count-per-90 units, measured by position from 2025/26 | Prior and data must share units before shrinkage is meaningful |
-| 0.2 | Replace the Poisson threshold tail with negative binomial, or an empirical position hit-rate | Poisson understates an overdispersed tail at threshold 10/12 |
-| 0.3 | Re-tune v3/v4 parameters after 0.1–0.2, and re-run the 2025/26 evaluation | `player_rate_prior_minutes = 1776.7` was selected partly to suppress the original DC over-projection; it is fitted to a bug |
-| 0.4 | Stop combining horizon uncertainty as root-sum-of-squares, or mark it explicitly as a known-wrong placeholder | Dominant uncertainties (is he a starter, is he good) persist week to week; RSS understates horizon uncertainty |
-| 0.5 | Drive appearance points from `scoring.appearance_under_60` / `appearance_60_or_more` | Currently hard-coded as `P(app) + P(60)`, correct only because config happens to be 1 and 2 |
-| 0.6 | Replace the GK DC sentinel `1000000` with an absent/null threshold | Magic number encoding "ineligible" |
+| 0.1 | Count-per-90 DC priors | **Complete** — separate position priors are used by the threshold model |
+| 0.2 | Replace or calibrate the underdispersed Poisson tail | **Challenger complete** — minutes-band empirical hit rates; forward qualification open |
+| 0.3 | Isolate DC calibration; do not broadly re-tune v4 on inspected seasons | Revised — retain the incumbent and qualify a separate forward challenger |
+| 0.4 | Correlated horizon uncertainty aggregation | **Complete** — per-Gameweek uncertainty is added, not root-sum-of-squares |
+| 0.5 | Config-driven appearance points | **Complete** |
+| 0.6 | Nullable DC eligibility instead of `1000000` | **Complete** |
 
 Already closed and requiring no further work: the £100.0m squad-value crash
 (`check_budget=False`), the goals-conceded 60-minute gate, E[goals]/2 → E[floor(X/2)],
@@ -140,11 +145,12 @@ and persistence of `appearance_probability` / `sixty_probability` through to the
 
 - Every scoring component's units are asserted by test against `calculate_player_points`.
 - Position-sliced calibration exists and is recorded (becomes a gate in §8.3).
-- v3/v4 re-tuned, and the 2025/26 season re-evaluated with the DC change isolated.
+- A DC challenger is isolated from v4 and its 2025/26 calibration use is disclosed;
+  promotion waits for forward 2026/27 evidence.
 
 ---
 
-## 4. Stage 1 — diagnose the ceiling (partially complete)
+## 4. Stage 1 — diagnose the ceiling (infrastructure complete)
 
 ### 4.0 Already delivered
 
@@ -169,58 +175,67 @@ using model minutes, and a position average.
 persistent-squad, legal-XI and captain problem. This is ahead of the 1.0 schedule, which
 gated squad regret behind decision-layer repair.
 
-### 4.1 Paired block bootstrap — now the top remaining item
+### 4.1 Paired moving-block bootstrap — delivered
 
 Promoted to first in version 1.1. The incumbent's entire justification now rests on
 regret, and that evidence is thin: against the season-average baseline it wins captain
 regret in **2 of 5** seasons and top-15 regret in **3 of 5**, with margins of roughly 0.4
-and 2 points. With five seasons and differences that small, signal cannot be separated
-from noise, so this determines whether there is any measured justification for the model
-over a season average at all.
+and 2 points. With five seasons and differences that small, signal cannot be cleanly
+separated from noise. The bootstrap quantifies sensitivity; it cannot manufacture
+independent seasons or restore a holdout.
 
-Resample **whole Gameweeks** (or season–Gameweek blocks), never player rows: players
-within a Gameweek share fixtures and conditions. For every comparison report mean paired
-difference, median paired difference, 80% and 95% intervals, percentage of Gameweeks won,
-worst-season difference, and per-position differences.
+`stage-one-diagnostics` resamples seasons and circular moving blocks of consecutive
+target Gameweeks, never player rows. All origins and horizons for a target Gameweek stay
+together. It reports mean and median paired block differences, 80% and 95% intervals,
+percentage of target-Gameweek blocks won, worst-season and every-season differences, and
+position RMSE differences. Leave-one-season interpretation remains important because five
+seasons cannot provide a precise between-season interval.
 
-### 4.2 Oracle decomposition
+### 4.2 Oracle sensitivity — partially delivered
 
-Counterfactual backtests substituting actual values for predicted, one subsystem at a
-time, to bound the improvement available from each:
+Schema 14 persists point-component expectations for new backtests. The diagnostic can
+therefore calculate two explicit, interacting sensitivity bounds on single-fixture rows:
 
-1. actual **appearance** + predicted everything else;
-2. actual **minutes given appearance** + predicted everything else;
-3. actual **team goals** + predicted player allocation;
-4. actual **player scoring rates** + predicted minutes and team goals;
-5. actual minutes *and* actual team goals + predicted allocation (residual ceiling).
+1. actual **appearance** + predicted conditional points;
+2. actual **appearance and minutes**, scaling linear components and applying the realised
+   60-minute clean-sheet gate.
+
+Team-goal and player-event sensitivities are now available for new share-xG backtests.
+Their origin-time team expectation and player shares are persisted inside the component
+record. These counterfactuals are sensitivity bounds, not additive attribution; ordering
+and subsystem interactions are reported explicitly.
 
 Appearance is kept separate from minutes-given-appearance (1 and 2) because the remedies
 differ — news pipeline versus rotation modelling — and lumping them hides which to fund.
 Run every counterfactual at h=1 and h=8, reusing the horizon harness that now exists.
 
-### 4.3 Residual slicing
+### 4.3 Residual slicing — core implementation delivered
 
-Automatic error tables by position; predicted-minutes band; starter vs substitute; DNP vs
-played; home/away; fixture difficulty; price band; early/mid/late season; promoted vs
-established club; new-club status; single vs double Gameweek; and top-15/50/100/all.
+Automatic error tables now cover position, predicted-minutes band, DNP/played,
+single/double Gameweek, early/mid/late season, forecast horizon and
+top-15/16–50/51–100/outside-100 bands, with a configurable minimum sample count.
+Home/away, fixture difficulty, price, promoted-club and role/change-point slices remain
+open until those origin-time attributes are persisted with each prediction.
 
 Purpose: detect an aggregate gain that conceals a damaging subgroup regression — exactly
 the DC case in §3.2.
 
-### 4.4 Calibration tables
+### 4.4 Calibration tables — delivered
 
-Reliability by probability bin for appearance and 60-minute probabilities, with Brier
-score and log loss. For points: predicted-decile versus realised mean, by position, and by
-forecast horizon.
+Reliability by probability bin is recorded for appearance and 60-minute probabilities,
+with Brier score and log loss. Multi-fixture rows are excluded because their persisted
+probabilities mean "at least one appearance". Points calibration reports predicted
+decile versus realised mean overall, by position and by forecast horizon.
 
 ### 4.5 Exit criteria
 
-Bootstrap intervals on every headline comparison already reported, plus a ranked,
-quantified subsystem ceiling at both horizons and calibration tables in model health.
+Bootstrap intervals on every headline comparison already reported, plus calibration,
+core residual slices and all four implemented sensitivities: appearance, minutes,
+team goals and player goals/assists.
 
 ---
 
-## 5. Stage 2 — learned playing time (hurdle model)
+## 5. Stage 2 — learned playing time (hurdle model; implemented challenger)
 
 Treat playing time as related questions rather than one regression:
 
@@ -252,9 +267,24 @@ fast; scoring skill slowly; team strength between; news fastest). Add explicit
 change-point features: new club, returned from injury, new manager, first start after a
 run of substitute appearances, position or role change.
 
+### 5.1 Implemented result
+
+`train-playing-time-hurdle` fits appearance, start, 60-minutes-given-appearance and
+conditional-minutes models. Logistic and histogram-gradient families are supported.
+Calibration is isotonic and fitted only to strictly chronological OOF predictions. The
+artifact stores its feature contract, signal-specific half-lives and calibration models;
+`learned_hurdle` projection mode recreates its inputs from pre-origin rows.
+
+On the already-inspected 2024/25 design season, the selected logistic challenger reduced
+appearance Brier from 0.123705 to 0.099424 and expected-minutes RMSE from 28.0331 to
+24.0093. Component sensitivity reduced points RMSE by 0.1441 and top-15 regret by 9.62,
+but worsened global top-one regret by 0.324. The histogram model improved probability
+scores slightly further but worsened top-one regret more. Logistic is therefore the one
+predeclared forward candidate; neither result is promotion evidence.
+
 ---
 
-## 6. Stage 3 — learned scoring components
+## 6. Stage 3 — learned scoring components (coherent challenger implemented)
 
 Predict underlying events and apply the season's configured scoring rules, so rule
 changes never require retraining the football models.
@@ -310,19 +340,33 @@ Coherence constraints to enforce and test:
 - clean-sheet probability agrees across defenders from the same club;
 - opposing teams' scoring and clean-sheet predictions are mutually consistent.
 
+### 6.6 Implemented result
+
+`team_share_expected` estimates exponentially decayed team xG for/against, shrinks new
+teams to the league prior, opponent-adjusts fixture expectations and allocates goals and
+assists through normalised player shares. Tests assert that player goal shares sum to one
+and reconcile to the team expectation.
+
+The 2024/25 design run improved MAE and absolute bias but worsened RMSE by 0.006 and
+materially underpredicted the top 100. It remains a registered forward challenger rather
+than replacing v4. New latent oracles show RMSE 2.0604 for the model, 2.0023 with actual
+team goals and 1.3352 with actual player goals/assists. This redirects the next scoring
+iteration toward player allocation/rates rather than a broader team-model search.
+
 ---
 
-## 7. Stage 4 — joint distributions and correlation
+## 7. Stage 4 — joint distributions and correlation (infrastructure implemented)
 
 **A first-class objective.** Correlation is the one thing no amount of per-player
 modelling can supply, and it is what every remaining decision needs: Bench Boost, Triple
 Captain, autosubs, bench valuation, transfer downside, and "probability squad A beats
 squad B".
 
-There is a concrete existing inconsistency to fix: defenders from the same club derive
-clean-sheet probability from the same λ, so their outcomes are near-perfectly correlated
-in reality, yet `_expected_weekly_score` multiplies appearance probabilities and treats
-players as independent.
+Correlation does not change the expected sum of player points, so shared clean-sheet
+outcomes do not invalidate the current expected-value XI objective. It becomes necessary
+for outcome variance, downside risk, squad-versus-squad probabilities and nonlinear
+states such as correlated appearances and autosubs. `_expected_weekly_score` currently
+assumes independent appearances when valuing those autosub states.
 
 **Approach — Monte Carlo with shared team-level latent factors:**
 
@@ -333,9 +377,12 @@ players as independent.
 5. resolve autosubs and captain fallback;
 6. score complete squad outcomes.
 
-This yields calibrated joint uncertainty, correct bench and captaincy risk, comparable
-chip values, and squad-versus-squad probabilities — replacing the current heuristic
-`1.25 + 3.5/√(matches+1) + 0.12·offset` uncertainty and the RSS horizon combination.
+This yields a joint uncertainty distribution, bench and captaincy risk, comparable chip
+values, and squad-versus-squad probabilities — replacing the current heuristic
+`1.25 + 3.5/√(matches+1) + 0.12·offset` uncertainty. Current horizon aggregation already
+assumes persistence by adding per-Gameweek uncertainty.
+The simulation is not calibrated merely because it is coherent: proper-score, coverage
+and probability-integral-transform checks remain an explicit qualification gate.
 
 **Constrained ensemble (deliberately small):** strictly chronological out-of-fold
 predictions from each component model, blended by non-negative least squares with weights
@@ -343,9 +390,17 @@ summing to one. Split weights by position or season phase only where the bootstr
 supports it. This must not become another large tuning exercise; a simple blend makes it
 obvious which models contribute value.
 
+`simulate_squads` now implements the six-step shared-outcome route, including
+Gamma-Poisson defensive counts, configured scoring, autosubs, captain fallback and
+scoring chips. Its validation helper reports empirical CRPS, 50/80/95% coverage,
+threshold Brier scores and PIT bins. `fit_constrained_ensemble` fits chronological OOF
+least-squares weights projected onto the non-negative unit simplex and rejects any row
+whose component training cutoff reaches its target period. These tools are not calibrated
+merely by existing; forward outcomes must still pass their distribution gates.
+
 ---
 
-## 8. Stage 5 — promotion gates
+## 8. Stage 5 — promotion gates (executable; awaiting outcomes)
 
 ### 8.1 Why MAE is not the primary forecast gate
 
@@ -387,17 +442,19 @@ A challenger is promoted only if it passes both tiers, reported with bootstrap i
 
 **Decision tier**
 
-- captain regret — **primary**, because captaincy involves no budget, formation, club or
-  transfer logic and therefore measures the forecast rather than the optimiser;
-- legal-XI and legal-squad regret — available now via `evaluate-squad-regret`;
+- global top-one regret — **primary forecast-ranking diagnostic**. The persisted
+  compatibility field remains named `captain_regret`, but it chooses from the entire
+  player pool and is not realistic owned-squad captaincy;
+- legal-XI, legal-squad and owned-squad captain regret — the realistic decision metrics;
 - transfer regret — **added only after §9 completes**, since transfer continuity, hits and
   retained free transfers are not yet modelled in the replay.
 
 ### 8.3 Position-sliced calibration is a gate, not a diagnostic
 
 No challenger is promoted if it materially worsens calibration for any position,
-regardless of aggregate improvement. The current gate would have passed a defender-only
-regression of roughly 0.7 points per match.
+regardless of aggregate improvement. Before a forward comparison, "material" must be
+predeclared with minimum samples and an uncertainty threshold so small cells and multiple
+comparisons do not create arbitrary vetoes.
 
 ### 8.4 Held-out discipline
 
@@ -405,27 +462,30 @@ All five historical seasons have now been queried (§2). Development folds provi
 evidence only. **Promotion requires genuinely forward 2026/27 results.** No further
 historical holdout exists to spend.
 
+Schema 15 adds immutable candidate declarations containing the model version, canonical
+config hash and full gate policy. The evaluator accepts only matched, completed,
+`pre_deadline_only` runs after registration, rejects historical seasons and config drift,
+and applies RMSE/bootstrap, bias, probability, every-position and decision gates. A
+failure is not finalised while evidence is still accumulating unless explicitly
+requested.
+
 ---
 
 ## 9. Parallel track A — decision-layer repair
 
-The Stage 5 transfer-regret gate cannot be trusted until these are fixed, because it would
-score the optimiser rather than the forecast.
+The engineering gaps are closed. Transfer regret still cannot qualify a model until
+prospective actions provide enough observations to estimate the transfer-need
+distribution and score continuous replays.
 
 | Item | Current behaviour |
 |---|---|
-| Transfer gain measured across all 15 players | Bench depth overvalued, XI upgrades undervalued; `route_score` should weight starters |
-| Free-transfer flexibility now `0.0` | The arbitrary `next_free * 1.0` was correctly removed, but zero is the opposite bias — a saved transfer is worth nothing, so the optimiser always prefers to spend. Needs a state-dependent, empirically derived value (the cap of 5 makes it state-dependent by construction) |
-| Chip values not comparable | Wildcard returns a horizon total, Free Hit a one-Gameweek total, Bench Boost a bench sum, Triple Captain a true increment — ranking on `expected_incremental_points` always plays a wildcard |
-| Bench Boost overstates | True increment is E[all 15] − E[XI with autosubs]; `expected_bench_contribution` already computes the adjustment |
-| Triple Captain has no opportunity cost | Specification §14.4 requires comparison against plausible future opportunities |
-| `recommend_chip` unreachable | `chips.py` is not called from the UI or reports |
-| Terminal value is the horizon's last Gameweek | Already inside the horizon sum, so it double-counts at 1.10×, and carries no information about squad quality *after* the horizon, money, retained transfers or flexibility |
-| MILP objective is a surrogate | `0.15·robust_horizon + 0.85·GW starters + captain + 0.05·vice` with undocumented weights, while a different quantity is reported |
-| Squad-regret replay lacks continuity | Hindsight selects a fresh perfect squad at every origin; transfer continuity, hits and bench autosubs are the stated later extensions |
+| Free-transfer flexibility | `free_transfer_option_value` prices expected hits avoided from a prospectively estimated transfer-need distribution; it is state-dependent and respects the five-transfer cap. It stays zero when evidence is not supplied rather than inventing a constant |
+| Future chip opportunity cost | `recommend_chip_timing` values every supplied future Gameweek and automatically subtracts the best later opportunity |
+| Squad-regret replay continuity | `replay_transfer_continuity` persists squad, bank and free transfers, applies hits, exact bench autosubs and captain fallback, and compares each action with a same-state hindsight action |
 
-Stage 4's joint simulation supplies the correct inputs for the chip and bench items, so
-this track should land alongside it.
+Already closed: legal-XI/captain transfer gain, comparable chip increments, Bench Boost
+autosub adjustment, UI integration, removal of terminal double-counting and removal of
+the surrogate MILP weights.
 
 ---
 
@@ -448,6 +508,23 @@ Every week not captured is a week of validation evidence that cannot be reconstr
 News-adjustment and availability-recovery calibration should be learned only once enough
 timestamped examples exist.
 
+The implementation now supports:
+
+```powershell
+fpl-collect --database data/fpl.sqlite3 --season-code 2026-27 `
+  --require-pre-deadline
+
+fpl-history --database data/fpl.sqlite3 `
+  prospective-capture-status 2026-27
+```
+
+The first command fails before archive or ingestion if it is no longer pre-deadline. The
+second reports, per Gameweek, exact pre-deadline snapshots, completed-fixture captures
+with cumulative player outcomes, manager state, paired news projections, frozen
+decisions, actual actions and evaluation gaps. The GitHub collection workflow runs on
+Monday, Thursday and Friday during season months; missed evidence remains visible and
+machine-checkable.
+
 ---
 
 ## 11. Explicitly deprioritised
@@ -468,14 +545,14 @@ timestamped examples exist.
 
 | Stage | Content | Status | Gate to proceed |
 |---|---|---|---|
-| 0 | DC units and tail; re-tune; re-run 2025/26; remaining unit items | **Critical path** | Component units asserted by test; position calibration recorded |
-| 1 | Bootstrap intervals; oracle decomposition; residual slices; calibration | **Partially complete** — multi-horizon, baselines and squad regret delivered | Intervals on every headline comparison; ranked subsystem ceilings |
-| 2 | Hurdle playing-time model; hierarchical pooling; learned decay | Not started | Beats v4 on the forecast tier, identical folds |
-| 3 | Share-of-team xG/xA; team and fixture model; components; DC by calibration | Naive xG/xA challenger failed; redesign required | Coherence constraints hold; forecast tier improves |
-| 4 | Joint Monte Carlo with shared team factors; constrained ensemble | Not started | Calibrated joint uncertainty; comparable chip values |
-| 5 | Forward qualification on 2026/27 | Blocked until 2026/27 data exists | Both gate tiers, no position regression |
-| A | Decision-layer repair | Squad-regret replay exists; continuity absent | Required before transfer regret joins the gate |
-| B | Prospective capture | **Start now** | Continuous |
+| 0 | Scoring units and semantics; isolated DC tail calibration | **Complete; forward challenger unqualified** | Compare Poisson and empirical DC forecasts on genuinely forward data |
+| 1 | Bootstrap intervals; oracle sensitivity; residual slices; calibration | **Complete for current components** | Regenerate diagnostics as new forward outcomes and candidate runs arrive |
+| 2 | Hurdle playing-time model; hierarchical pooling; learned decay | **Implemented; logistic candidate registered** | Beats v4 on genuinely forward forecast and decision tiers |
+| 3 | Share-of-team xG/xA; team and fixture model; components; DC by calibration | **Coherent design implemented; historical design result failed RMSE/top-player bias** | Forward gate, or redesign player allocation using oracle evidence |
+| 4 | Joint Monte Carlo with shared team factors; constrained ensemble | **Infrastructure implemented** | Accumulate forward CRPS, coverage, PIT and decision evidence |
+| 5 | Forward qualification on 2026/27 | **Executable and predeclared; outcomes pending** | Both gate tiers, no position regression |
+| A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented** | Accumulate actual actions to estimate option value and transfer regret |
+| B | Prospective capture | **Operational; run continuously** | No missed deadline evidence |
 
 ---
 
@@ -486,7 +563,7 @@ Per `00_ProjectSpecification.md` §23:
 | Trigger | Response |
 |---|---|
 | Bootstrap intervals on the model-versus-baseline regret difference straddle zero | Treat the incumbent as unjustified over a season average; redirect effort to Stages 2 and 3 rather than defending v4 |
-| Stage 0 re-run materially changes the 2025/26 result | Re-open the "regret advantage is not stable" conclusion in `08_ModelEvaluation.md` |
+| Forward DC calibration materially changes defender selection | Re-open position-level conclusions; do not reinterpret 2025/26 as a fresh holdout |
 | Stage 1 shows the appearance/minutes ceiling is small at both horizons | Redirect Stage 2 effort into the team and fixture model instead |
 | Stage 1 attribution differs sharply between h=1 and h=8 | Split into horizon-specific configurations rather than one shared parameter set |
 | Position-sliced calibration regresses while aggregates improve | Treat as a failed gate, not a trade-off |

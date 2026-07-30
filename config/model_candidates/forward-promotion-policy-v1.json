@@ -1,0 +1,18 @@
+{
+  "forward_season": "2026-27",
+  "minimum_samples": 1000,
+  "minimum_position_samples": 250,
+  "bootstrap_samples": 2000,
+  "moving_block_gameweeks": 3,
+  "rmse_change_maximum": 0.0,
+  "rmse_change_ci95_maximum": 0.0,
+  "absolute_bias_change_maximum": 0.02,
+  "position_rmse_regression_maximum": 0.02,
+  "probability_brier_regression_maximum": 0.002,
+  "probability_log_loss_regression_maximum": 0.002,
+  "global_top_one_regret_change_maximum": 0.0,
+  "top_15_regret_change_maximum": 0.0,
+  "legal_squad_regret_change_maximum": 0.0,
+  "owned_captain_regret_change_maximum": 0.0,
+  "transfer_regret_change_maximum": 0.0
+}

@@ -56,7 +56,7 @@
     "own_goal": -2,
     "bonus_max": 3,
     "defensive_contribution_thresholds": {
-      "GK": 1000000,
+      "GK": null,
       "DEF": 10,
       "MID": 12,
       "FWD": 12

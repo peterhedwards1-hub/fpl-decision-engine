@@ -24,13 +24,17 @@ from fpl_engine.history.records import (
 from fpl_engine.projections import (
     BASELINE_V2_MODEL_CONFIG,
     DEFAULT_MODEL_CONFIG,
+    DEFENSIVE_CONTRIBUTION_HIT_RATES_2025,
+    DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG,
     EXPECTED_EVENTS_V4_MODEL_CONFIG,
     MODEL_VERSION,
+    TEAM_SHARE_XG_V5_MODEL_CONFIG,
     ProjectionModelConfig,
     ProjectionOverride,
     RatesProjectionModel,
     projection_totals,
 )
+from fpl_engine.simulation import simulation_inputs_from_projection
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
 CAPTURED_AT = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
@@ -42,6 +46,11 @@ def test_corrected_rules_model_is_the_versioned_default() -> None:
     assert DEFAULT_MODEL_CONFIG.recent_gameweeks == 4
     assert DEFAULT_MODEL_CONFIG.defensive_contribution_model == "threshold_poisson"
     assert DEFAULT_MODEL_CONFIG != BASELINE_V2_MODEL_CONFIG
+    assert (
+        DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG
+        .defensive_contribution_model
+        == "empirical_2025_minutes_band"
+    )
 
 
 def _bundle() -> HistoricalBundle:
@@ -137,6 +146,93 @@ def test_rates_model_projects_components_and_persists_versioned_run(tmp_path) ->
         assert persisted_probability["appearance_probability"] == (
             result.projections[0].appearance_probability
         )
+
+
+def test_appearance_projection_uses_configured_scoring_values(tmp_path) -> None:
+    scoring = replace(
+        RULES.scoring,
+        appearance_under_60=3,
+        appearance_60_or_more=7,
+    )
+    rules = replace(RULES, scoring=scoring)
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="official-fpl-api",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            _bundle(),
+        )
+        projection = RatesProjectionModel(database, rules).project(
+            season_code="2026-27",
+            start_gameweek=1,
+            horizon_gameweeks=1,
+            generated_at=CAPTURED_AT,
+            persist=False,
+        ).projections[0]
+
+    expected = (
+        (
+            projection.appearance_probability
+            - projection.sixty_probability
+        )
+        * 3
+        + projection.sixty_probability * 7
+    )
+    assert projection.appearance_points == pytest.approx(
+        round(expected, 3),
+        abs=0.001,
+    )
+
+
+def test_empirical_defensive_contribution_challenger_uses_minutes_bands(
+    tmp_path,
+) -> None:
+    defender_bundle = replace(
+        _bundle(),
+        player_seasons=(
+            replace(_bundle().player_seasons[0], position=Position.DEF),
+        ),
+    )
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="official-fpl-api",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            defender_bundle,
+        )
+        projection = RatesProjectionModel(
+            database,
+            RULES,
+            config=DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG,
+        ).project(
+            season_code="2026-27",
+            start_gameweek=1,
+            horizon_gameweeks=1,
+            generated_at=CAPTURED_AT,
+            persist=False,
+        ).projections[0]
+
+    under_rate, sixty_rate = (
+        DEFENSIVE_CONTRIBUTION_HIT_RATES_2025[Position.DEF]
+    )
+    expected = (
+        (
+            projection.appearance_probability
+            - projection.sixty_probability
+        )
+        * under_rate
+        + projection.sixty_probability * sixty_rate
+    ) * RULES.scoring.defensive_contribution_points
+    assert projection.defensive_contribution_points == pytest.approx(
+        round(expected, 3),
+        abs=0.001,
+    )
 
 
 def test_generated_at_resolves_and_enforces_one_ingestion_cutoff(tmp_path) -> None:
@@ -242,6 +338,129 @@ def test_expected_event_challenger_uses_xg_and_xa_with_actual_fallback(
         assert expected_events.projections[0].assist_points > (
             actual_events.projections[0].assist_points
         )
+
+
+def test_team_share_xg_challenger_is_coherent_with_team_expectation(
+    tmp_path,
+) -> None:
+    players = tuple(
+        PlayerRecord(str(player_id), f"Player {player_id}")
+        for player_id in range(1, 5)
+    )
+    evidence = HistoricalBundle(
+        season=SeasonRecord(code="2026-27", name="2026/27"),
+        teams=(
+            TeamRecord("1", "North Town", "NTH"),
+            TeamRecord("2", "South City", "STH"),
+        ),
+        players=players,
+        player_seasons=tuple(
+            PlayerSeasonRecord(
+                str(player_id),
+                "1" if player_id <= 2 else "2",
+                Position.FWD,
+            )
+            for player_id in range(1, 5)
+        ),
+        gameweeks=(
+            GameweekRecord(1, "2026-08-14T17:30:00Z", True),
+            GameweekRecord(2, "2026-08-21T17:30:00Z", False),
+        ),
+        fixtures=(
+            FixtureRecord(
+                "501",
+                "1",
+                "2",
+                1,
+                "2026-08-15T14:00:00Z",
+                2,
+                1,
+                True,
+            ),
+            FixtureRecord(
+                "502",
+                "2",
+                "1",
+                2,
+                "2026-08-22T14:00:00Z",
+            ),
+        ),
+        fixture_stats=tuple(
+            PlayerFixtureStatsRecord(
+                str(player_id),
+                "501",
+                minutes=90,
+                expected_goals=(0.8, 0.4, 0.5, 0.3)[player_id - 1],
+                expected_assists=(0.2, 0.3, 0.1, 0.2)[player_id - 1],
+            )
+            for player_id in range(1, 5)
+        ),
+        gameweek_snapshots=tuple(
+            PlayerGameweekSnapshotRecord(
+                source_player_id=str(player_id),
+                gameweek_number=1,
+                price_tenths=60,
+                captured_at=CAPTURED_AT,
+                source_team_id="1" if player_id <= 2 else "2",
+                observation_kind="live_pre_deadline",
+                timing_quality="exact",
+                source_observation_key=f"p{player_id}",
+            )
+            for player_id in range(1, 5)
+        ),
+    )
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="expected-events",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            evidence,
+        )
+        result = RatesProjectionModel(
+            database,
+            RULES,
+            config=TEAM_SHARE_XG_V5_MODEL_CONFIG,
+        ).project(
+            season_code="2026-27",
+            start_gameweek=2,
+            horizon_gameweeks=1,
+            generated_at=CAPTURED_AT,
+            persist=False,
+        )
+        simulation_fixtures, simulation_players = (
+            simulation_inputs_from_projection(
+                database,
+                result,
+                season_code="2026-27",
+                gameweek_number=2,
+                rules=RULES,
+            )
+        )
+
+    for team in ("NTH", "STH"):
+        projections = tuple(
+            projection
+            for projection in result.projections
+            if projection.team_short_name == team
+        )
+        team_lambda = projections[0].latent_expectations[
+            "team_expected_goals"
+        ]
+        assert sum(
+            projection.latent_expectations["goal_share"]
+            for projection in projections
+        ) == pytest.approx(1.0)
+        assert sum(
+            projection.goal_points for projection in projections
+        ) / RULES.scoring.goals["FWD"] == pytest.approx(
+            team_lambda,
+            abs=0.001,
+        )
+    assert len(simulation_fixtures) == 1
+    assert len(simulation_players) == 4
 
 
 def test_two_stage_minutes_respect_team_fixture_budget(tmp_path) -> None:
