@@ -95,7 +95,7 @@ def replay_transfer_continuity(
             max_transfers=max_transfers_per_week,
         )
         route = recommendation.primary
-        gross, autosubs, captain = _score_result(
+        gross, autosubs, captain = score_squad_gameweek(
             route.resulting_squad,
             realised,
             rules,
@@ -119,7 +119,7 @@ def replay_transfer_continuity(
             rules=rules,
             max_transfers=max_transfers_per_week,
         ).primary
-        hindsight_gross, _, _ = _score_result(
+        hindsight_gross, _, _ = score_squad_gameweek(
             hindsight.resulting_squad,
             realised,
             rules,
@@ -175,12 +175,19 @@ def replay_transfer_continuity(
     )
 
 
-def _score_result(
+def score_squad_gameweek(
     result: FullSquadResult,
     outcomes: dict[str, RealisedPlayerOutcome],
     rules: SeasonRules,
     gameweek: int,
 ) -> tuple[int, int, str | None]:
+    """Score one Gameweek of a selected squad exactly as FPL would.
+
+    Applies the Gameweek's own lineup plan, bench-order autosubs and captain
+    fallback, and returns the points, substitution count and the captain who
+    actually counted.
+    """
+
     id_lookup = {
         player.source_player_id: index
         for index, player in enumerate(

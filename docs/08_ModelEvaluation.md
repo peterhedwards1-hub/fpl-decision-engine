@@ -76,8 +76,19 @@ legal-XI and captain problem.
   challenger scored 371.3793.
 
 The absolute oracle-regret values are large because hindsight selects a fresh perfect
-squad at every origin. The useful quantity is the comparison between methods. Transfer
-continuity, hits and future bench autosubs remain later extensions.
+squad at every origin. The useful quantity is the comparison between methods.
+
+**Those figures predate the autosub correction and are not comparable to current
+output.** They were produced when realised points summed the forecast XI with captain
+fallback and never substituted a blanking starter, while the hindsight side read the
+solver objective directly. Both sides now replay the selected squad's own bench order
+through exact autosubs, so realised scores rise, the two sides share one scoring
+convention, and the numbers above must be regenerated before they are cited again.
+
+Regret still grants a free wildcard at every origin. `replay-transfer-continuity` is the
+persistent-squad counterpart: one squad, bank and free-transfer count carried forward,
+hits charged, every week scored with autosubs. Read the two together — regret compares
+selection methods, continuity estimates what a manager could actually have scored.
 
 ## xG/xA challenger
 
@@ -137,10 +148,17 @@ fpl-history --database data/fpl.sqlite3 evaluate-squad-regret 358 `
   --methods model season_points_per_fixture recent_4_points_per_fixture
 ```
 
+Then replay the same run as one persistent squad for a season-shaped score:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 replay-transfer-continuity 358 `
+  --max-transfers-per-week 1
+```
+
 ## Next modelling work
 
 1. Split learned modelling into appearance, conditional minutes and scoring components.
 2. Build player-share-of-team-xG and opponent-adjusted team-xG challengers.
-3. Extend legal regret to transfer continuity, hits and retained free transfers.
+3. Price chip usage into the continuity replay, which currently plays none.
 4. Collect live availability and paired team-news evidence throughout 2026/27.
 5. Reserve genuinely new forward data for promotion decisions.

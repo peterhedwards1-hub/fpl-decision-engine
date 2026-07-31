@@ -10,14 +10,21 @@ from typing import Any
 
 from .backtest import load_backtest_report
 from .config import SeasonRules
+from .decision_evaluation import (
+    RealisedPlayerOutcome,
+    TransferReplayWeek,
+    replay_transfer_continuity,
+    score_squad_gameweek,
+)
 from .domain import Position
 from .history.database import HistoricalDatabase
 from .optimisation import (
     CandidatePlayer,
-    GameweekLineupPlan,
+    FullSquadResult,
     GameweekPlayerValue,
     optimise_full_squad,
 )
+from .transfers import CurrentSquad
 
 
 @dataclass(frozen=True)
@@ -641,16 +648,26 @@ def evaluate_legal_squad_regret(
             for candidate in actual_candidates
             for value in candidate.gameweek_values
         }
-        hindsight_points = hindsight.horizon_expected_points
+        # Both sides are replayed through the same scorer. Comparing a hindsight
+        # solver objective against a replayed realised score would mix two
+        # scoring conventions and misreport the difference as regret.
+        hindsight_points = _replayed_squad_points(
+            hindsight,
+            actual_lookup,
+            target_gameweeks,
+            rules,
+        )
         for method, method_candidates in candidates_by_method.items():
             predicted = optimise_full_squad(
                 tuple(method_candidates),
                 budget_tenths=rules.squad.budget_tenths,
                 rules=rules,
             )
-            realised = _realised_plan_points(
-                predicted.gameweek_plans,
+            realised = _replayed_squad_points(
+                predicted,
                 actual_lookup,
+                target_gameweeks,
+                rules,
             )
             regrets.append(
                 LegalSquadOriginRegret(
@@ -693,13 +710,202 @@ def evaluate_legal_squad_regret(
         total_regret_by_method=totals,
         limitations=(
             "Each origin selects a new £100m squad; transfer continuity and hits "
-            "are outside this first regret measure.",
-            "Realised points use the forecast XI plus captain/vice fallback; "
-            "future bench autosub outcomes are not replayed.",
+            "are outside this measure. Use replay_backtest_transfer_continuity "
+            "for a persistent-squad season score.",
+            "Realised and hindsight points both replay the selected squad's own "
+            "bench order, exact autosubs and captain fallback.",
+            "The hindsight squad maximises the solver objective under actual "
+            "values, so it is a strong comparator rather than a proven ceiling "
+            "on the autosub-inclusive score.",
             "Legacy backtests without persisted appearance probabilities use "
             "expected_minutes / 60 as a compatibility fallback.",
         ),
     )
+
+
+def replay_backtest_transfer_continuity(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+    rules: SeasonRules,
+    *,
+    first_gameweek: int | None = None,
+    last_gameweek: int | None = None,
+    max_transfers_per_week: int = 2,
+) -> dict[str, Any]:
+    """Replay a backtest as one persistent squad carried across Gameweeks.
+
+    `evaluate_legal_squad_regret` grants a free wildcard at every origin, so its
+    score is what an unconstrained re-pick would earn rather than what a manager
+    could reach. This carries a single squad, bank and free-transfer count
+    forward, charges hits, and scores each week with exact autosubs.
+    """
+
+    run = database.connection.execute(
+        """
+        SELECT runs.model_version, runs.source_ingestion_run_id,
+               seasons.id AS season_id, seasons.code AS season_code
+        FROM projection_backtest_runs runs
+        JOIN seasons ON seasons.id = runs.season_id
+        WHERE runs.id = ? AND runs.status = 'completed'
+        """,
+        (backtest_run_id,),
+    ).fetchone()
+    if run is None:
+        raise ValueError(f"Completed backtest run {backtest_run_id} is unavailable")
+    if rules.season != str(run["season_code"]):
+        raise ValueError("Continuity rules must match the backtest season")
+    rows = database.connection.execute(
+        """
+        SELECT origin_gameweek, player_season_id, expected_points,
+               appearance_probability, expected_minutes,
+               actual_points, actual_minutes
+        FROM projection_backtest_predictions
+        WHERE backtest_run_id = ? AND origin_gameweek = target_gameweek
+        ORDER BY origin_gameweek, player_season_id
+        """,
+        (backtest_run_id,),
+    ).fetchall()
+    if not rows:
+        raise ValueError(
+            "Continuity replay needs same-Gameweek forecasts; this run has no "
+            "row whose target Gameweek equals its origin"
+        )
+    by_gameweek: dict[int, dict[int, Any]] = {}
+    for row in rows:
+        by_gameweek.setdefault(int(row["origin_gameweek"]), {})[
+            int(row["player_season_id"])
+        ] = row
+    gameweeks = tuple(
+        gameweek
+        for gameweek in sorted(by_gameweek)
+        if (first_gameweek is None or gameweek >= first_gameweek)
+        and (last_gameweek is None or gameweek <= last_gameweek)
+    )
+    if len(gameweeks) < 2:
+        raise ValueError("Continuity replay needs at least two Gameweeks")
+
+    season_id = int(run["season_id"])
+    ingestion_run_id = (
+        None
+        if run["source_ingestion_run_id"] is None
+        else int(run["source_ingestion_run_id"])
+    )
+    # Metadata is cumulative, so players known at the opening Gameweek stay
+    # resolvable later. Restricting the universe to them keeps every week's
+    # candidate set identical, which the replay requires; players who first
+    # appear mid-window are therefore never signed.
+    universe = _player_metadata_as_of(
+        database,
+        season_id,
+        gameweeks[0],
+        ingestion_run_id,
+    )
+    weeks = []
+    for gameweek in gameweeks:
+        metadata = _player_metadata_as_of(
+            database,
+            season_id,
+            gameweek,
+            ingestion_run_id,
+        )
+        forecasts = by_gameweek[gameweek]
+        candidates = []
+        outcomes = []
+        for player_season_id in sorted(universe):
+            player = metadata.get(player_season_id, universe[player_season_id])
+            row = forecasts.get(player_season_id)
+            source_player_id = str(player["source_player_id"])
+            appearance = 0.0
+            expected = 0.0
+            if row is not None:
+                expected = float(row["expected_points"])
+                appearance = float(row["appearance_probability"])
+                if appearance == 0 and float(row["expected_minutes"]) > 0:
+                    appearance = min(1.0, float(row["expected_minutes"]) / 60.0)
+            candidates.append(
+                CandidatePlayer(
+                    source_player_id=source_player_id,
+                    web_name=str(player["web_name"]),
+                    team_id=str(player["team_id"]),
+                    team_short_name=str(player["team_short_name"]),
+                    position=Position(str(player["position"])),
+                    price_tenths=int(player["price_tenths"]),
+                    expected_points=expected,
+                    gameweek_expected_points=expected,
+                    appearance_probability=appearance,
+                )
+            )
+            outcomes.append(
+                RealisedPlayerOutcome(
+                    source_player_id=source_player_id,
+                    points=0 if row is None else int(round(float(row["actual_points"]))),
+                    minutes=0 if row is None else int(row["actual_minutes"]),
+                )
+            )
+        weeks.append(
+            TransferReplayWeek(
+                gameweek_number=gameweek,
+                forecast_candidates=tuple(candidates),
+                realised_outcomes=tuple(outcomes),
+            )
+        )
+
+    opening = optimise_full_squad(
+        weeks[0].forecast_candidates,
+        budget_tenths=rules.squad.budget_tenths,
+        rules=rules,
+    )
+    opening_ids = frozenset(
+        player.source_player_id for player in opening.players
+    )
+    initial = CurrentSquad(
+        player_ids=opening_ids,
+        selling_prices_tenths={
+            player.source_player_id: player.price_tenths
+            for player in opening.players
+        },
+        bank_tenths=rules.squad.budget_tenths - opening.total_cost_tenths,
+        free_transfers=1,
+    )
+    # The opening squad is the week-one selection itself, so replaying from it
+    # would let the model transfer twice into the same Gameweek.
+    report = replay_transfer_continuity(
+        weeks[1:],
+        initial,
+        rules=rules,
+        max_transfers_per_week=max_transfers_per_week,
+    )
+    opening_outcomes = {
+        outcome.source_player_id: outcome for outcome in weeks[0].realised_outcomes
+    }
+    opening_points, opening_autosubs, _ = score_squad_gameweek(
+        opening,
+        opening_outcomes,
+        rules,
+        weeks[0].gameweek_number,
+    )
+    result = report.as_dict()
+    result["limitations"] = [
+        *report.limitations,
+        "The opening squad is selected at the first replayed Gameweek and is "
+        "scored without a transfer decision.",
+        "Chips are not played; every Gameweek uses the base scoring rules.",
+        "The candidate universe is fixed at the opening Gameweek, so players "
+        "who first appear later are never signed.",
+    ]
+    return {
+        "backtest_run_id": backtest_run_id,
+        "season_code": str(run["season_code"]),
+        "model_version": str(run["model_version"]),
+        "gameweeks": list(gameweeks),
+        "max_transfers_per_week": max_transfers_per_week,
+        "opening_gameweek": weeks[0].gameweek_number,
+        "opening_squad_points": opening_points,
+        "opening_squad_autosubs": opening_autosubs,
+        "opening_squad_cost_tenths": opening.total_cost_tenths,
+        "season_points": opening_points + report.total_net_points,
+        **result,
+    }
 
 
 def _player_metadata_as_of(
@@ -797,28 +1003,35 @@ def _baseline_point_forecasts(
     }
 
 
-def _realised_plan_points(
-    plans: tuple[GameweekLineupPlan, ...],
+def _replayed_squad_points(
+    result: FullSquadResult,
     actual_lookup: dict[tuple[str, int], GameweekPlayerValue],
+    target_gameweeks: tuple[int, ...],
+    rules: SeasonRules,
 ) -> float:
-    realised = 0.0
-    for plan in plans:
-        realised += sum(
-            actual_lookup[(player_id, plan.gameweek_number)].expected_points
-            for player_id in plan.starting_player_ids
-        )
-        captain = actual_lookup[
-            (plan.captain_id, plan.gameweek_number)
-        ]
-        vice = actual_lookup[
-            (plan.vice_captain_id, plan.gameweek_number)
-        ]
-        realised += (
-            captain.expected_points
-            if captain.appearance_probability > 0
-            else vice.expected_points
-        )
-    return realised
+    """Score a selected squad over the horizon exactly as FPL would pay it.
+
+    The earlier measure summed the forecast XI and applied captain fallback but
+    never substituted a blanking starter, so it charged the squad for every
+    absence the bench actually covers and understated what the selection was
+    worth.
+    """
+
+    realised = 0
+    for gameweek in target_gameweeks:
+        outcomes = {}
+        for player in result.players:
+            value = actual_lookup[(player.source_player_id, gameweek)]
+            outcomes[player.source_player_id] = RealisedPlayerOutcome(
+                source_player_id=player.source_player_id,
+                points=int(round(value.expected_points)),
+                # Only the played/blanked distinction drives autosubs; the
+                # backtest row's own minutes are not carried on this value.
+                minutes=90 if value.appearance_probability > 0 else 0,
+            )
+        points, _, _ = score_squad_gameweek(result, outcomes, rules, gameweek)
+        realised += points
+    return float(realised)
 
 
 def _historical_prefixes(

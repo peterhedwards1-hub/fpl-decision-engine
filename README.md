@@ -301,6 +301,28 @@ fpl-history --database data/fpl.sqlite3 project-forward-candidate \
   playing-time-hurdle-logistic-v1 --start-gameweek 1 --horizon 8
 ```
 
+Once outcomes exist, score a candidate against its declared control. This produces the
+matched pair the gate requires — same season, origins and horizon, both
+`pre_deadline_only`, the challenger running the declaration verbatim:
+
+```bash
+fpl-history --database data/fpl.sqlite3 backtest-forward-candidate \
+  preseason-priors-v1 \
+  --incumbent-config config/model_candidates/preseason-priors-v1-incumbent.json \
+  --origin-start 1 --origin-end 8 --horizon 1
+
+fpl-history --database data/fpl.sqlite3 build-decision-evidence \
+  --incumbent-run <id> --challenger-run <id> \
+  --owned-captain-regret-change <value> --transfer-regret-change <value> \
+  --output data/preseason-priors-v1-decision-evidence.json
+```
+
+`build-decision-evidence` measures `legal_squad_regret_change` from the run pair. The
+owned-captain and transfer changes have no replay producer yet and must be supplied
+explicitly, so neither gate can pass on a silent zero. To run any full configuration
+outside the candidate flow, pass `backtest-projections --model-config <path>`;
+individual flags still override single fields on top of it.
+
 Audit prospective evidence completeness after each deadline:
 
 ```bash
@@ -320,6 +342,22 @@ captaincy:
 fpl-history --database data/fpl_history.sqlite3 \
   evaluate-squad-regret <run-id> --methods model season_points_per_fixture
 ```
+
+Realised and hindsight points both replay the selected squad's own bench order through
+exact autosubs, so a blanking starter is substituted rather than charged as a zero.
+
+That measure grants a free wildcard at every origin, so it ranks selection methods rather
+than estimating a reachable score. For the latter, replay the same run as one persistent
+squad — carrying bank and free transfers forward and charging hits:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 \
+  replay-transfer-continuity <run-id> --max-transfers-per-week 1
+```
+
+It reports per-Gameweek transfers, hits, autosub counts and net points, plus a
+`season_points` total. Chips are not played and the candidate universe is fixed at the
+opening Gameweek.
 
 The latest completed scorecard also appears in the app's Data Health view. Backtest runs
 do not create ordinary production projection runs.
@@ -344,6 +382,30 @@ budget. The final output evaluates both the untuned v2 baseline and the selected
 configuration on the same validation window and reports signed changes, where negative
 error changes are improvements. Reusing the same study name resumes the study and adds
 the requested number of trials.
+
+The Stage 3a preseason priors — carry-forward regression, the promoted-club multipliers
+and the price-aware cold-start bounds — were declared rather than estimated. Fit them on
+development seasons only:
+
+```bash
+fpl-history --database data/fpl.sqlite3 fit-preseason-priors \
+  --target-seasons 2022-23 2023-24 \
+  --origin-start 1 --origin-end 8 --trials 40 \
+  --config-output config/model_candidates/preseason-priors-v2.json
+```
+
+Only the six Stage 3a fields move; every other field is held at the base configuration, so
+this is not a re-tune of the incumbent. The command refuses design-exhausted seasons
+(2024/25, 2025/26), refuses forward seasons, and refuses a target season with no earlier
+season in the database, since carry-forward would have nothing to read. Origins are
+restricted to the opening Gameweeks because both mechanisms fade once real fixtures and
+minutes accumulate.
+
+The report includes a leave-one-season-out fold per target season: the parameters are
+re-selected without that season, then scored on it and compared to the declared values.
+With few season starts available, that comparison — not the point estimate — is the
+evidence worth reading. The result is design evidence only; the fitted configuration
+still has to be registered and pass the forward 2026/27 gate.
 
 The completed 2025/26 study, its selected trial, held-out results, data scope and
 limitations are recorded in

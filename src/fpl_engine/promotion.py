@@ -10,7 +10,11 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from .backtest import ProjectionBacktester
+from .config import SeasonRules
+from .evaluation import evaluate_legal_squad_regret
 from .history.database import HistoricalDatabase
+from .projections import MODEL_VERSION, ProjectionModelConfig
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,26 @@ class DecisionGateEvidence:
     owned_captain_regret_change: float
     transfer_regret_change: float
     source_report: str
+
+
+@dataclass(frozen=True)
+class ForwardCandidateRunPair:
+    """Matched incumbent and challenger runs over one identical forward scope."""
+
+    candidate_key: str
+    season_code: str
+    origin_gameweek_start: int
+    origin_gameweek_end: int
+    horizon_gameweeks: int
+    evidence_policy: str
+    incumbent_run_id: int
+    incumbent_model_version: str
+    challenger_run_id: int
+    challenger_model_version: str
+    model_config_sha256: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 def register_forward_candidate(
@@ -97,6 +121,187 @@ def register_forward_candidate(
         "gate_policy": asdict(policy),
         "status": "declared",
     }
+
+
+def load_forward_candidate(
+    database: HistoricalDatabase,
+    candidate_key: str,
+) -> dict[str, Any]:
+    """Return the immutable declaration for a candidate still awaiting outcomes."""
+
+    registration = database.connection.execute(
+        """
+        SELECT registrations.*, seasons.code AS season_code
+        FROM model_candidate_registrations registrations
+        JOIN seasons ON seasons.id = registrations.season_id
+        WHERE registrations.candidate_key = ?
+        """,
+        (candidate_key,),
+    ).fetchone()
+    if registration is None:
+        raise ValueError(f"Candidate {candidate_key!r} is not registered")
+    if registration["status"] != "declared":
+        raise ValueError(f"Candidate is already {registration['status']}")
+    return {
+        "candidate_key": candidate_key,
+        "season_code": str(registration["season_code"]),
+        "model_version": str(registration["model_version"]),
+        "registered_at": str(registration["registered_at"]),
+        "model_config": json.loads(registration["model_config_json"]),
+        "model_config_sha256": str(registration["model_config_sha256"]),
+        "gate_policy": json.loads(registration["gate_policy_json"]),
+    }
+
+
+def declared_challenger_config(declaration: dict[str, Any]) -> ProjectionModelConfig:
+    """Rebuild the declared configuration, refusing anything the gate would reject.
+
+    `evaluate_forward_candidate` compares a run's persisted configuration to the
+    declaration key by key. A run built from a declaration that no longer
+    round-trips through `ProjectionModelConfig` can never qualify, so fail here
+    rather than after the backtest has been spent.
+    """
+
+    declared = declaration["model_config"]
+    try:
+        config = ProjectionModelConfig(**declared)
+    except TypeError as error:
+        raise ValueError(
+            f"Declared configuration for {declaration['candidate_key']!r} does not "
+            f"match ProjectionModelConfig: {error}"
+        ) from error
+    rebuilt = asdict(config)
+    if rebuilt != declared:
+        divergent = sorted(
+            set(rebuilt) ^ set(declared)
+            | {key for key in set(rebuilt) & set(declared) if rebuilt[key] != declared[key]}
+        )
+        raise ValueError(
+            "Declared configuration no longer round-trips through "
+            f"ProjectionModelConfig; the promotion gate would reject every run. "
+            f"Divergent fields: {', '.join(divergent)}"
+        )
+    return config
+
+
+def run_forward_candidate_pair(
+    database: HistoricalDatabase,
+    rules: SeasonRules,
+    *,
+    candidate_key: str,
+    incumbent_config: ProjectionModelConfig,
+    incumbent_model_version: str = MODEL_VERSION,
+    origin_gameweek_start: int,
+    origin_gameweek_end: int,
+    horizon_gameweeks: int = 1,
+    created_at: datetime | None = None,
+) -> ForwardCandidateRunPair:
+    """Produce the matched run pair `evaluate_forward_candidate` requires.
+
+    The challenger runs the declaration verbatim; the incumbent runs the declared
+    control over an identical scope. Both are forced to pre-deadline evidence, so
+    the pair cannot fail the gate's scope, version or configuration checks for
+    reasons of operator error.
+    """
+
+    declaration = load_forward_candidate(database, candidate_key)
+    season_code = declaration["season_code"]
+    if rules.season != season_code:
+        raise ValueError(
+            f"Rules season {rules.season!r} does not match candidate season {season_code!r}"
+        )
+    if incumbent_model_version == declaration["model_version"]:
+        raise ValueError(
+            "Incumbent and challenger runs must use different model versions"
+        )
+    challenger_config = declared_challenger_config(declaration)
+    if asdict(incumbent_config) == asdict(challenger_config):
+        raise ValueError(
+            "Incumbent control is identical to the declared candidate; the pair "
+            "would measure nothing"
+        )
+    scope = {
+        "season_code": season_code,
+        "origin_gameweek_start": origin_gameweek_start,
+        "origin_gameweek_end": origin_gameweek_end,
+        "horizon_gameweeks": horizon_gameweeks,
+        "evidence_policy": "pre_deadline_only",
+        "created_at": created_at,
+    }
+    incumbent = ProjectionBacktester(
+        database,
+        rules,
+        config=incumbent_config,
+        model_version=incumbent_model_version,
+    ).run(**scope)
+    challenger = ProjectionBacktester(
+        database,
+        rules,
+        config=challenger_config,
+        model_version=declaration["model_version"],
+    ).run(**scope)
+    return ForwardCandidateRunPair(
+        candidate_key=candidate_key,
+        season_code=season_code,
+        origin_gameweek_start=origin_gameweek_start,
+        origin_gameweek_end=origin_gameweek_end,
+        horizon_gameweeks=horizon_gameweeks,
+        evidence_policy="pre_deadline_only",
+        incumbent_run_id=incumbent.backtest_run_id,
+        incumbent_model_version=incumbent_model_version,
+        challenger_run_id=challenger.backtest_run_id,
+        challenger_model_version=declaration["model_version"],
+        model_config_sha256=declaration["model_config_sha256"],
+    )
+
+
+def build_decision_gate_evidence(
+    database: HistoricalDatabase,
+    rules: SeasonRules,
+    *,
+    incumbent_run_id: int,
+    challenger_run_id: int,
+    owned_captain_regret_change: float,
+    transfer_regret_change: float,
+    method: str = "model",
+) -> DecisionGateEvidence:
+    """Measure the legal-squad decision gate directly from a matched run pair.
+
+    Owned-captain and transfer regret have no replay producer yet, so both remain
+    explicit operator inputs rather than being silently defaulted to zero.
+    """
+
+    incumbent = evaluate_legal_squad_regret(
+        database,
+        incumbent_run_id,
+        rules,
+        methods=(method,),
+    )
+    challenger = evaluate_legal_squad_regret(
+        database,
+        challenger_run_id,
+        rules,
+        methods=(method,),
+    )
+    incumbent_origins = {origin.origin_gameweek for origin in incumbent.origins}
+    challenger_origins = {origin.origin_gameweek for origin in challenger.origins}
+    if incumbent_origins != challenger_origins:
+        raise ValueError(
+            "Decision evidence requires both runs to cover identical origins"
+        )
+    change = (
+        challenger.mean_regret_by_method[method] - incumbent.mean_regret_by_method[method]
+    )
+    return DecisionGateEvidence(
+        legal_squad_regret_change=round(change, 6),
+        owned_captain_regret_change=owned_captain_regret_change,
+        transfer_regret_change=transfer_regret_change,
+        source_report=(
+            f"legal-squad-regret method={method} "
+            f"incumbent_run={incumbent_run_id} challenger_run={challenger_run_id} "
+            f"origins={len(incumbent_origins)}"
+        ),
+    )
 
 
 def evaluate_forward_candidate(

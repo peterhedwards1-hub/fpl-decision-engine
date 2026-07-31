@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,10 +21,12 @@ from ..evaluation import (
     build_evaluation_suite,
     compare_backtest_to_baselines,
     evaluate_legal_squad_regret,
+    replay_backtest_transfer_continuity,
     write_json_report,
 )
 from ..learned_challenger import train_and_evaluate_learned_challenger
 from ..playing_time import train_and_evaluate_hurdle_model
+from ..preseason_fit import fit_preseason_priors
 from ..projections import (
     DEFAULT_MODEL_CONFIG,
     MODEL_VERSION,
@@ -34,8 +36,11 @@ from ..projections import (
 from ..promotion import (
     DecisionGateEvidence,
     PromotionGatePolicy,
+    build_decision_gate_evidence,
     evaluate_forward_candidate,
+    load_forward_candidate,
     register_forward_candidate,
+    run_forward_candidate_pair,
 )
 from ..prospective import build_prospective_capture_status
 from ..tuning import tune_projection_model, tune_projection_model_rolling
@@ -97,46 +102,24 @@ def main() -> None:
     )
     backtest_parser.add_argument("--model-version", default=MODEL_VERSION)
     backtest_parser.add_argument(
-        "--player-prior-minutes",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.player_rate_prior_minutes,
+        "--model-config",
+        help=(
+            "Full projection configuration JSON to run instead of the incumbent "
+            "defaults. Individual flags below still override single fields."
+        ),
     )
-    backtest_parser.add_argument(
-        "--minutes-prior-matches",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.minutes_prior_matches,
-    )
-    backtest_parser.add_argument(
-        "--team-prior-matches",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.team_prior_matches,
-    )
-    backtest_parser.add_argument(
-        "--home-attack-multiplier",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.home_attack_multiplier,
-    )
-    backtest_parser.add_argument(
-        "--away-attack-multiplier",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.away_attack_multiplier,
-    )
+    backtest_parser.add_argument("--player-prior-minutes", type=float)
+    backtest_parser.add_argument("--minutes-prior-matches", type=float)
+    backtest_parser.add_argument("--team-prior-matches", type=float)
+    backtest_parser.add_argument("--home-attack-multiplier", type=float)
+    backtest_parser.add_argument("--away-attack-multiplier", type=float)
     backtest_parser.add_argument(
         "--minutes-model",
         choices=("legacy", "two_stage", "learned_hurdle"),
-        default="two_stage",
     )
     backtest_parser.add_argument("--playing-time-artifact")
-    backtest_parser.add_argument(
-        "--recent-gameweeks",
-        type=int,
-        default=DEFAULT_MODEL_CONFIG.recent_gameweeks,
-    )
-    backtest_parser.add_argument(
-        "--recent-evidence-weight",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.recent_evidence_weight,
-    )
+    backtest_parser.add_argument("--recent-gameweeks", type=int)
+    backtest_parser.add_argument("--recent-evidence-weight", type=float)
     backtest_parser.add_argument(
         "--scoring-event-source",
         choices=(
@@ -144,7 +127,6 @@ def main() -> None:
             "expected_with_actual_fallback",
             "team_share_expected",
         ),
-        default=DEFAULT_MODEL_CONFIG.scoring_event_source,
     )
     backtest_parser.add_argument(
         "--defensive-contribution-model",
@@ -152,22 +134,12 @@ def main() -> None:
             "threshold_poisson",
             "empirical_2025_minutes_band",
         ),
-        default=DEFAULT_MODEL_CONFIG.defensive_contribution_model,
     )
-    backtest_parser.add_argument(
-        "--appearance-prior-matches",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.appearance_prior_matches,
-    )
-    backtest_parser.add_argument(
-        "--appearance-prior-probability",
-        type=float,
-        default=DEFAULT_MODEL_CONFIG.appearance_prior_probability,
-    )
+    backtest_parser.add_argument("--appearance-prior-matches", type=float)
+    backtest_parser.add_argument("--appearance-prior-probability", type=float)
     backtest_parser.add_argument(
         "--conditional-minutes-prior-appearances",
         type=float,
-        default=DEFAULT_MODEL_CONFIG.conditional_minutes_prior_appearances,
     )
     backtest_parser.add_argument(
         "--no-team-minute-constraint",
@@ -229,6 +201,31 @@ def main() -> None:
     )
     rolling_parser.add_argument("--seed", type=int, default=20260729)
 
+    preseason_parser = subparsers.add_parser(
+        "fit-preseason-priors",
+        help="Estimate the Stage 3a carry-forward and cold-start parameters",
+    )
+    preseason_parser.add_argument(
+        "--target-seasons",
+        nargs="+",
+        required=True,
+        help="Development seasons to fit on; each needs an earlier season present",
+    )
+    preseason_parser.add_argument("--origin-start", type=int, default=1)
+    preseason_parser.add_argument("--origin-end", type=int, default=8)
+    preseason_parser.add_argument("--horizon", type=int, default=1)
+    preseason_parser.add_argument("--trials", type=int, default=40)
+    preseason_parser.add_argument(
+        "--study-name",
+        default="fpl-preseason-priors-fit-v1",
+    )
+    preseason_parser.add_argument("--study-storage")
+    preseason_parser.add_argument("--seed", type=int, default=20260731)
+    preseason_parser.add_argument(
+        "--config-output",
+        help="Write the fitted configuration for register-forward-candidate",
+    )
+    preseason_parser.add_argument("--output")
     challenger_parser = subparsers.add_parser(
         "train-boosted-challenger",
         help=("Train on earlier completed backtests and evaluate one later validation run"),
@@ -344,6 +341,19 @@ def main() -> None:
             "position_points_per_fixture",
         ),
     )
+    continuity_parser = subparsers.add_parser(
+        "replay-transfer-continuity",
+        help="Replay a backtest as one persistent squad with hits and autosubs",
+    )
+    continuity_parser.add_argument("run_id", type=int)
+    continuity_parser.add_argument(
+        "--rules",
+        help="Season rules JSON (defaults to the backtest season)",
+    )
+    continuity_parser.add_argument("--first-gameweek", type=int)
+    continuity_parser.add_argument("--last-gameweek", type=int)
+    continuity_parser.add_argument("--max-transfers-per-week", type=int, default=2)
+    continuity_parser.add_argument("--output")
     suite_parser = subparsers.add_parser(
         "compile-model-evaluation",
         help="Compile horizon, baseline and challenger gates from backtest runs",
@@ -444,6 +454,46 @@ def main() -> None:
     )
     project_candidate_parser.add_argument("--horizon", type=int, default=8)
     project_candidate_parser.add_argument("--rules")
+    candidate_backtest_parser = subparsers.add_parser(
+        "backtest-forward-candidate",
+        help="Score a declared candidate and its control over one matched scope",
+    )
+    candidate_backtest_parser.add_argument("candidate_key")
+    candidate_backtest_parser.add_argument(
+        "--incumbent-config",
+        required=True,
+        help="Declared control configuration JSON the candidate is measured against",
+    )
+    candidate_backtest_parser.add_argument(
+        "--incumbent-model-version",
+        default=MODEL_VERSION,
+    )
+    candidate_backtest_parser.add_argument("--origin-start", type=int, default=1)
+    candidate_backtest_parser.add_argument("--origin-end", type=int, default=8)
+    candidate_backtest_parser.add_argument("--horizon", type=int, default=1)
+    candidate_backtest_parser.add_argument("--rules")
+    candidate_backtest_parser.add_argument("--output")
+    evidence_parser = subparsers.add_parser(
+        "build-decision-evidence",
+        help="Measure the legal-squad decision gate from a matched run pair",
+    )
+    evidence_parser.add_argument("--incumbent-run", type=int, required=True)
+    evidence_parser.add_argument("--challenger-run", type=int, required=True)
+    evidence_parser.add_argument(
+        "--owned-captain-regret-change",
+        type=float,
+        required=True,
+        help="No replay producer exists yet; supply the measured change explicitly",
+    )
+    evidence_parser.add_argument(
+        "--transfer-regret-change",
+        type=float,
+        required=True,
+        help="No replay producer exists yet; supply the measured change explicitly",
+    )
+    evidence_parser.add_argument("--method", default="model")
+    evidence_parser.add_argument("--rules")
+    evidence_parser.add_argument("--output")
 
     args = parser.parse_args()
     database_path = Path(args.database)
@@ -498,6 +548,63 @@ def main() -> None:
                 methods=tuple(args.methods),
             )
             print(json.dumps(regret.as_dict(), indent=2))
+            return
+
+        if args.command == "fit-preseason-priors":
+            rules_by_season = {
+                season_code: load_season_rules(
+                    Path(f"config/seasons/{season_code}.json")
+                )
+                for season_code in args.target_seasons
+            }
+            fit = fit_preseason_priors(
+                database,
+                rules_by_season,
+                target_seasons=tuple(args.target_seasons),
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                trials=args.trials,
+                study_name=args.study_name,
+                storage_url=args.study_storage,
+                seed=args.seed,
+            )
+            if args.config_output:
+                Path(args.config_output).write_text(
+                    json.dumps(asdict(fit.best_config), indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            if args.output:
+                write_json_report(fit.as_dict(), args.output)
+            print(json.dumps(fit.as_dict(), indent=2))
+            return
+
+        if args.command == "replay-transfer-continuity":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            continuity = replay_backtest_transfer_continuity(
+                database,
+                args.run_id,
+                rules,
+                first_gameweek=args.first_gameweek,
+                last_gameweek=args.last_gameweek,
+                max_transfers_per_week=args.max_transfers_per_week,
+            )
+            if args.output:
+                write_json_report(continuity, args.output)
+            print(json.dumps(continuity, indent=2))
             return
 
         if args.command == "compile-model-evaluation":
@@ -651,6 +758,59 @@ def main() -> None:
             )
             return
 
+        if args.command == "backtest-forward-candidate":
+            declaration = load_forward_candidate(database, args.candidate_key)
+            season_code = declaration["season_code"]
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season_code}.json")
+            )
+            incumbent_config = ProjectionModelConfig(
+                **json.loads(Path(args.incumbent_config).read_text(encoding="utf-8"))
+            )
+            pair = run_forward_candidate_pair(
+                database,
+                rules,
+                candidate_key=args.candidate_key,
+                incumbent_config=incumbent_config,
+                incumbent_model_version=args.incumbent_model_version,
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+            )
+            if args.output:
+                write_json_report(pair.as_dict(), args.output)
+            print(json.dumps(pair.as_dict(), indent=2))
+            return
+
+        if args.command == "build-decision-evidence":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.challenger_run,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.challenger_run} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            evidence = build_decision_gate_evidence(
+                database,
+                rules,
+                incumbent_run_id=args.incumbent_run,
+                challenger_run_id=args.challenger_run,
+                owned_captain_regret_change=args.owned_captain_regret_change,
+                transfer_regret_change=args.transfer_regret_change,
+                method=args.method,
+            )
+            if args.output:
+                write_json_report(asdict(evidence), args.output)
+            print(json.dumps(asdict(evidence), indent=2))
+            return
+
         if args.command == "backtest-projections":
             rules_path = Path(args.rules or f"config/seasons/{args.season_code}.json")
             rules = load_season_rules(rules_path)
@@ -659,23 +819,36 @@ def main() -> None:
                     f"Rules season {rules.season!r} does not match "
                     f"backtest season {args.season_code!r}"
                 )
+            base = (
+                DEFAULT_MODEL_CONFIG
+                if args.model_config is None
+                else ProjectionModelConfig(
+                    **json.loads(Path(args.model_config).read_text(encoding="utf-8"))
+                )
+            )
+            overrides = {
+                "player_rate_prior_minutes": args.player_prior_minutes,
+                "minutes_prior_matches": args.minutes_prior_matches,
+                "team_prior_matches": args.team_prior_matches,
+                "home_attack_multiplier": args.home_attack_multiplier,
+                "away_attack_multiplier": args.away_attack_multiplier,
+                "minutes_model": args.minutes_model,
+                "playing_time_artifact": args.playing_time_artifact,
+                "recent_gameweeks": args.recent_gameweeks,
+                "recent_evidence_weight": args.recent_evidence_weight,
+                "scoring_event_source": args.scoring_event_source,
+                "defensive_contribution_model": args.defensive_contribution_model,
+                "appearance_prior_matches": args.appearance_prior_matches,
+                "appearance_prior_probability": args.appearance_prior_probability,
+                "conditional_minutes_prior_appearances": (
+                    args.conditional_minutes_prior_appearances
+                ),
+            }
+            if args.no_team_minute_constraint:
+                overrides["enforce_team_minutes"] = False
             config = replace(
-                DEFAULT_MODEL_CONFIG,
-                player_rate_prior_minutes=args.player_prior_minutes,
-                minutes_prior_matches=args.minutes_prior_matches,
-                team_prior_matches=args.team_prior_matches,
-                home_attack_multiplier=args.home_attack_multiplier,
-                away_attack_multiplier=args.away_attack_multiplier,
-                minutes_model=args.minutes_model,
-                playing_time_artifact=args.playing_time_artifact,
-                recent_gameweeks=args.recent_gameweeks,
-                recent_evidence_weight=args.recent_evidence_weight,
-                scoring_event_source=args.scoring_event_source,
-                defensive_contribution_model=(args.defensive_contribution_model),
-                appearance_prior_matches=args.appearance_prior_matches,
-                appearance_prior_probability=(args.appearance_prior_probability),
-                conditional_minutes_prior_appearances=(args.conditional_minutes_prior_appearances),
-                enforce_team_minutes=(not args.no_team_minute_constraint),
+                base,
+                **{name: value for name, value in overrides.items() if value is not None},
             )
             report = ProjectionBacktester(
                 database,
