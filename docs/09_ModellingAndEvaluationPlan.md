@@ -348,11 +348,65 @@ almost all of the work: Haaland +1.20 and Saka +1.28 expected points at Gameweek
 moves at most +0.18, because the 2026/27 cold-start pool tops out at £6.5m and contains no
 marquee signing; the mechanism matters more in a season that has one.
 
-**All parameter values are declared, not fitted.** No inspected season was used to choose
+**v1's parameter values are declared, not fitted.** No inspected season was used to choose
 them. The package is registered as the single candidate `preseason-priors-v1`
 (`config/model_candidates/preseason-priors-v1.json`) and is gated as one unit under §8.
 `DEFAULT_MODEL_CONFIG` is unchanged, and a regression test asserts that the incumbent still
 returns flat preseason strengths.
+
+#### Fitting the declared values — `preseason-priors-v2`
+
+`fit-preseason-priors` estimates the six Stage 3a parameters over each season's opening
+Gameweeks, where carry-forward and cold starts actually bind. Only 2022/23 and 2023/24 are
+usable: 2021/22 is the earliest imported season, so carry-forward has nothing to read from
+it, and 2024/25 onward are design-exhausted. Two season starts, 40 trials, GW1–GW8.
+
+The important result is that **most of these parameters are not identified by that much
+evidence**. Comparing the leading trials' spread to the whole search's spread separates
+what the data established from what the winning trial merely happened to report:
+
+| Parameter | Declared | Best trial | Leading mean ± sd | Search sd | Retained |
+|---|---:|---:|---:|---:|---|
+| `carry_forward_regression_matches` | 12.0 | 28.79 | 25.21 ± 4.61 | 8.64 | fitted |
+| `promoted_team_attack_multiplier` | 0.85 | 1.050 | 1.038 ± 0.014 | 0.112 | fitted |
+| `promoted_team_defence_multiplier` | 1.20 | 1.043 | 1.185 ± 0.099 | 0.153 | declared |
+| `cold_start_price_elasticity` | 1.50 | 0.113 | 0.586 ± 0.634 | 0.751 | fitted |
+| `cold_start_minimum_factor` | 0.35 | 0.487 | 0.390 ± 0.103 | 0.183 | declared |
+| `cold_start_maximum_factor` | 3.00 | 3.324 | 2.379 ± 0.876 | 1.481 | declared |
+
+A parameter moves only when the declared value falls outside one deviation of the leading
+trials' mean, and it moves to that mean rather than to the single winning trial — which is
+one draw from the spread beside it. Three parameters cleared that bar:
+
+- **Promoted clubs' attack should not be discounted.** The declared 0.85 is nearly nine
+  leading deviations from the estimate. This is the one tightly identified parameter, and
+  it says the assumed penalty was wrong in direction, not just in size.
+- **Carry-forward should regress harder**, roughly 25 pseudo-matches rather than 12, so
+  last season's table separates clubs less than the declared value assumed.
+- **Price informs cold starts far less than assumed**, 0.59 against a declared 1.50. This
+  one only just clears the bar — the leading spread of 0.63 nearly covers the gap — so
+  treat the direction as established and the magnitude as loose.
+
+The declared promoted-*defence* multiplier is confirmed rather than overturned: the leading
+mean of 1.185 sits almost exactly on the declared 1.20. Both cold-start bounds keep their
+declared values.
+
+Scores are the standard tuning objective, lower better:
+
+| Season | Declared | Fitted (shipped) | Change | Leave-one-season-out |
+|---|---:|---:|---:|---:|
+| 2022/23 | 2.9052 | 2.7858 | −0.1193 | −0.0892 |
+| 2023/24 | 3.0124 | 2.9172 | −0.0951 | −0.0601 |
+
+The leave-one-season-out column repeats the entire selection rule without the scored
+season, so it measures the configuration that would actually have been declared. Both
+withheld seasons preferred it to the declared values. The shipped configuration also beats
+the raw winning trial on 2022/23 (2.7858 against 2.8128), which is the expected consequence
+of estimating from the leading mean instead of one draw.
+
+The output is `config/model_candidates/preseason-priors-v2.json`, differing from v1 in
+exactly the three identified fields. **It is design evidence, not a promotion.** Two season
+starts and six promoted clubs are thin, and the forward gate still applies unchanged.
 
 Not covered: the `team_share_expected` scoring path has its own strength estimator
 (`_expected_goal_team_strengths`) and does not yet carry forward.
@@ -596,7 +650,7 @@ machine-checkable.
 | 1 | Bootstrap intervals; oracle sensitivity; residual slices; calibration | **Complete for current components** | Regenerate diagnostics as new forward outcomes and candidate runs arrive |
 | 2 | Hurdle playing-time model; hierarchical pooling; learned decay | **Implemented; logistic candidate registered** | Beats v4 on genuinely forward forecast and decision tiers |
 | 3 | Share-of-team xG/xA; team and fixture model; components; DC by calibration | **Coherent design implemented; historical design result failed RMSE/top-player bias** | Forward gate, or redesign player allocation using oracle evidence |
-| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and registered as `preseason-priors-v1`; parameters declared, not fitted; gate now reachable via `backtest-forward-candidate` against the committed control** | Both gate tiers on genuinely forward 2026/27 results; owned-captain and transfer regret producers still missing |
+| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and gate-reachable; parameters fitted on 2022/23–2023/24 openings as `preseason-priors-v2`, with three of six identified and the rest left declared** | Both gate tiers on genuinely forward 2026/27 results; owned-captain and transfer regret producers still missing |
 | 4 | Joint Monte Carlo with shared team factors; constrained ensemble | **Infrastructure implemented** | Accumulate forward CRPS, coverage, PIT and decision evidence |
 | 5 | Forward qualification on 2026/27 | **Executable and predeclared; outcomes pending** | Both gate tiers, no position regression |
 | A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented; regret scoring corrected for autosubs and continuity replayable from any backtest run** | Accumulate actual actions to estimate option value and transfer regret; price chip usage into the replay |

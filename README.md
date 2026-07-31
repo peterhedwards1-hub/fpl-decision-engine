@@ -383,6 +383,30 @@ configuration on the same validation window and reports signed changes, where ne
 error changes are improvements. Reusing the same study name resumes the study and adds
 the requested number of trials.
 
+The Stage 3a preseason priors — carry-forward regression, the promoted-club multipliers
+and the price-aware cold-start bounds — were declared rather than estimated. Fit them on
+development seasons only:
+
+```bash
+fpl-history --database data/fpl.sqlite3 fit-preseason-priors \
+  --target-seasons 2022-23 2023-24 \
+  --origin-start 1 --origin-end 8 --trials 40 \
+  --config-output config/model_candidates/preseason-priors-v2.json
+```
+
+Only the six Stage 3a fields move; every other field is held at the base configuration, so
+this is not a re-tune of the incumbent. The command refuses design-exhausted seasons
+(2024/25, 2025/26), refuses forward seasons, and refuses a target season with no earlier
+season in the database, since carry-forward would have nothing to read. Origins are
+restricted to the opening Gameweeks because both mechanisms fade once real fixtures and
+minutes accumulate.
+
+The report includes a leave-one-season-out fold per target season: the parameters are
+re-selected without that season, then scored on it and compared to the declared values.
+With few season starts available, that comparison — not the point estimate — is the
+evidence worth reading. The result is design evidence only; the fitted configuration
+still has to be registered and pass the forward 2026/27 gate.
+
 The completed 2025/26 study, its selected trial, held-out results, data scope and
 limitations are recorded in
 [the projection tuning record](docs/05_ProjectionTuningRecord.md). It used three imported

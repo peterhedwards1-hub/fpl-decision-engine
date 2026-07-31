@@ -26,6 +26,7 @@ from ..evaluation import (
 )
 from ..learned_challenger import train_and_evaluate_learned_challenger
 from ..playing_time import train_and_evaluate_hurdle_model
+from ..preseason_fit import fit_preseason_priors
 from ..projections import (
     DEFAULT_MODEL_CONFIG,
     MODEL_VERSION,
@@ -200,6 +201,31 @@ def main() -> None:
     )
     rolling_parser.add_argument("--seed", type=int, default=20260729)
 
+    preseason_parser = subparsers.add_parser(
+        "fit-preseason-priors",
+        help="Estimate the Stage 3a carry-forward and cold-start parameters",
+    )
+    preseason_parser.add_argument(
+        "--target-seasons",
+        nargs="+",
+        required=True,
+        help="Development seasons to fit on; each needs an earlier season present",
+    )
+    preseason_parser.add_argument("--origin-start", type=int, default=1)
+    preseason_parser.add_argument("--origin-end", type=int, default=8)
+    preseason_parser.add_argument("--horizon", type=int, default=1)
+    preseason_parser.add_argument("--trials", type=int, default=40)
+    preseason_parser.add_argument(
+        "--study-name",
+        default="fpl-preseason-priors-fit-v1",
+    )
+    preseason_parser.add_argument("--study-storage")
+    preseason_parser.add_argument("--seed", type=int, default=20260731)
+    preseason_parser.add_argument(
+        "--config-output",
+        help="Write the fitted configuration for register-forward-candidate",
+    )
+    preseason_parser.add_argument("--output")
     challenger_parser = subparsers.add_parser(
         "train-boosted-challenger",
         help=("Train on earlier completed backtests and evaluate one later validation run"),
@@ -522,6 +548,35 @@ def main() -> None:
                 methods=tuple(args.methods),
             )
             print(json.dumps(regret.as_dict(), indent=2))
+            return
+
+        if args.command == "fit-preseason-priors":
+            rules_by_season = {
+                season_code: load_season_rules(
+                    Path(f"config/seasons/{season_code}.json")
+                )
+                for season_code in args.target_seasons
+            }
+            fit = fit_preseason_priors(
+                database,
+                rules_by_season,
+                target_seasons=tuple(args.target_seasons),
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                trials=args.trials,
+                study_name=args.study_name,
+                storage_url=args.study_storage,
+                seed=args.seed,
+            )
+            if args.config_output:
+                Path(args.config_output).write_text(
+                    json.dumps(asdict(fit.best_config), indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            if args.output:
+                write_json_report(fit.as_dict(), args.output)
+            print(json.dumps(fit.as_dict(), indent=2))
             return
 
         if args.command == "replay-transfer-continuity":

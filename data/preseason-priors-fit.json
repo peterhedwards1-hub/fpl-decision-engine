@@ -1,0 +1,216 @@
+{
+  "best_score": 2.835517,
+  "best_trial_config": {
+    "appearance_prior_matches": 3.2516466478759654,
+    "appearance_prior_probability": 0.4044943812940328,
+    "away_attack_multiplier": 0.8512934695622035,
+    "carry_forward_regression_matches": 28.79220613622485,
+    "cold_start_maximum_factor": 3.324128667914635,
+    "cold_start_minimum_factor": 0.486931708181606,
+    "cold_start_price_elasticity": 0.113428713865392,
+    "cold_start_prior": "position_price",
+    "conditional_minutes_prior_appearances": 1.248676119370052,
+    "defensive_contribution_model": "threshold_poisson",
+    "enforce_team_minutes": true,
+    "home_attack_multiplier": 1.0680722197944925,
+    "include_penalty_events": true,
+    "maximum_team_multiplier": 1.5,
+    "minimum_team_multiplier": 0.6,
+    "minutes_allocation": "team_total",
+    "minutes_model": "two_stage",
+    "minutes_prior_matches": 6.0,
+    "player_rate_prior_minutes": 1776.650037050099,
+    "playing_time_artifact": null,
+    "promoted_team_attack_multiplier": 1.0498895732405316,
+    "promoted_team_defence_multiplier": 1.0426120005859896,
+    "recent_evidence_weight": 1.845760710001814,
+    "recent_gameweeks": 4,
+    "scoring_event_source": "actual",
+    "scoring_recent_evidence_weight": 1.0,
+    "team_assist_per_goal_prior": 0.72,
+    "team_form_half_life_gameweeks": 8.0,
+    "team_minutes_per_fixture": 990.0,
+    "team_prior_matches": 11.870184562035677,
+    "team_strength_carry_forward": true
+  },
+  "best_trial_number": 13,
+  "best_trial_season_scores": {
+    "2022-23": 2.812838,
+    "2023-24": 2.858196
+  },
+  "declared_backtest_run_ids": {
+    "2022-23": 85,
+    "2023-24": 86
+  },
+  "declared_parameters": {
+    "carry_forward_regression_matches": 12.0,
+    "cold_start_maximum_factor": 3.0,
+    "cold_start_minimum_factor": 0.35,
+    "cold_start_price_elasticity": 1.5,
+    "promoted_team_attack_multiplier": 0.85,
+    "promoted_team_defence_multiplier": 1.2
+  },
+  "declared_season_scores": {
+    "2022-23": 2.905198,
+    "2023-24": 3.012351
+  },
+  "horizon_gameweeks": 1,
+  "identified_parameters": [
+    "carry_forward_regression_matches",
+    "promoted_team_attack_multiplier",
+    "cold_start_price_elasticity"
+  ],
+  "leave_one_season_out": [
+    {
+      "declared_held_out_score": 2.905198,
+      "held_out_score": 2.816023,
+      "held_out_season": "2022-23",
+      "score_change": -0.089175,
+      "selected_parameters": {
+        "carry_forward_regression_matches": 24.509794,
+        "cold_start_maximum_factor": 3.0,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_price_elasticity": 0.445041,
+        "promoted_team_attack_multiplier": 1.032115,
+        "promoted_team_defence_multiplier": 1.09925
+      }
+    },
+    {
+      "declared_held_out_score": 3.012351,
+      "held_out_score": 2.952256,
+      "held_out_season": "2023-24",
+      "score_change": -0.060095,
+      "selected_parameters": {
+        "carry_forward_regression_matches": 12.0,
+        "cold_start_maximum_factor": 3.0,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_price_elasticity": 0.51291,
+        "promoted_team_attack_multiplier": 0.958824,
+        "promoted_team_defence_multiplier": 1.2
+      }
+    }
+  ],
+  "limitations": [
+    "Fitted on 2 season starts (2022-23, 2023-24); six parameters against that little evidence can absorb noise, so read parameter_evidence and the leave-one-season-out folds before believing any point estimate.",
+    "The shipped configuration moves only parameters whose leading trials disagree with the declared value by more than their own spread. Everything else keeps its declared value, so an unidentified parameter is not silently replaced by one draw from noise.",
+    "Only origins up to GW8 are scored, because carry-forward decays as real fixtures arrive and cold starts stop binding once a player has played.",
+    "The earliest imported season cannot be a target: carry-forward needs a previous season to read.",
+    "Every non-Stage-3a field is held at the base configuration, so this is not a re-tune of the incumbent.",
+    "Design evidence only. No historical result may promote a model; the fitted configuration still needs the forward 2026/27 gate."
+  ],
+  "objective_version": "preseason-early-window-v1",
+  "origin_gameweek_end": 8,
+  "origin_gameweek_start": 1,
+  "parameter_evidence": [
+    {
+      "best_trial": 28.792206,
+      "declared": 12.0,
+      "identified": true,
+      "leading_deviation": 4.609851,
+      "leading_mean": 25.206505,
+      "name": "carry_forward_regression_matches",
+      "retained": "fitted",
+      "search_deviation": 8.641271
+    },
+    {
+      "best_trial": 1.04989,
+      "declared": 0.85,
+      "identified": true,
+      "leading_deviation": 0.014308,
+      "leading_mean": 1.037831,
+      "name": "promoted_team_attack_multiplier",
+      "retained": "fitted",
+      "search_deviation": 0.112427
+    },
+    {
+      "best_trial": 1.042612,
+      "declared": 1.2,
+      "identified": false,
+      "leading_deviation": 0.098995,
+      "leading_mean": 1.185032,
+      "name": "promoted_team_defence_multiplier",
+      "retained": "declared",
+      "search_deviation": 0.153258
+    },
+    {
+      "best_trial": 0.113429,
+      "declared": 1.5,
+      "identified": true,
+      "leading_deviation": 0.633637,
+      "leading_mean": 0.585453,
+      "name": "cold_start_price_elasticity",
+      "retained": "fitted",
+      "search_deviation": 0.750628
+    },
+    {
+      "best_trial": 0.486932,
+      "declared": 0.35,
+      "identified": false,
+      "leading_deviation": 0.102583,
+      "leading_mean": 0.389943,
+      "name": "cold_start_minimum_factor",
+      "retained": "declared",
+      "search_deviation": 0.183028
+    },
+    {
+      "best_trial": 3.324129,
+      "declared": 3.0,
+      "identified": false,
+      "leading_deviation": 0.875835,
+      "leading_mean": 2.378804,
+      "name": "cold_start_maximum_factor",
+      "retained": "declared",
+      "search_deviation": 1.481365
+    }
+  ],
+  "promotion_status": "Design evidence only. The robust configuration must be registered as a forward candidate and pass both gate tiers on 2026/27 before it may replace anything.",
+  "robust_backtest_run_ids": {
+    "2022-23": 87,
+    "2023-24": 88
+  },
+  "robust_config": {
+    "appearance_prior_matches": 3.2516466478759654,
+    "appearance_prior_probability": 0.4044943812940328,
+    "away_attack_multiplier": 0.8512934695622035,
+    "carry_forward_regression_matches": 25.206504650560742,
+    "cold_start_maximum_factor": 3.0,
+    "cold_start_minimum_factor": 0.35,
+    "cold_start_price_elasticity": 0.5854534292366105,
+    "cold_start_prior": "position_price",
+    "conditional_minutes_prior_appearances": 1.248676119370052,
+    "defensive_contribution_model": "threshold_poisson",
+    "enforce_team_minutes": true,
+    "home_attack_multiplier": 1.0680722197944925,
+    "include_penalty_events": true,
+    "maximum_team_multiplier": 1.5,
+    "minimum_team_multiplier": 0.6,
+    "minutes_allocation": "team_total",
+    "minutes_model": "two_stage",
+    "minutes_prior_matches": 6.0,
+    "player_rate_prior_minutes": 1776.650037050099,
+    "playing_time_artifact": null,
+    "promoted_team_attack_multiplier": 1.037831173352192,
+    "promoted_team_defence_multiplier": 1.2,
+    "recent_evidence_weight": 1.845760710001814,
+    "recent_gameweeks": 4,
+    "scoring_event_source": "actual",
+    "scoring_recent_evidence_weight": 1.0,
+    "team_assist_per_goal_prior": 0.72,
+    "team_form_half_life_gameweeks": 8.0,
+    "team_minutes_per_fixture": 990.0,
+    "team_prior_matches": 11.870184562035677,
+    "team_strength_carry_forward": true
+  },
+  "robust_season_scores": {
+    "2022-23": 2.785848,
+    "2023-24": 2.917236
+  },
+  "study_name": "fpl-preseason-priors-fit-v1",
+  "target_seasons": [
+    "2022-23",
+    "2023-24"
+  ],
+  "transfers_across_seasons": true,
+  "trials_completed": 40,
+  "trials_requested": 40
+}
