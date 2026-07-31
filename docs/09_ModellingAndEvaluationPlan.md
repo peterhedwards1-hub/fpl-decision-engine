@@ -588,7 +588,7 @@ machine-checkable.
 | 1 | Bootstrap intervals; oracle sensitivity; residual slices; calibration | **Complete for current components** | Regenerate diagnostics as new forward outcomes and candidate runs arrive |
 | 2 | Hurdle playing-time model; hierarchical pooling; learned decay | **Implemented; logistic candidate registered** | Beats v4 on genuinely forward forecast and decision tiers |
 | 3 | Share-of-team xG/xA; team and fixture model; components; DC by calibration | **Coherent design implemented; historical design result failed RMSE/top-player bias** | Forward gate, or redesign player allocation using oracle evidence |
-| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and registered as `preseason-priors-v1`; parameters declared, not fitted** | Both gate tiers on genuinely forward 2026/27 results |
+| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and registered as `preseason-priors-v1`; parameters declared, not fitted; gate now reachable via `backtest-forward-candidate` against the committed control** | Both gate tiers on genuinely forward 2026/27 results; owned-captain and transfer regret producers still missing |
 | 4 | Joint Monte Carlo with shared team factors; constrained ensemble | **Infrastructure implemented** | Accumulate forward CRPS, coverage, PIT and decision evidence |
 | 5 | Forward qualification on 2026/27 | **Executable and predeclared; outcomes pending** | Both gate tiers, no position regression |
 | A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented** | Accumulate actual actions to estimate option value and transfer regret |

@@ -301,6 +301,28 @@ fpl-history --database data/fpl.sqlite3 project-forward-candidate \
   playing-time-hurdle-logistic-v1 --start-gameweek 1 --horizon 8
 ```
 
+Once outcomes exist, score a candidate against its declared control. This produces the
+matched pair the gate requires — same season, origins and horizon, both
+`pre_deadline_only`, the challenger running the declaration verbatim:
+
+```bash
+fpl-history --database data/fpl.sqlite3 backtest-forward-candidate \
+  preseason-priors-v1 \
+  --incumbent-config config/model_candidates/preseason-priors-v1-incumbent.json \
+  --origin-start 1 --origin-end 8 --horizon 1
+
+fpl-history --database data/fpl.sqlite3 build-decision-evidence \
+  --incumbent-run <id> --challenger-run <id> \
+  --owned-captain-regret-change <value> --transfer-regret-change <value> \
+  --output data/preseason-priors-v1-decision-evidence.json
+```
+
+`build-decision-evidence` measures `legal_squad_regret_change` from the run pair. The
+owned-captain and transfer changes have no replay producer yet and must be supplied
+explicitly, so neither gate can pass on a silent zero. To run any full configuration
+outside the candidate flow, pass `backtest-projections --model-config <path>`;
+individual flags still override single fields on top of it.
+
 Audit prospective evidence completeness after each deadline:
 
 ```bash

@@ -145,6 +145,59 @@ fpl-history --database data/fpl.sqlite3 project-forward-candidate `
 The command fails after the deadline. The prospective completeness report requires one
 version- and config-matched run for every registered candidate after each deadline.
 
+## Scoring a candidate once outcomes exist
+
+`project-forward-candidate` freezes a pre-deadline forecast. Scoring it is a separate
+step, and until 2026-07-31 the gate could not reach `preseason-priors-v1` at all:
+`backtest-projections` assembled its configuration from the incumbent defaults plus a
+fixed flag list, and nine declared fields — every Stage 3a field among them — had no
+flag. The gate compares a run's persisted configuration to the declaration key by key,
+so every run produced this way was rejected with "Challenger configuration differs from
+declaration" regardless of how the model performed.
+
+`backtest-projections --model-config` now runs a full declared configuration; individual
+flags still override single fields on top of it. `backtest-forward-candidate` wraps that
+for the gate specifically, producing both runs the gate needs over one identical scope:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 backtest-forward-candidate `
+  preseason-priors-v1 `
+  --incumbent-config config/model_candidates/preseason-priors-v1-incumbent.json `
+  --origin-start 1 --origin-end 8 --horizon 1
+```
+
+The challenger runs the declaration verbatim under the registered model version; the
+incumbent runs the declared control over the same origins; both are forced to
+`pre_deadline_only`. The command refuses a control equal to the candidate, a control
+sharing the candidate's model version, and rules from the wrong season, so a pair cannot
+fail the gate's scope, version or configuration checks through operator error. It also
+rebuilds the declared configuration before spending a backtest and fails if it no longer
+round-trips through `ProjectionModelConfig` — a field added to the dataclass after
+registration would otherwise be discovered only after both runs had completed.
+
+`config/model_candidates/preseason-priors-v1-incumbent.json` is the declared control: it
+is `rates-rules-corrected-v4` exactly, so it differs from the candidate in
+`team_strength_carry_forward` and `cold_start_prior` and nothing else. Committing it
+rather than deriving it keeps the comparison attributable to Stage 3a and stops the
+control being retuned later.
+
+Decision evidence is then measured from that pair:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 build-decision-evidence `
+  --incumbent-run <id> --challenger-run <id> `
+  --owned-captain-regret-change <value> --transfer-regret-change <value> `
+  --output data/preseason-priors-v1-decision-evidence.json
+```
+
+`legal_squad_regret_change` is computed directly from `evaluate_legal_squad_regret` over
+both runs, which must cover identical origins. Owned-captain and continuous-transfer
+regret have no replay producer yet, so both stay required operator inputs rather than
+being defaulted to zero — a silent zero would pass two of the five decision gates on no
+evidence. Building those two producers is the remaining gap in Stage 3a gate readiness.
+
+The resulting file feeds `evaluate-forward-candidate --decision-evidence`.
+
 ## What happens next
 
 There is no remaining hidden historical validation set. The engineering loop is now:
