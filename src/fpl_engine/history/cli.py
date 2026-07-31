@@ -21,6 +21,7 @@ from ..evaluation import (
     build_evaluation_suite,
     compare_backtest_to_baselines,
     evaluate_legal_squad_regret,
+    replay_backtest_transfer_continuity,
     write_json_report,
 )
 from ..learned_challenger import train_and_evaluate_learned_challenger
@@ -314,6 +315,19 @@ def main() -> None:
             "position_points_per_fixture",
         ),
     )
+    continuity_parser = subparsers.add_parser(
+        "replay-transfer-continuity",
+        help="Replay a backtest as one persistent squad with hits and autosubs",
+    )
+    continuity_parser.add_argument("run_id", type=int)
+    continuity_parser.add_argument(
+        "--rules",
+        help="Season rules JSON (defaults to the backtest season)",
+    )
+    continuity_parser.add_argument("--first-gameweek", type=int)
+    continuity_parser.add_argument("--last-gameweek", type=int)
+    continuity_parser.add_argument("--max-transfers-per-week", type=int, default=2)
+    continuity_parser.add_argument("--output")
     suite_parser = subparsers.add_parser(
         "compile-model-evaluation",
         help="Compile horizon, baseline and challenger gates from backtest runs",
@@ -508,6 +522,34 @@ def main() -> None:
                 methods=tuple(args.methods),
             )
             print(json.dumps(regret.as_dict(), indent=2))
+            return
+
+        if args.command == "replay-transfer-continuity":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            continuity = replay_backtest_transfer_continuity(
+                database,
+                args.run_id,
+                rules,
+                first_gameweek=args.first_gameweek,
+                last_gameweek=args.last_gameweek,
+                max_transfers_per_week=args.max_transfers_per_week,
+            )
+            if args.output:
+                write_json_report(continuity, args.output)
+            print(json.dumps(continuity, indent=2))
             return
 
         if args.command == "compile-model-evaluation":

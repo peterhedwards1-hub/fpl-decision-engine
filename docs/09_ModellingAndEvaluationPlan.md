@@ -173,7 +173,15 @@ using model minutes, and a position average.
 
 **Legal squad regret** — `evaluate-squad-regret` replays each origin as an exact £100m
 persistent-squad, legal-XI and captain problem. This is ahead of the 1.0 schedule, which
-gated squad regret behind decision-layer repair.
+gated squad regret behind decision-layer repair. Realised and hindsight points now both
+replay the selected squad's own bench order through exact autosubs, so the two sides
+share one scoring convention; figures published before that correction are stale.
+
+**Transfer continuity** — `replay-transfer-continuity` removes the free wildcard the
+regret measure grants at every origin. One squad, bank and free-transfer count are
+carried across Gameweeks, hits are charged, and each week is scored with autosubs. It is
+the season-shaped counterpart to regret, not a replacement: regret ranks selection
+methods, continuity estimates a reachable score.
 
 ### 4.1 Paired moving-block bootstrap — delivered
 
@@ -591,7 +599,7 @@ machine-checkable.
 | 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and registered as `preseason-priors-v1`; parameters declared, not fitted; gate now reachable via `backtest-forward-candidate` against the committed control** | Both gate tiers on genuinely forward 2026/27 results; owned-captain and transfer regret producers still missing |
 | 4 | Joint Monte Carlo with shared team factors; constrained ensemble | **Infrastructure implemented** | Accumulate forward CRPS, coverage, PIT and decision evidence |
 | 5 | Forward qualification on 2026/27 | **Executable and predeclared; outcomes pending** | Both gate tiers, no position regression |
-| A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented** | Accumulate actual actions to estimate option value and transfer regret |
+| A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented; regret scoring corrected for autosubs and continuity replayable from any backtest run** | Accumulate actual actions to estimate option value and transfer regret; price chip usage into the replay |
 | B | Prospective capture | **Operational; run continuously** | No missed deadline evidence |
 
 ---

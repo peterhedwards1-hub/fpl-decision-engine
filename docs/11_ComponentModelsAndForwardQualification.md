@@ -116,6 +116,18 @@ The transfer comparator is same-state, one-Gameweek hindsight rather than a glob
 clairvoyant season policy. Selling-price profit history is not reconstructed in the
 replay; supplied origin prices are used.
 
+`replay_backtest_transfer_continuity` drives that replay from any completed backtest run,
+so the continuity machinery is no longer reachable only from hand-assembled weeks. It
+takes each origin's same-Gameweek forecast, selects the opening squad at the first
+replayed Gameweek, and carries one squad forward from there. The candidate universe is
+fixed at the opening Gameweek, since a player who first appears mid-window cannot be
+carried by a replay that requires an identical candidate set every week.
+
+`score_squad_gameweek` — the exact autosub, bench-order and captain-fallback scorer — is
+now shared with `evaluate_legal_squad_regret`, which previously summed the forecast XI
+and never substituted a blanking starter. Both sides of that regret measure are replayed
+through it, so realised and hindsight points are on one scoring convention.
+
 ## Forward gate
 
 `evaluate-forward-candidate` requires:

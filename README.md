@@ -343,6 +343,22 @@ fpl-history --database data/fpl_history.sqlite3 \
   evaluate-squad-regret <run-id> --methods model season_points_per_fixture
 ```
 
+Realised and hindsight points both replay the selected squad's own bench order through
+exact autosubs, so a blanking starter is substituted rather than charged as a zero.
+
+That measure grants a free wildcard at every origin, so it ranks selection methods rather
+than estimating a reachable score. For the latter, replay the same run as one persistent
+squad — carrying bank and free transfers forward and charging hits:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 \
+  replay-transfer-continuity <run-id> --max-transfers-per-week 1
+```
+
+It reports per-Gameweek transfers, hits, autosub counts and net points, plus a
+`season_points` total. Chips are not played and the candidate universe is fixed at the
+opening Gameweek.
+
 The latest completed scorecard also appears in the app's Data Health view. Backtest runs
 do not create ordinary production projection runs.
 
