@@ -233,17 +233,42 @@ def replay_transfer_continuity(
     )
 
 
+@dataclass(frozen=True)
+class ResolvedGameweek:
+    """One Gameweek of a selected squad, resolved exactly as FPL would score it."""
+
+    total_points: int
+    scoring_player_ids: frozenset[str]
+    effective_captain_id: str | None
+    substitution_count: int
+
+
 def score_squad_gameweek(
     result: FullSquadResult,
     outcomes: dict[str, RealisedPlayerOutcome],
     rules: SeasonRules,
     gameweek: int,
 ) -> tuple[int, int, str | None]:
-    """Score one Gameweek of a selected squad exactly as FPL would.
+    """Points, substitution count and the captain who actually counted."""
 
-    Applies the Gameweek's own lineup plan, bench-order autosubs and captain
-    fallback, and returns the points, substitution count and the captain who
-    actually counted.
+    resolved = resolve_squad_gameweek(result, outcomes, rules, gameweek)
+    return (
+        resolved.total_points,
+        resolved.substitution_count,
+        resolved.effective_captain_id,
+    )
+
+
+def resolve_squad_gameweek(
+    result: FullSquadResult,
+    outcomes: dict[str, RealisedPlayerOutcome],
+    rules: SeasonRules,
+    gameweek: int,
+) -> ResolvedGameweek:
+    """Apply the Gameweek's lineup plan, bench-order autosubs and captain fallback.
+
+    Returns the scoring lineup as well as the score, because the set of players
+    who actually counted is what a captaincy decision could have chosen from.
     """
 
     id_lookup = {
@@ -302,10 +327,17 @@ def score_squad_gameweek(
     }
     score = calculate_team_score(squad, points, minutes, rules)
     inverse = {value: key for key, value in id_lookup.items()}
-    return (
-        score.total_points,
-        len(score.substitutions),
-        (None if score.effective_captain_id is None else inverse[score.effective_captain_id]),
+    return ResolvedGameweek(
+        total_points=score.total_points,
+        scoring_player_ids=frozenset(
+            inverse[player_id] for player_id in score.scoring_player_ids
+        ),
+        effective_captain_id=(
+            None
+            if score.effective_captain_id is None
+            else inverse[score.effective_captain_id]
+        ),
+        substitution_count=len(score.substitutions),
     )
 
 

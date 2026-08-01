@@ -21,6 +21,7 @@ from ..evaluation import (
     build_evaluation_suite,
     compare_backtest_to_baselines,
     evaluate_legal_squad_regret,
+    evaluate_owned_captain_regret,
     replay_backtest_transfer_continuity,
     write_json_report,
 )
@@ -403,6 +404,14 @@ def main() -> None:
     continuity_parser.add_argument("--last-gameweek", type=int)
     continuity_parser.add_argument("--max-transfers-per-week", type=int, default=2)
     continuity_parser.add_argument("--output")
+    captain_parser = subparsers.add_parser(
+        "evaluate-captain-regret",
+        help="Score captaincy against the best armband in the model's own squad",
+    )
+    captain_parser.add_argument("run_id", type=int)
+    captain_parser.add_argument("--rules")
+    captain_parser.add_argument("--method", default="model")
+    captain_parser.add_argument("--output")
     suite_parser = subparsers.add_parser(
         "compile-model-evaluation",
         help="Compile horizon, baseline and challenger gates from backtest runs",
@@ -528,12 +537,6 @@ def main() -> None:
     )
     evidence_parser.add_argument("--incumbent-run", type=int, required=True)
     evidence_parser.add_argument("--challenger-run", type=int, required=True)
-    evidence_parser.add_argument(
-        "--owned-captain-regret-change",
-        type=float,
-        required=True,
-        help="No replay producer exists yet; supply the measured change explicitly",
-    )
     evidence_parser.add_argument(
         "--transfer-regret-change",
         type=float,
@@ -686,6 +689,32 @@ def main() -> None:
             if args.output:
                 write_json_report(comparison, args.output)
             print(json.dumps(comparison, indent=2))
+            return
+
+        if args.command == "evaluate-captain-regret":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            captain = evaluate_owned_captain_regret(
+                database,
+                args.run_id,
+                rules,
+                method=args.method,
+            )
+            if args.output:
+                write_json_report(captain.as_dict(), args.output)
+            print(json.dumps(captain.as_dict(), indent=2))
             return
 
         if args.command == "replay-transfer-continuity":
@@ -911,7 +940,6 @@ def main() -> None:
                 rules,
                 incumbent_run_id=args.incumbent_run,
                 challenger_run_id=args.challenger_run,
-                owned_captain_regret_change=args.owned_captain_regret_change,
                 transfer_regret_change=args.transfer_regret_change,
                 method=args.method,
             )

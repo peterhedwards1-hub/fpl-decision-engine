@@ -12,7 +12,7 @@ from typing import Any
 
 from .backtest import ProjectionBacktester
 from .config import SeasonRules
-from .evaluation import evaluate_legal_squad_regret
+from .evaluation import evaluate_legal_squad_regret, evaluate_owned_captain_regret
 from .history.database import HistoricalDatabase
 from .projections import MODEL_VERSION, ProjectionModelConfig
 
@@ -261,19 +261,16 @@ def build_decision_gate_evidence(
     *,
     incumbent_run_id: int,
     challenger_run_id: int,
-    owned_captain_regret_change: float,
     transfer_regret_change: float,
     method: str = "model",
 ) -> DecisionGateEvidence:
-    """Measure the legal-squad decision gate directly from a matched run pair.
+    """Measure the decision gates that have producers, from a matched run pair.
 
-    Owned-captain and transfer regret have no replay producer yet, so both remain
-    explicit operator inputs rather than being silently defaulted to zero.
-
-    Requiring them is weaker than deriving them: nothing here checks that the
-    supplied numbers came from a measurement, so the gate can still be passed
-    on operator-entered values. They should reference persisted evidence
-    records once dedicated replay commands produce them.
+    Legal-squad and owned-captain regret are both measured here. Continuous
+    transfer regret has no replay producer yet, so it remains an explicit
+    operator input rather than being silently defaulted to zero — which is
+    weaker than deriving it, since nothing checks the supplied number came
+    from a measurement.
     """
 
     incumbent = evaluate_legal_squad_regret(
@@ -297,14 +294,34 @@ def build_decision_gate_evidence(
     change = (
         challenger.mean_regret_by_method[method] - incumbent.mean_regret_by_method[method]
     )
+    incumbent_captain = evaluate_owned_captain_regret(
+        database,
+        incumbent_run_id,
+        rules,
+        method=method,
+    )
+    challenger_captain = evaluate_owned_captain_regret(
+        database,
+        challenger_run_id,
+        rules,
+        method=method,
+    )
+    if incumbent_captain.samples != challenger_captain.samples:
+        raise ValueError(
+            "Captain evidence requires both runs to cover identical Gameweeks"
+        )
+    captain_change = (
+        challenger_captain.mean_regret - incumbent_captain.mean_regret
+    )
     return DecisionGateEvidence(
         legal_squad_regret_change=round(change, 6),
-        owned_captain_regret_change=owned_captain_regret_change,
+        owned_captain_regret_change=round(captain_change, 6),
         transfer_regret_change=transfer_regret_change,
         source_report=(
-            f"legal-squad-regret method={method} "
+            f"legal-squad-regret and owned-captain-regret method={method} "
             f"incumbent_run={incumbent_run_id} challenger_run={challenger_run_id} "
-            f"origins={len(incumbent_origins)}"
+            f"origins={len(incumbent_origins)} "
+            f"captain_decisions={incumbent_captain.samples}"
         ),
     )
 

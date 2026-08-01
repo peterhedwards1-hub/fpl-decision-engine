@@ -14,6 +14,7 @@ from .decision_evaluation import (
     RealisedPlayerOutcome,
     TransferReplayWeek,
     replay_transfer_continuity,
+    resolve_squad_gameweek,
     score_squad_gameweek,
 )
 from .domain import Position
@@ -25,6 +26,16 @@ from .optimisation import (
     optimise_full_squad,
 )
 from .transfers import CurrentSquad
+
+#: Forecast methods a regret replay can select a squad with. "model" is the
+#: run's own projection; the rest are the simple baselines it must beat.
+SUPPORTED_REGRET_METHODS = (
+    "model",
+    "season_points_per_fixture",
+    "recent_4_points_per_fixture",
+    "season_points_per_90_model_minutes",
+    "position_points_per_fixture",
+)
 
 
 @dataclass(frozen=True)
@@ -432,20 +443,12 @@ def _pooled_horizon_metrics(
     ]
 
 
-def evaluate_legal_squad_regret(
+def _regret_run_context(
     database: HistoricalDatabase,
     backtest_run_id: int,
     rules: SeasonRules,
-    *,
-    methods: tuple[str, ...] = (
-        "model",
-        "season_points_per_fixture",
-        "recent_4_points_per_fixture",
-        "season_points_per_90_model_minutes",
-        "position_points_per_fixture",
-    ),
-) -> LegalSquadRegretReport:
-    """Replay each origin as one legal persistent-squad selection problem."""
+) -> tuple[Any, dict[int, list[Any]], dict[int, Any], dict[str, Any]]:
+    """Load a completed run, its predictions by origin, and history prefixes."""
 
     run = database.connection.execute(
         """
@@ -490,22 +493,30 @@ def evaluate_legal_squad_regret(
         database,
         int(run["season_id"]),
     )
-    supported_methods = (
-        "model",
-        "season_points_per_fixture",
-        "recent_4_points_per_fixture",
-        "season_points_per_90_model_minutes",
-        "position_points_per_fixture",
-    )
-    unknown_methods = set(methods) - set(supported_methods)
-    if unknown_methods:
-        raise ValueError(
-            f"Unknown legal-squad regret methods: {sorted(unknown_methods)}"
-        )
-    if not methods:
-        raise ValueError("At least one legal-squad regret method is required")
-    method_names = tuple(dict.fromkeys(methods))
-    regrets = []
+    return run, by_origin, player_history, position_history
+
+
+@dataclass(frozen=True)
+class _OriginCandidates:
+    """Everything one origin needs, built once and shared by both measures."""
+
+    origin_gameweek: int
+    target_gameweeks: tuple[int, ...]
+    candidates_by_method: dict[str, list[CandidatePlayer]]
+    actual_candidates: list[CandidatePlayer]
+    actual_lookup: dict[tuple[str, int], GameweekPlayerValue]
+
+
+def _origin_candidate_sets(
+    database: HistoricalDatabase,
+    run: Any,
+    by_origin: dict[int, list[Any]],
+    player_history: dict[int, Any],
+    position_history: dict[str, Any],
+    method_names: tuple[str, ...],
+):
+    """Yield forecast and actual candidate sets for each replayed origin."""
+
     for origin_gameweek, origin_rows in by_origin.items():
         metadata = player_metadata_as_of(
             database,
@@ -635,19 +646,255 @@ def evaluate_legal_squad_regret(
                     gameweek_values=tuple(actual_values),
                 )
             )
+        yield _OriginCandidates(
+            origin_gameweek=origin_gameweek,
+            target_gameweeks=target_gameweeks,
+            candidates_by_method=candidates_by_method,
+            actual_candidates=actual_candidates,
+            actual_lookup={
+                (
+                    candidate.source_player_id,
+                    value.gameweek_number,
+                ): value
+                for candidate in actual_candidates
+                for value in candidate.gameweek_values
+            },
+        )
+
+
+@dataclass(frozen=True)
+class OwnedCaptainGameweekRegret:
+    """One Gameweek's captaincy decision, scored against the same squad."""
+
+    origin_gameweek: int
+    target_gameweek: int
+    captain_id: str
+    vice_captain_id: str
+    effective_captain_id: str | None
+    effective_captain_points: int
+    best_available_id: str | None
+    best_available_points: int
+    regret: int
+    vice_captain_applied: bool
+
+
+@dataclass(frozen=True)
+class OwnedCaptainRegretReport:
+    backtest_run_id: int
+    season_code: str
+    model_version: str
+    method: str
+    gameweeks: tuple[OwnedCaptainGameweekRegret, ...]
+    samples: int
+    total_regret: int
+    mean_regret: float
+    vice_captain_applied_count: int
+    no_captain_count: int
+    limitations: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "backtest_run_id": self.backtest_run_id,
+            "season_code": self.season_code,
+            "model_version": self.model_version,
+            "method": self.method,
+            "gameweeks": [asdict(entry) for entry in self.gameweeks],
+            "samples": self.samples,
+            "total_regret": self.total_regret,
+            "mean_regret": self.mean_regret,
+            "vice_captain_applied_count": self.vice_captain_applied_count,
+            "no_captain_count": self.no_captain_count,
+            "limitations": list(self.limitations),
+        }
+
+
+def evaluate_owned_captain_regret(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+    rules: SeasonRules,
+    *,
+    method: str = "model",
+) -> OwnedCaptainRegretReport:
+    """Score captaincy against the best armband available in the same squad.
+
+    The comparator is deliberately narrow. Comparing against the highest
+    scorer in the game measures player ranking, not captaincy: a manager can
+    only captain someone they own and who actually played. So the hindsight
+    choice is the best of that Gameweek's own scoring lineup — the players the
+    armband could have been on and still counted — after autosubs.
+
+    The model's side applies the real fallback: the vice captains when the
+    captain records no minutes, and nobody does when neither plays.
+    """
+
+    if method not in SUPPORTED_REGRET_METHODS:
+        raise ValueError(
+            f"Unknown owned-captain regret method {method!r}; expected one of "
+            + ", ".join(SUPPORTED_REGRET_METHODS)
+        )
+    run, by_origin, player_history, position_history = _regret_run_context(
+        database,
+        backtest_run_id,
+        rules,
+    )
+    entries = []
+    for origin in _origin_candidate_sets(
+        database,
+        run,
+        by_origin,
+        player_history,
+        position_history,
+        (method,),
+    ):
+        predicted = optimise_full_squad(
+            tuple(origin.candidates_by_method[method]),
+            budget_tenths=rules.squad.budget_tenths,
+            rules=rules,
+        )
+        plans = {plan.gameweek_number: plan for plan in predicted.gameweek_plans}
+        for target_gameweek in origin.target_gameweeks:
+            plan = plans.get(target_gameweek)
+            if plan is None:
+                continue
+            outcomes = _realised_outcomes(
+                predicted,
+                origin.actual_lookup,
+                target_gameweek,
+            )
+            resolved = resolve_squad_gameweek(
+                predicted,
+                outcomes,
+                rules,
+                target_gameweek,
+            )
+            effective = resolved.effective_captain_id
+            effective_points = (
+                0 if effective is None else outcomes[effective].points
+            )
+            attainable = {
+                player_id: outcomes[player_id].points
+                for player_id in resolved.scoring_player_ids
+            }
+            best_id = (
+                None
+                if not attainable
+                else max(sorted(attainable), key=lambda key: attainable[key])
+            )
+            best_points = 0 if best_id is None else attainable[best_id]
+            entries.append(
+                OwnedCaptainGameweekRegret(
+                    origin_gameweek=origin.origin_gameweek,
+                    target_gameweek=target_gameweek,
+                    captain_id=plan.captain_id,
+                    vice_captain_id=plan.vice_captain_id,
+                    effective_captain_id=effective,
+                    effective_captain_points=effective_points,
+                    best_available_id=best_id,
+                    best_available_points=best_points,
+                    regret=max(0, best_points - effective_points),
+                    vice_captain_applied=(
+                        effective is not None and effective == plan.vice_captain_id
+                        and plan.vice_captain_id != plan.captain_id
+                    ),
+                )
+            )
+    if not entries:
+        raise ValueError(
+            f"Backtest run {backtest_run_id} produced no captaincy decisions"
+        )
+    total = sum(entry.regret for entry in entries)
+    return OwnedCaptainRegretReport(
+        backtest_run_id=backtest_run_id,
+        season_code=str(run["season_code"]),
+        model_version=str(run["model_version"]),
+        method=method,
+        gameweeks=tuple(entries),
+        samples=len(entries),
+        total_regret=total,
+        mean_regret=round(total / len(entries), 4),
+        vice_captain_applied_count=sum(
+            entry.vice_captain_applied for entry in entries
+        ),
+        no_captain_count=sum(
+            entry.effective_captain_id is None for entry in entries
+        ),
+        limitations=(
+            "The comparator is the best armband within the squad the model "
+            "actually selected, not the best player in the game.",
+            "Attainable captains are that Gameweek's scoring lineup after "
+            "autosubs, because an armband on a player who did not appear "
+            "returns nothing.",
+            "Each origin re-selects a squad, so captaincy is measured given "
+            "the model's own selection rather than a carried squad.",
+            "Triple Captain is not applied; this measures the ordinary "
+            "doubling only.",
+        ),
+    )
+
+
+def _realised_outcomes(
+    result: FullSquadResult,
+    actual_lookup: dict[tuple[str, int], GameweekPlayerValue],
+    gameweek: int,
+) -> dict[str, RealisedPlayerOutcome]:
+    outcomes = {}
+    for player in result.players:
+        value = actual_lookup[(player.source_player_id, gameweek)]
+        outcomes[player.source_player_id] = RealisedPlayerOutcome(
+            source_player_id=player.source_player_id,
+            points=int(round(value.expected_points)),
+            minutes=90 if value.appearance_probability > 0 else 0,
+        )
+    return outcomes
+
+
+def evaluate_legal_squad_regret(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+    rules: SeasonRules,
+    *,
+    methods: tuple[str, ...] = (
+        "model",
+        "season_points_per_fixture",
+        "recent_4_points_per_fixture",
+        "season_points_per_90_model_minutes",
+        "position_points_per_fixture",
+    ),
+) -> LegalSquadRegretReport:
+    """Replay each origin as one legal persistent-squad selection problem."""
+
+    run, by_origin, player_history, position_history = _regret_run_context(
+        database,
+        backtest_run_id,
+        rules,
+    )
+    unknown_methods = set(methods) - set(SUPPORTED_REGRET_METHODS)
+    if unknown_methods:
+        raise ValueError(
+            f"Unknown legal-squad regret methods: {sorted(unknown_methods)}"
+        )
+    if not methods:
+        raise ValueError("At least one legal-squad regret method is required")
+    method_names = tuple(dict.fromkeys(methods))
+    regrets = []
+    for origin in _origin_candidate_sets(
+        database,
+        run,
+        by_origin,
+        player_history,
+        position_history,
+        method_names,
+    ):
+        origin_gameweek = origin.origin_gameweek
+        target_gameweeks = origin.target_gameweeks
+        candidates_by_method = origin.candidates_by_method
+        actual_candidates = origin.actual_candidates
+        actual_lookup = origin.actual_lookup
         hindsight = optimise_full_squad(
             tuple(actual_candidates),
             budget_tenths=rules.squad.budget_tenths,
             rules=rules,
         )
-        actual_lookup = {
-            (
-                candidate.source_player_id,
-                value.gameweek_number,
-            ): value
-            for candidate in actual_candidates
-            for value in candidate.gameweek_values
-        }
         # Both sides are replayed through the same scorer. Comparing a hindsight
         # solver objective against a replayed realised score would mix two
         # scoring conventions and misreport the difference as regret.
@@ -1022,16 +1269,9 @@ def _replayed_squad_points(
 
     realised = 0
     for gameweek in target_gameweeks:
-        outcomes = {}
-        for player in result.players:
-            value = actual_lookup[(player.source_player_id, gameweek)]
-            outcomes[player.source_player_id] = RealisedPlayerOutcome(
-                source_player_id=player.source_player_id,
-                points=int(round(value.expected_points)),
-                # Only the played/blanked distinction drives autosubs; the
-                # backtest row's own minutes are not carried on this value.
-                minutes=90 if value.appearance_probability > 0 else 0,
-            )
+        # Only the played/blanked distinction drives autosubs; the backtest
+        # row's own minutes are not carried on these values.
+        outcomes = _realised_outcomes(result, actual_lookup, gameweek)
         points, _, _ = score_squad_gameweek(result, outcomes, rules, gameweek)
         realised += points
     return float(realised)

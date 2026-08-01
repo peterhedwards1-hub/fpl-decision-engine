@@ -673,16 +673,17 @@ def test_decision_evidence_measures_legal_squad_regret_from_the_pair(
             FORWARD_RULES,
             incumbent_run_id=pair.incumbent_run_id,
             challenger_run_id=pair.challenger_run_id,
-            owned_captain_regret_change=-0.25,
             transfer_regret_change=0.0,
         )
 
         assert isinstance(evidence.legal_squad_regret_change, float)
-        # The two hand-supplied gates are carried through untouched, not defaulted.
-        assert evidence.owned_captain_regret_change == -0.25
+        # Captain regret is now measured from the pair rather than supplied.
+        assert isinstance(evidence.owned_captain_regret_change, float)
+        # Continuous transfer regret has no producer, so it stays an input.
         assert evidence.transfer_regret_change == 0.0
         assert "incumbent_run=" in evidence.source_report
         assert "origins=3" in evidence.source_report
+        assert "captain_decisions=3" in evidence.source_report
 
 
 def test_decision_evidence_refuses_runs_covering_different_origins(
@@ -716,7 +717,6 @@ def test_decision_evidence_refuses_runs_covering_different_origins(
                 FORWARD_RULES,
                 incumbent_run_id=pair.incumbent_run_id,
                 challenger_run_id=pair.challenger_run_id,
-                owned_captain_regret_change=0.0,
                 transfer_regret_change=0.0,
             )
 

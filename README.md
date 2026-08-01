@@ -317,9 +317,10 @@ fpl-history --database data/fpl.sqlite3 build-decision-evidence \
   --output data/preseason-priors-v1-decision-evidence.json
 ```
 
-`build-decision-evidence` measures `legal_squad_regret_change` from the run pair. The
-owned-captain and transfer changes have no replay producer yet and must be supplied
-explicitly, so neither gate can pass on a silent zero. To run any full configuration
+`build-decision-evidence` measures `legal_squad_regret_change` and
+`owned_captain_regret_change` from the run pair. Continuous transfer regret has no replay
+producer yet and must be supplied explicitly, so that gate cannot pass on a silent zero —
+though nothing yet checks the supplied number came from a measurement. To run any full configuration
 outside the candidate flow, pass `backtest-projections --model-config <path>`;
 individual flags still override single fields on top of it.
 
@@ -345,6 +346,20 @@ fpl-history --database data/fpl_history.sqlite3 \
 
 Realised and hindsight points both replay the selected squad's own bench order through
 exact autosubs, so a blanking starter is substituted rather than charged as a zero.
+
+Captaincy is scored separately, against the best armband available *within the same
+squad*:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 \
+  evaluate-captain-regret <run-id>
+```
+
+The comparator is deliberately narrow. Comparing against the highest scorer in the game
+would measure player ranking, not captaincy — a manager can only captain someone they own
+and who actually played. So the hindsight choice is the best of that Gameweek's own
+scoring lineup after autosubs, and the model's side applies the real fallback: the vice
+captains when the captain records no minutes, and nobody does when neither plays.
 
 That measure grants a free wildcard at every origin, so it ranks selection methods rather
 than estimating a reachable score. For the latter, replay the same run as one persistent
