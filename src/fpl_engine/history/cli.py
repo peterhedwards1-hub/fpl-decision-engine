@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
+from ..capture import capture_gameweek_forecasts
 from ..config import load_season_rules
 from ..diagnostics import (
     SUPPORTED_BASELINES,
@@ -485,6 +486,23 @@ def main() -> None:
     )
     capture_parser.add_argument("season_code")
     capture_parser.add_argument("--output")
+    forecast_capture_parser = subparsers.add_parser(
+        "capture-gameweek-forecasts",
+        help="Persist incumbent and every declared candidate before a deadline",
+    )
+    forecast_capture_parser.add_argument("season_code")
+    forecast_capture_parser.add_argument("--gameweek", type=int, required=True)
+    forecast_capture_parser.add_argument("--horizon", type=int, default=8)
+    forecast_capture_parser.add_argument(
+        "--incumbent-config",
+        help="Incumbent configuration JSON (defaults to the production model)",
+    )
+    forecast_capture_parser.add_argument(
+        "--incumbent-model-version",
+        default=MODEL_VERSION,
+    )
+    forecast_capture_parser.add_argument("--rules")
+    forecast_capture_parser.add_argument("--output")
     register_parser = subparsers.add_parser(
         "register-forward-candidate",
         help="Immutably declare a model configuration and promotion policy",
@@ -809,6 +827,33 @@ def main() -> None:
             )
             write_stage_one_diagnostics(diagnostics, args.output)
             print(json.dumps(diagnostics, indent=2))
+            return
+
+        if args.command == "capture-gameweek-forecasts":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            incumbent_config = (
+                DEFAULT_MODEL_CONFIG
+                if args.incumbent_config is None
+                else ProjectionModelConfig(
+                    **json.loads(
+                        Path(args.incumbent_config).read_text(encoding="utf-8")
+                    )
+                )
+            )
+            capture = capture_gameweek_forecasts(
+                database,
+                rules,
+                season_code=args.season_code,
+                gameweek=args.gameweek,
+                horizon_gameweeks=args.horizon,
+                incumbent_config=incumbent_config,
+                incumbent_model_version=args.incumbent_model_version,
+            )
+            if args.output:
+                write_json_report(capture, args.output)
+            print(json.dumps(capture, indent=2))
             return
 
         if args.command == "prospective-capture-status":

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .history.database import HistoricalDatabase
+from .projections import MODEL_VERSION
 
 
 def build_prospective_capture_status(
@@ -15,6 +16,7 @@ def build_prospective_capture_status(
     season_code: str,
     *,
     as_of: datetime | None = None,
+    incumbent_model_version: str = MODEL_VERSION,
 ) -> dict[str, Any]:
     """Report unrecoverable live-evidence gaps by Gameweek."""
 
@@ -63,6 +65,14 @@ def build_prospective_capture_status(
             candidates=candidates,
         )
         required = []
+        incumbent_capture = _incumbent_capture(
+            database,
+            season_id=int(season["id"]),
+            gameweek_id=gameweek_id,
+            gameweek_number=int(gameweek["number"]),
+            deadline_time=gameweek["deadline_time"],
+            model_version=incumbent_model_version,
+        )
         if deadline_passed:
             required.extend(
                 (
@@ -71,6 +81,10 @@ def build_prospective_capture_status(
                     "paired_news_projections",
                     "final_decision",
                     "actual_action",
+                    # A challenger run with nothing to compare against is not
+                    # evidence, and the gate needs matched pairs.
+                    "incumbent_projection",
+                    "complete_decision_record",
                 )
             )
             required.extend(
@@ -84,11 +98,18 @@ def build_prospective_capture_status(
                     "weekly_evaluation",
                 )
             )
+        decision_record = _decision_record_completeness(database, gameweek_id)
         missing = []
         for item in required:
             if item.startswith("candidate_projection:"):
                 key = item.split(":", 1)[1]
                 if candidate_capture[key]["valid_pre_deadline_runs"] == 0:
+                    missing.append(item)
+            elif item == "incumbent_projection":
+                if incumbent_capture["valid_pre_deadline_runs"] == 0:
+                    missing.append(item)
+            elif item == "complete_decision_record":
+                if not decision_record["complete"]:
                     missing.append(item)
             elif int(counts[item]) == 0:
                 missing.append(item)
@@ -104,7 +125,9 @@ def build_prospective_capture_status(
                     else "complete" if not missing else "incomplete"
                 ),
                 "counts": counts,
+                "incumbent_projection": incumbent_capture,
                 "candidate_projections": candidate_capture,
+                "decision_record": decision_record,
                 "missing_required": missing,
             }
         )
@@ -143,6 +166,12 @@ def build_prospective_capture_status(
             "with cumulative player outcomes and decision evaluation.",
             "Every declared forward candidate requires a pre-deadline projection "
             "whose model version and canonical config match its immutable registration.",
+            "The incumbent requires the same, because a challenger run with no "
+            "matched comparison cannot qualify anything.",
+            "A pre-deadline projection only counts when its rows carry expected "
+            "minutes and appearance probabilities; a run of nulls is not evidence.",
+            "A frozen decision only counts when it records the selected squad, "
+            "weekly XI, captain, vice-captain and bench order.",
         ],
     }
 
@@ -209,6 +238,128 @@ def _candidate_capture(
             "valid_pre_deadline_runs": valid,
         }
     return result
+
+
+def _incumbent_capture(
+    database: HistoricalDatabase,
+    *,
+    season_id: int,
+    gameweek_id: int,
+    gameweek_number: int,
+    deadline_time: object,
+    model_version: str,
+) -> dict[str, int | str]:
+    """Count usable pre-deadline incumbent runs for this Gameweek.
+
+    Held to the same standard as a candidate: generated before the deadline,
+    tied to an exact pre-deadline snapshot, and carrying real expected minutes
+    and appearance probabilities rather than nulls.
+    """
+
+    row = database.connection.execute(
+        """
+        SELECT COUNT(*) AS runs,
+               COALESCE(SUM(usable), 0) AS usable_runs
+        FROM (
+            SELECT (
+                SELECT COUNT(*)
+                FROM player_gameweek_projections projections
+                WHERE projections.projection_run_id = projection_runs.id
+                  AND projections.gameweek_number = ?
+                  AND projections.expected_minutes IS NOT NULL
+                  AND projections.appearance_probability IS NOT NULL
+            ) > 0 AS usable
+            FROM projection_runs
+            WHERE projection_runs.season_id = ?
+              AND projection_runs.start_gameweek = ?
+              AND projection_runs.model_version = ?
+              AND datetime(projection_runs.generated_at) < datetime(?)
+              AND EXISTS (
+                  SELECT 1
+                  FROM player_gameweek_observations observations
+                  WHERE observations.gameweek_id = ?
+                    AND observations.provenance_run_id =
+                        projection_runs.source_ingestion_run_id
+                    AND observations.observation_kind = 'live_pre_deadline'
+                    AND observations.timing_quality = 'exact'
+                    AND datetime(observations.observed_at) < datetime(?)
+              )
+        )
+        """,
+        (
+            gameweek_number,
+            season_id,
+            gameweek_number,
+            model_version,
+            deadline_time,
+            gameweek_id,
+            deadline_time,
+        ),
+    ).fetchone()
+    return {
+        "model_version": model_version,
+        "version_matched_runs": int(row["runs"]),
+        "valid_pre_deadline_runs": int(row["usable_runs"]),
+    }
+
+
+#: What a frozen decision must record for the week to be replayable later.
+REQUIRED_DECISION_FIELDS = (
+    "squad",
+    "starting_xi",
+    "captain",
+    "vice_captain",
+    "bench_order",
+)
+
+
+def _decision_record_completeness(
+    database: HistoricalDatabase,
+    gameweek_id: int,
+) -> dict[str, Any]:
+    """Check a frozen decision records the choices, not merely that one existed.
+
+    `recommendation_json` is schema-free, so a final run can be written with an
+    empty recommendation and still satisfy a bare existence check.
+    """
+
+    rows = database.connection.execute(
+        """
+        SELECT recommendation_json
+        FROM weekly_decision_runs
+        WHERE gameweek_id = ? AND mode = 'final'
+        ORDER BY id DESC
+        """,
+        (gameweek_id,),
+    ).fetchall()
+    if not rows:
+        return {
+            "final_runs": 0,
+            "complete": False,
+            "missing_fields": list(REQUIRED_DECISION_FIELDS),
+        }
+    best_missing = list(REQUIRED_DECISION_FIELDS)
+    for row in rows:
+        try:
+            recommendation = json.loads(row["recommendation_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(recommendation, dict):
+            continue
+        missing = [
+            field
+            for field in REQUIRED_DECISION_FIELDS
+            if not recommendation.get(field)
+        ]
+        if len(missing) < len(best_missing):
+            best_missing = missing
+        if not missing:
+            break
+    return {
+        "final_runs": len(rows),
+        "complete": not best_missing,
+        "missing_fields": best_missing,
+    }
 
 
 def _capture_counts(

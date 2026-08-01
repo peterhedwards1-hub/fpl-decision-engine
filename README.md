@@ -323,6 +323,25 @@ operator, so the gate cannot be passed on an asserted number. To run any full co
 outside the candidate flow, pass `backtest-projections --model-config <path>`;
 individual flags still override single fields on top of it.
 
+Before each deadline, capture the forecasts the forward gate will need. One call
+persists the incumbent and every declared candidate from the same pre-deadline snapshot:
+
+```bash
+fpl-history --database data/fpl.sqlite3 capture-gameweek-forecasts 2026-27 \
+  --gameweek 1 --horizon 8
+```
+
+It fails closed: after the deadline there is no honest pre-deadline forecast to take, so
+nothing is written and nothing may be back-filled. It also refuses when no exact
+pre-deadline snapshot exists yet, and when a candidate shares the incumbent's model
+version — their runs would be indistinguishable later.
+
+The incumbent is captured alongside the candidates deliberately. A challenger run with
+nothing to compare against is not evidence, and the gate needs matched pairs. The output
+records the projection run IDs, configuration hashes, the ingestion run that produced the
+snapshot, and the generation timestamp. Outcomes are joined afterwards; this record is the
+part that cannot be reconstructed once the deadline passes.
+
 Audit prospective evidence completeness after each deadline:
 
 ```bash
@@ -332,7 +351,12 @@ fpl-history --database data/fpl.sqlite3 \
 
 The status report checks exact pre-deadline snapshots, completed-fixture captures with
 cumulative player outcomes, manager state, paired pre/post-news projections, frozen
-decisions, actual actions and evaluations. The durable GitHub workflow is scheduled on
+decisions, actual actions and evaluations. It additionally requires an **incumbent**
+pre-deadline projection, not only the declared candidates; counts a projection only when
+its rows carry expected minutes and appearance probabilities, since a run of nulls is not
+evidence; and counts a frozen decision only when it records the selected squad, weekly XI,
+captain, vice-captain and bench order, since `recommendation_json` is schema-free and a
+bare existence check would pass an empty one. The durable GitHub workflow is scheduled on
 Monday, Thursday and Friday during season months, while remaining manually dispatchable.
 
 The expensive legal decision gate replays a £100m persistent squad, legal weekly XIs and
