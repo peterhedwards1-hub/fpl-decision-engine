@@ -147,7 +147,8 @@ def test_the_two_metrics_are_reported_separately(tmp_path) -> None:
     assert report.same_state_total_regret >= 0
     assert report.continuous_policy_points > 0
     assert any(
-        "No chip is played" in limitation for limitation in report.limitations
+        "plays nothing by default" in limitation
+        for limitation in report.limitations
     )
     assert any(
         "positive regret by construction" in limitation

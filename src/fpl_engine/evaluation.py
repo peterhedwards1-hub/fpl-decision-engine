@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .backtest import load_backtest_report
+from .chip_state import ScoringChipPolicy
 from .config import SeasonRules
 from .decision_evaluation import (
     RealisedPlayerOutcome,
@@ -663,6 +664,130 @@ def _origin_candidate_sets(
 
 
 @dataclass(frozen=True)
+class ChipWeekValue:
+    """What a scoring chip was worth in one Gameweek, given the owned squad."""
+
+    gameweek_number: int
+    chip: str
+    legal: bool
+    realised_gain: int
+
+
+@dataclass(frozen=True)
+class ChipRegretReport:
+    """Timing regret for the two chips whose value is local to one Gameweek."""
+
+    backtest_run_id: int
+    season_code: str
+    model_version: str
+    gameweeks: tuple[int, ...]
+    played: tuple[dict[str, Any], ...]
+    by_chip: dict[str, dict[str, Any]]
+    total_regret: int
+    limitations: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "backtest_run_id": self.backtest_run_id,
+            "season_code": self.season_code,
+            "model_version": self.model_version,
+            "gameweeks": list(self.gameweeks),
+            "played": [dict(entry) for entry in self.played],
+            "by_chip": self.by_chip,
+            "total_regret": self.total_regret,
+            "limitations": list(self.limitations),
+        }
+
+
+def evaluate_chip_regret(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+    rules: SeasonRules,
+    *,
+    first_gameweek: int | None = None,
+    last_gameweek: int | None = None,
+    max_transfers_per_week: int = 1,
+    chip_policy: ScoringChipPolicy | None = None,
+) -> ChipRegretReport:
+    """Score chip timing against the best week it could have been played in.
+
+    Only Bench Boost and Triple Captain are measured. Their value is local: on
+    a fixed squad, the gain is what the bench or the extra captain multiple
+    actually scored that Gameweek. Wildcard and Free Hit change which squad
+    exists, so the same argument does not reach them.
+
+    Regret is the gain from the best legal Gameweek in the replayed window,
+    less the gain actually taken. A chip left unplayed is charged the full best
+    week, because not playing it is itself a timing decision.
+    """
+
+    replay = replay_backtest_transfer_continuity(
+        database,
+        backtest_run_id,
+        rules,
+        first_gameweek=first_gameweek,
+        last_gameweek=last_gameweek,
+        max_transfers_per_week=max_transfers_per_week,
+        chip_policy=chip_policy,
+    )
+    weeks = replay["weeks"]
+    if not weeks:
+        raise ValueError(
+            f"Backtest run {backtest_run_id} produced no chip decisions"
+        )
+    counterfactual = replay["chip_counterfactual"]
+    played = [
+        {
+            "gameweek_number": week["gameweek_number"],
+            "chip": week["active_chip"],
+            "forecast_gain": week["chip_forecast_gain"],
+            "realised_gain": week["chip_realised_gain"],
+        }
+        for week in weeks
+        if week["active_chip"] is not None
+    ]
+    by_chip: dict[str, dict[str, Any]] = {}
+    total = 0
+    for chip, values in sorted(counterfactual.items()):
+        legal = [entry for entry in values if entry["legal"]]
+        best = max(legal, key=lambda entry: entry["realised_gain"], default=None)
+        taken = next(
+            (entry for entry in played if entry["chip"] == chip),
+            None,
+        )
+        taken_gain = 0 if taken is None else int(taken["realised_gain"])
+        best_gain = 0 if best is None else int(best["realised_gain"])
+        regret = max(0, best_gain - taken_gain)
+        total += regret
+        by_chip[chip] = {
+            "played_gameweek": None if taken is None else taken["gameweek_number"],
+            "realised_gain": taken_gain,
+            "best_legal_gameweek": None if best is None else best["gameweek_number"],
+            "best_legal_gain": best_gain,
+            "regret": regret,
+            "legal_gameweeks": [entry["gameweek_number"] for entry in legal],
+        }
+    return ChipRegretReport(
+        backtest_run_id=backtest_run_id,
+        season_code=str(replay["season_code"]),
+        model_version=str(replay["model_version"]),
+        gameweeks=tuple(int(week["gameweek_number"]) for week in weeks),
+        played=tuple(played),
+        by_chip=by_chip,
+        total_regret=total,
+        limitations=(
+            "Only Bench Boost and Triple Captain are measured; Wildcard and "
+            "Free Hit alter future state and cannot be valued this way.",
+            "The counterfactual holds the squad the model actually owned that "
+            "Gameweek, so it measures chip timing rather than squad quality.",
+            "The best week is the best within the replayed window, not the "
+            "season, so a short window understates the alternative.",
+            "A chip never played is charged the full best available gain.",
+        ),
+    )
+
+
+@dataclass(frozen=True)
 class TransferRegretReport:
     """Two distinct measures of the same replay, kept apart deliberately.
 
@@ -1069,6 +1194,7 @@ def replay_backtest_transfer_continuity(
     first_gameweek: int | None = None,
     last_gameweek: int | None = None,
     max_transfers_per_week: int = 2,
+    chip_policy: ScoringChipPolicy | None = None,
 ) -> dict[str, Any]:
     """Replay a backtest as one persistent squad carried across Gameweeks.
 
@@ -1204,6 +1330,7 @@ def replay_backtest_transfer_continuity(
         },
         bank_tenths=rules.squad.budget_tenths - opening.total_cost_tenths,
         free_transfers=1,
+        available_chips=tuple(rules.chips.names),
     )
     # The opening squad is the week-one selection itself, so replaying from it
     # would let the model transfer twice into the same Gameweek.
@@ -1212,6 +1339,7 @@ def replay_backtest_transfer_continuity(
         initial,
         rules=rules,
         max_transfers_per_week=max_transfers_per_week,
+        chip_policy=chip_policy,
     )
     opening_outcomes = {
         outcome.source_player_id: outcome for outcome in weeks[0].realised_outcomes

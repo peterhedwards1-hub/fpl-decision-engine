@@ -427,7 +427,30 @@ profit, and takes losses in full). Players kept through a Wildcard retain their 
 purchase price; a Free Hit squad is temporary and leaves the ledger untouched. Without
 this the replay would spend money the real game never returns.
 
-Chips are not played and the candidate universe is fixed at the opening Gameweek.
+Chips follow a **declared policy that plays nothing by default**, so a replay stays
+chip-free unless you deliberately switch one on — a weakly validated chip adviser left
+running would obscure whether the underlying projections improved. Both branches are
+scored under the same chip, so the transfer comparison stays a transfer comparison.
+
+Only Bench Boost and Triple Captain are replayable. Their value is local: on a fixed
+squad, the gain is what the bench or the extra captain multiple actually scored that
+week. Wildcard and Free Hit change which squad exists, so their value depends on future
+state and opportunity cost and the same argument does not reach them.
+
+`evaluate-chip-regret` scores chip *timing*:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 evaluate-chip-regret <run-id> \
+  --bench-boost-threshold 3.0 --triple-captain-threshold 6.0
+```
+
+Every replayed week records what each chip *would* have gained on the squad actually
+owned, so the week chosen is scored against every alternative. A chip never played is
+charged the full best available gain, because not playing it is itself a timing decision.
+The best week is the best within the replayed window, so a short window understates the
+alternative.
+
+The candidate universe is fixed at the opening Gameweek.
 
 The latest completed scorecard also appears in the app's Data Health view. Backtest runs
 do not create ordinary production projection runs.

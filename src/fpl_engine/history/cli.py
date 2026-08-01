@@ -12,6 +12,7 @@ from pathlib import Path
 from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..capture import capture_gameweek_forecasts
+from ..chip_state import ScoringChipPolicy
 from ..config import load_season_rules
 from ..diagnostics import (
     SUPPORTED_BASELINES,
@@ -21,6 +22,7 @@ from ..diagnostics import (
 from ..evaluation import (
     build_evaluation_suite,
     compare_backtest_to_baselines,
+    evaluate_chip_regret,
     evaluate_legal_squad_regret,
     evaluate_owned_captain_regret,
     evaluate_transfer_regret,
@@ -428,6 +430,30 @@ def main() -> None:
         default=1,
     )
     transfer_regret_parser.add_argument("--output")
+    chip_regret_parser = subparsers.add_parser(
+        "evaluate-chip-regret",
+        help="Score Bench Boost and Triple Captain timing against the best week",
+    )
+    chip_regret_parser.add_argument("run_id", type=int)
+    chip_regret_parser.add_argument("--rules")
+    chip_regret_parser.add_argument("--first-gameweek", type=int)
+    chip_regret_parser.add_argument("--last-gameweek", type=int)
+    chip_regret_parser.add_argument(
+        "--max-transfers-per-week",
+        type=int,
+        default=1,
+    )
+    chip_regret_parser.add_argument(
+        "--bench-boost-threshold",
+        type=float,
+        help="Expected points at which the replay plays Bench Boost",
+    )
+    chip_regret_parser.add_argument(
+        "--triple-captain-threshold",
+        type=float,
+        help="Expected points at which the replay plays Triple Captain",
+    )
+    chip_regret_parser.add_argument("--output")
     suite_parser = subparsers.add_parser(
         "compile-model-evaluation",
         help="Compile horizon, baseline and challenger gates from backtest runs",
@@ -775,6 +801,47 @@ def main() -> None:
             if args.output:
                 write_json_report(transfer.as_dict(), args.output)
             print(json.dumps(transfer.as_dict(), indent=2))
+            return
+
+        if args.command == "evaluate-chip-regret":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            policy = ScoringChipPolicy(
+                bench_boost_threshold=(
+                    float("inf")
+                    if args.bench_boost_threshold is None
+                    else args.bench_boost_threshold
+                ),
+                triple_captain_threshold=(
+                    float("inf")
+                    if args.triple_captain_threshold is None
+                    else args.triple_captain_threshold
+                ),
+            )
+            chip_report = evaluate_chip_regret(
+                database,
+                args.run_id,
+                rules,
+                first_gameweek=args.first_gameweek,
+                last_gameweek=args.last_gameweek,
+                max_transfers_per_week=args.max_transfers_per_week,
+                chip_policy=policy,
+            )
+            if args.output:
+                write_json_report(chip_report.as_dict(), args.output)
+            print(json.dumps(chip_report.as_dict(), indent=2))
             return
 
         if args.command == "replay-transfer-continuity":

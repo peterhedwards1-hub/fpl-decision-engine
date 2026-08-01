@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any
 
+from .chip_state import SCORING_CHIPS, ChipLedger, ScoringChipPolicy
 from .config import SeasonRules
-from .domain import Player, Squad
+from .domain import Chip, Player, Squad
 from .optimisation import CandidatePlayer, FullSquadResult
 from .pricing import PurchaseLedger
 from .rules import calculate_team_score
@@ -62,6 +63,9 @@ class TransferReplayResult:
     bank_tenths: int
     squad_selling_value_tenths: int
     state: TransferDecisionState
+    active_chip: str | None = None
+    chip_forecast_gain: float | None = None
+    chip_realised_gain: int | None = None
 
 
 @dataclass(frozen=True)
@@ -74,11 +78,18 @@ class TransferContinuityReport:
     final_free_transfers: int
     final_bank_tenths: int
     final_purchase_prices_tenths: dict[str, int]
+    chip_plays: tuple[dict[str, Any], ...]
+    chip_counterfactual: dict[str, tuple[dict[str, Any], ...]]
     limitations: tuple[str, ...]
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
         result["weeks"] = [asdict(week) for week in self.weeks]
+        result["chip_plays"] = [dict(play) for play in self.chip_plays]
+        result["chip_counterfactual"] = {
+            chip: [dict(entry) for entry in entries]
+            for chip, entries in self.chip_counterfactual.items()
+        }
         result["limitations"] = list(self.limitations)
         return result
 
@@ -90,6 +101,8 @@ def replay_transfer_continuity(
     rules: SeasonRules,
     max_transfers_per_week: int = 2,
     initial_ledger: PurchaseLedger | None = None,
+    chip_policy: ScoringChipPolicy | None = None,
+    initial_chip_ledger: ChipLedger | None = None,
 ) -> TransferContinuityReport:
     """Replay one persistent model-owned squad over consecutive Gameweeks.
 
@@ -109,6 +122,11 @@ def replay_transfer_continuity(
     if len({week.gameweek_number for week in weeks}) != len(weeks):
         raise ValueError("Replay Gameweeks must be unique")
     current = initial_squad
+    policy = chip_policy or ScoringChipPolicy()
+    chips = initial_chip_ledger or ChipLedger()
+    counterfactual: dict[str, list[dict[str, Any]]] = {
+        chip.value: [] for chip in SCORING_CHIPS
+    }
     ledger = initial_ledger or PurchaseLedger.from_entry_prices(
         initial_squad.selling_prices_tenths
     )
@@ -161,12 +179,56 @@ def replay_transfer_continuity(
             max_transfers=max_transfers_per_week,
         )
         route = recommendation.primary
+        # The chip is chosen from the forecast, like every other decision, and
+        # only then scored against outcomes.
+        chip_gains = {
+            Chip.BENCH_BOOST: route.resulting_squad.expected_bench_contribution,
+            Chip.TRIPLE_CAPTAIN: (
+                route.resulting_squad.expected_captain_contribution
+            ),
+        }
+        chosen_chip = policy.choose(
+            chip_gains,
+            chips.available(week.gameweek_number, rules),
+        )
         gross, autosubs, captain = score_squad_gameweek(
             route.resulting_squad,
             realised,
             rules,
             week.gameweek_number,
+            active_chip=chosen_chip,
         )
+        # What each scoring chip would have been worth on the squad actually
+        # owned this Gameweek. Recorded for every week so chip timing can be
+        # scored against the alternatives, not only the week chosen.
+        without_chip_points, _, _ = score_squad_gameweek(
+            route.resulting_squad,
+            realised,
+            rules,
+            week.gameweek_number,
+        )
+        for chip in SCORING_CHIPS:
+            with_chip, _, _ = score_squad_gameweek(
+                route.resulting_squad,
+                realised,
+                rules,
+                week.gameweek_number,
+                active_chip=chip,
+            )
+            counterfactual[chip.value].append(
+                {
+                    "gameweek_number": week.gameweek_number,
+                    "chip": chip.value,
+                    "legal": not chips.errors_for(
+                        chip, week.gameweek_number, rules
+                    ),
+                    "realised_gain": with_chip - without_chip_points,
+                }
+            )
+        chip_realised_gain = None
+        if chosen_chip is not None:
+            chip_realised_gain = gross - without_chip_points
+            chips = chips.after_playing(chosen_chip, week.gameweek_number, rules)
 
         actual_candidates = tuple(
             replace(
@@ -190,6 +252,9 @@ def replay_transfer_continuity(
             realised,
             rules,
             week.gameweek_number,
+            # The same chip on both sides, so the difference stays a transfer
+            # difference rather than a chip-timing one.
+            active_chip=chosen_chip,
         )
         net = gross - route.points_hit
         hindsight_net = hindsight_gross - hindsight.points_hit
@@ -212,6 +277,15 @@ def replay_transfer_continuity(
                     current.selling_prices_tenths.values()
                 ),
                 state=state,
+                active_chip=(
+                    None if chosen_chip is None else chosen_chip.value
+                ),
+                chip_forecast_gain=(
+                    None
+                    if chosen_chip is None
+                    else round(chip_gains[chosen_chip], 3)
+                ),
+                chip_realised_gain=chip_realised_gain,
             )
         )
         selected_ids = frozenset(
@@ -242,7 +316,13 @@ def replay_transfer_continuity(
             free_transfers=route.next_free_transfers,
             # No route plays a chip, so availability is carried unchanged and
             # both branches remain equally constrained.
-            available_chips=current.available_chips,
+            # Only chips actually spent are removed. The ledger replays two of
+            # them; it must not silently drop the ones it cannot value.
+            available_chips=tuple(
+                chip
+                for chip in current.available_chips
+                if chip not in {play.chip for play in chips.plays}
+            ),
         )
     return TransferContinuityReport(
         weeks=tuple(results),
@@ -257,6 +337,10 @@ def replay_transfer_continuity(
         final_purchase_prices_tenths=dict(
             sorted(ledger.purchase_prices_tenths.items())
         ),
+        chip_plays=tuple(play.as_dict() for play in chips.plays),
+        chip_counterfactual={
+            chip: tuple(entries) for chip, entries in counterfactual.items()
+        },
         limitations=(
             "The squad, bank and free-transfer state persist between Gameweeks.",
             "Realised scoring applies the forecast lineup, bench order, exact "
@@ -267,8 +351,12 @@ def replay_transfer_continuity(
             "optimises the scored Gameweek alone, so a horizon-aware model "
             "shows positive regret by construction; only the change between "
             "matched runs at the same horizon is comparable.",
-            "No chip is played by either branch, so chip availability is "
-            "carried but never spent.",
+            "Chips follow the declared policy, which plays nothing by default; "
+            "both branches are scored under the same chip, so the comparison "
+            "stays a transfer comparison rather than a chip-timing one.",
+            "Only Bench Boost and Triple Captain are replayable. Wildcard and "
+            "Free Hit change which squad exists, so their value depends on "
+            "future state and opportunity cost.",
             "Selling prices apply the FPL half-profit rule to a carried "
             "purchase-price ledger, so a price rise adds only half its value "
             "to spending power.",
@@ -284,6 +372,7 @@ class ResolvedGameweek:
     scoring_player_ids: frozenset[str]
     effective_captain_id: str | None
     substitution_count: int
+    active_chip: str | None = None
 
 
 def score_squad_gameweek(
@@ -291,10 +380,14 @@ def score_squad_gameweek(
     outcomes: dict[str, RealisedPlayerOutcome],
     rules: SeasonRules,
     gameweek: int,
+    *,
+    active_chip: Chip | None = None,
 ) -> tuple[int, int, str | None]:
     """Points, substitution count and the captain who actually counted."""
 
-    resolved = resolve_squad_gameweek(result, outcomes, rules, gameweek)
+    resolved = resolve_squad_gameweek(
+        result, outcomes, rules, gameweek, active_chip=active_chip
+    )
     return (
         resolved.total_points,
         resolved.substitution_count,
@@ -307,11 +400,15 @@ def resolve_squad_gameweek(
     outcomes: dict[str, RealisedPlayerOutcome],
     rules: SeasonRules,
     gameweek: int,
+    *,
+    active_chip: Chip | None = None,
 ) -> ResolvedGameweek:
     """Apply the Gameweek's lineup plan, bench-order autosubs and captain fallback.
 
     Returns the scoring lineup as well as the score, because the set of players
     who actually counted is what a captaincy decision could have chosen from.
+    An active chip changes what counts: Bench Boost scores every player who
+    appeared, Triple Captain multiplies the effective captain once more.
     """
 
     id_lookup = {
@@ -368,9 +465,12 @@ def resolve_squad_gameweek(
         for player_id, outcome in outcomes.items()
         if player_id in id_lookup
     }
-    score = calculate_team_score(squad, points, minutes, rules)
+    score = calculate_team_score(
+        squad, points, minutes, rules, active_chip=active_chip
+    )
     inverse = {value: key for key, value in id_lookup.items()}
     return ResolvedGameweek(
+        active_chip=None if active_chip is None else active_chip.value,
         total_points=score.total_points,
         scoring_player_ids=frozenset(
             inverse[player_id] for player_id in score.scoring_player_ids
