@@ -12,7 +12,7 @@ from pathlib import Path
 from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..capture import capture_gameweek_forecasts
-from ..chip_state import ScoringChipPolicy
+from ..chip_state import LookaheadChipPolicy, ScoringChipPolicy
 from ..config import load_season_rules
 from ..diagnostics import (
     SUPPORTED_BASELINES,
@@ -453,6 +453,26 @@ def main() -> None:
         type=float,
         help="Expected points at which the replay plays Triple Captain",
     )
+    chip_regret_parser.add_argument(
+        "--lookahead",
+        action="store_true",
+        help=(
+            "Hold a chip while a better Gameweek remains before the set "
+            "expires, instead of playing the first week clearing a threshold"
+        ),
+    )
+    chip_regret_parser.add_argument(
+        "--lookahead-minimum-gain",
+        type=float,
+        default=0.0,
+        help="Refuse to play a chip worth less than this",
+    )
+    chip_regret_parser.add_argument(
+        "--lookahead-margin",
+        type=float,
+        default=0.0,
+        help="Points by which this week must beat the best later week",
+    )
     chip_regret_parser.add_argument("--output")
     suite_parser = subparsers.add_parser(
         "compile-model-evaluation",
@@ -818,18 +838,25 @@ def main() -> None:
             rules = load_season_rules(
                 Path(args.rules or f"config/seasons/{season['code']}.json")
             )
-            policy = ScoringChipPolicy(
-                bench_boost_threshold=(
-                    float("inf")
-                    if args.bench_boost_threshold is None
-                    else args.bench_boost_threshold
-                ),
-                triple_captain_threshold=(
-                    float("inf")
-                    if args.triple_captain_threshold is None
-                    else args.triple_captain_threshold
-                ),
-            )
+            if args.lookahead:
+                policy = LookaheadChipPolicy(
+                    enabled=True,
+                    minimum_gain=args.lookahead_minimum_gain,
+                    margin=args.lookahead_margin,
+                )
+            else:
+                policy = ScoringChipPolicy(
+                    bench_boost_threshold=(
+                        float("inf")
+                        if args.bench_boost_threshold is None
+                        else args.bench_boost_threshold
+                    ),
+                    triple_captain_threshold=(
+                        float("inf")
+                        if args.triple_captain_threshold is None
+                        else args.triple_captain_threshold
+                    ),
+                )
             chip_report = evaluate_chip_regret(
                 database,
                 args.run_id,

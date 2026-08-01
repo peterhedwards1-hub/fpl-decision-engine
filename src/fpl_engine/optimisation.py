@@ -7,7 +7,7 @@ from functools import lru_cache
 from itertools import combinations, permutations, product
 
 from .config import SeasonRules
-from .domain import Player, Position, Squad
+from .domain import Chip, Player, Position, Squad
 from .rules import validate_squad
 
 
@@ -982,6 +982,54 @@ def _cached_used_outfield_bench_indexes(
                     best_bench = bench_indexes
                 break
     return best_bench
+
+
+def chip_values_for_gameweek(
+    result: FullSquadResult,
+    gameweek_number: int,
+    rules: SeasonRules,
+) -> dict[Chip, float]:
+    """What each scoring chip would add in one Gameweek of a selected squad.
+
+    Evaluated from that Gameweek's own projected values, so a double Gameweek
+    — where a player carries two fixtures and roughly twice the expected
+    points — raises the chip's value exactly as it should.
+
+    Bench Boost is worth the bench's points *less* the autosub value the squad
+    would have collected anyway, otherwise a bench that was going to come on
+    would be counted twice. Triple Captain is worth one further copy of the
+    effective captain, including vice-captain fallback.
+    """
+
+    plan = next(
+        (
+            value
+            for value in result.gameweek_plans
+            if value.gameweek_number == gameweek_number
+        ),
+        None,
+    )
+    if plan is None:
+        raise ValueError(
+            f"The squad has no lineup plan for Gameweek {gameweek_number}"
+        )
+    points, appearance = _gameweek_value_maps(result.players, gameweek_number)
+    bench = plan.bench_player_ids or result.bench_player_ids
+    _, bench_contribution, captain_contribution = _expected_weekly_score(
+        result.players,
+        plan.starting_player_ids,
+        bench,
+        plan.captain_id,
+        plan.vice_captain_id,
+        rules,
+        points=points,
+        appearance=appearance,
+    )
+    bench_total = sum(points[player_id] for player_id in bench)
+    return {
+        Chip.BENCH_BOOST: max(0.0, bench_total - bench_contribution),
+        Chip.TRIPLE_CAPTAIN: max(0.0, captain_contribution),
+    }
 
 
 def _domain_squad(

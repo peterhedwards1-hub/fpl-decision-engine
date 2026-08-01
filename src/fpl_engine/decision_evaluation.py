@@ -5,10 +5,20 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any
 
-from .chip_state import SCORING_CHIPS, ChipLedger, ScoringChipPolicy
+from .chip_state import (
+    SCORING_CHIPS,
+    ChipDecisionContext,
+    ChipLedger,
+    ScoringChipPolicy,
+    set_expiry_gameweek,
+)
 from .config import SeasonRules
 from .domain import Chip, Player, Squad
-from .optimisation import CandidatePlayer, FullSquadResult
+from .optimisation import (
+    CandidatePlayer,
+    FullSquadResult,
+    chip_values_for_gameweek,
+)
 from .pricing import PurchaseLedger
 from .rules import calculate_team_score
 from .transfers import CurrentSquad, recommend_transfers
@@ -66,6 +76,9 @@ class TransferReplayResult:
     active_chip: str | None = None
     chip_forecast_gain: float | None = None
     chip_realised_gain: int | None = None
+    chip_best_later_forecast: dict[str, float] | None = None
+    chip_lookahead_gameweeks: tuple[int, ...] = ()
+    chip_lookahead_reaches_expiry: bool = False
 
 
 @dataclass(frozen=True)
@@ -101,7 +114,7 @@ def replay_transfer_continuity(
     rules: SeasonRules,
     max_transfers_per_week: int = 2,
     initial_ledger: PurchaseLedger | None = None,
-    chip_policy: ScoringChipPolicy | None = None,
+    chip_policy: Any | None = None,
     initial_chip_ledger: ChipLedger | None = None,
 ) -> TransferContinuityReport:
     """Replay one persistent model-owned squad over consecutive Gameweeks.
@@ -180,17 +193,40 @@ def replay_transfer_continuity(
         )
         route = recommendation.primary
         # The chip is chosen from the forecast, like every other decision, and
-        # only then scored against outcomes.
-        chip_gains = {
-            Chip.BENCH_BOOST: route.resulting_squad.expected_bench_contribution,
-            Chip.TRIPLE_CAPTAIN: (
-                route.resulting_squad.expected_captain_contribution
-            ),
-        }
-        chosen_chip = policy.choose(
-            chip_gains,
-            chips.available(week.gameweek_number, rules),
+        # only then scored against outcomes. Every projected Gameweek is
+        # valued, not only this one, so a later double Gameweek can hold the
+        # chip back.
+        plan_numbers = [
+            plan.gameweek_number
+            for plan in route.resulting_squad.gameweek_plans
+        ]
+        if plan_numbers == [0]:
+            # Candidates carrying no per-Gameweek values leave a single
+            # unnumbered plan, so only this Gameweek can be valued and there is
+            # nothing to look ahead to.
+            projected = {week.gameweek_number: 0}
+        else:
+            projected = {
+                number: number
+                for number in plan_numbers
+                if number >= week.gameweek_number
+            }
+        context = ChipDecisionContext(
+            gameweek_number=week.gameweek_number,
+            values_by_gameweek={
+                gameweek: chip_values_for_gameweek(
+                    route.resulting_squad, source, rules
+                )
+                for gameweek, source in projected.items()
+            },
+            legal_by_gameweek={
+                gameweek: chips.available(gameweek, rules)
+                for gameweek in projected
+            },
+            expiry_gameweek=set_expiry_gameweek(week.gameweek_number, rules),
         )
+        chip_gains = context.values_by_gameweek[week.gameweek_number]
+        chosen_chip = policy.choose(context)
         gross, autosubs, captain = score_squad_gameweek(
             route.resulting_squad,
             realised,
@@ -286,6 +322,14 @@ def replay_transfer_continuity(
                     else round(chip_gains[chosen_chip], 3)
                 ),
                 chip_realised_gain=chip_realised_gain,
+                # Recorded so a decision to wait is auditable, and so a short
+                # horizon is visible rather than silently assumed sufficient.
+                chip_best_later_forecast={
+                    chip.value: round(context.best_later_value(chip), 3)
+                    for chip in SCORING_CHIPS
+                },
+                chip_lookahead_gameweeks=context.lookahead_gameweeks,
+                chip_lookahead_reaches_expiry=context.reaches_expiry,
             )
         )
         selected_ids = frozenset(

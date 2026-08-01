@@ -437,11 +437,22 @@ squad, the gain is what the bench or the extra captain multiple actually scored 
 week. Wildcard and Free Hit change which squad exists, so their value depends on future
 state and opportunity cost and the same argument does not reach them.
 
+Two policies are available. The **threshold** policy plays the first week whose forecast
+gain clears a bar — myopic by construction, and it will spend a chip the week before a
+double Gameweek. The **look-ahead** policy values the chip in every projected Gameweek up
+to the set's expiry and plays only when this week beats every later one still available,
+so a double Gameweek pulls the chip toward it. `--lookahead-margin` biases toward waiting
+when two weeks are close, and the look-ahead stops at the half-season boundary because a
+first-half chip cannot be played in the second.
+
+Each replayed week records how far the look-ahead could see and whether that reached the
+expiry, so a short projection horizon is visible rather than silently assumed sufficient.
+
 `evaluate-chip-regret` scores chip *timing*:
 
 ```bash
 fpl-history --database data/fpl_history.sqlite3 evaluate-chip-regret <run-id> \
-  --bench-boost-threshold 3.0 --triple-captain-threshold 6.0
+  --lookahead --lookahead-margin 1.0
 ```
 
 Every replayed week records what each chip *would* have gained on the squad actually

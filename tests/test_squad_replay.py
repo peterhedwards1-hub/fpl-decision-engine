@@ -336,3 +336,37 @@ def test_replay_rejects_a_plan_whose_bench_overlaps_its_starters() -> None:
 
     with pytest.raises(ValueError, match="lists a starter on its bench"):
         _replayed_squad_points(corrupted, _rotating_lookup(result), (2,), RULES)
+
+
+def test_replay_candidates_carry_the_whole_projected_horizon(tmp_path) -> None:
+    database = HistoricalDatabase(tmp_path / "fpl.sqlite3")
+    database.__enter__()
+    try:
+        database.initialise()
+        database.ingest_bundle(FORWARD_SOURCE, _forward_bundle())
+        run = ProjectionBacktester(database, RULES).run(
+            season_code="2026-27",
+            origin_gameweek_start=1,
+            origin_gameweek_end=2,
+            horizon_gameweeks=2,
+        )
+        replay = replay_backtest_transfer_continuity(
+            database,
+            run.backtest_run_id,
+            RULES,
+            max_transfers_per_week=1,
+        )
+    finally:
+        database.__exit__(None, None, None)
+
+    # A decision taken at one Gameweek must be able to see the ones after it,
+    # or a chip policy can only ever conclude that this week is the best week.
+    # GW1 picks the opening squad, so GW2 is the first decision and its
+    # horizon reaches GW3.
+    week = replay["weeks"][0]
+    assert week["gameweek_number"] == 2
+    assert week["chip_lookahead_gameweeks"] == (3,)
+    assert set(week["chip_best_later_forecast"]) == {
+        "bench_boost",
+        "triple_captain",
+    }

@@ -8,7 +8,9 @@ from test_promotion import FORWARD_SOURCE, _forward_bundle
 from fpl_engine.backtest import ProjectionBacktester
 from fpl_engine.chip_state import (
     SCORING_CHIPS,
+    ChipDecisionContext,
     ChipLedger,
+    LookaheadChipPolicy,
     ScoringChipPolicy,
 )
 from fpl_engine.config import load_season_rules
@@ -61,14 +63,22 @@ def test_only_one_chip_may_be_active_in_a_gameweek() -> None:
     assert Chip.TRIPLE_CAPTAIN in ledger.available(5, RULES)
 
 
+def _context(values: dict, legal: tuple) -> ChipDecisionContext:
+    return ChipDecisionContext(
+        gameweek_number=2,
+        values_by_gameweek={2: values},
+        legal_by_gameweek={2: legal},
+        expiry_gameweek=19,
+    )
+
+
 def test_the_default_policy_never_plays_anything() -> None:
     policy = ScoringChipPolicy()
 
     assert policy.plays_anything is False
     assert (
         policy.choose(
-            {chip: 1000.0 for chip in SCORING_CHIPS},
-            SCORING_CHIPS,
+            _context({chip: 1000.0 for chip in SCORING_CHIPS}, SCORING_CHIPS)
         )
         is None
     )
@@ -81,21 +91,25 @@ def test_a_policy_plays_the_largest_gain_that_clears_its_threshold() -> None:
     )
 
     chosen = policy.choose(
-        {Chip.BENCH_BOOST: 6.0, Chip.TRIPLE_CAPTAIN: 9.0},
-        SCORING_CHIPS,
+        _context(
+            {Chip.BENCH_BOOST: 6.0, Chip.TRIPLE_CAPTAIN: 9.0}, SCORING_CHIPS
+        )
     )
     assert chosen == Chip.TRIPLE_CAPTAIN
     # A chip that is not legal this week cannot be chosen however large.
     assert (
         policy.choose(
-            {Chip.BENCH_BOOST: 6.0, Chip.TRIPLE_CAPTAIN: 99.0},
-            (Chip.BENCH_BOOST,),
+            _context(
+                {Chip.BENCH_BOOST: 6.0, Chip.TRIPLE_CAPTAIN: 99.0},
+                (Chip.BENCH_BOOST,),
+            )
         )
         == Chip.BENCH_BOOST
     )
     # Below threshold, nothing is played.
     assert (
-        policy.choose({Chip.BENCH_BOOST: 4.9}, (Chip.BENCH_BOOST,)) is None
+        policy.choose(_context({Chip.BENCH_BOOST: 4.9}, (Chip.BENCH_BOOST,)))
+        is None
     )
 
 
@@ -312,3 +326,155 @@ def test_playing_a_chip_reduces_its_regret_to_the_timing_difference(
         0, boost["best_legal_gain"] - boost["realised_gain"]
     )
     assert boost["regret"] <= never.by_chip["bench_boost"]["regret"]
+
+
+def _double_gameweek_candidates():
+    """GW2 is ordinary; GW4 is a double, worth roughly twice as much."""
+
+    positions = (
+        *(Position.GK for _ in range(3)),
+        *(Position.DEF for _ in range(7)),
+        *(Position.MID for _ in range(7)),
+        *(Position.FWD for _ in range(5)),
+    )
+    weekly = {2: 1.0, 3: 1.0, 4: 2.0, 5: 1.0}
+    return tuple(
+        CandidatePlayer(
+            source_player_id=str(index),
+            web_name=f"Player {index}",
+            team_id=str((index - 1) % 8 + 1),
+            team_short_name=f"T{(index - 1) % 8 + 1}",
+            position=position,
+            price_tenths=50,
+            expected_points=sum(
+                (5.0 - index / 100) * multiplier for multiplier in weekly.values()
+            ),
+            gameweek_expected_points=5.0 - index / 100,
+            appearance_probability=0.9,
+            gameweek_values=tuple(
+                GameweekPlayerValue(
+                    gameweek,
+                    (5.0 - index / 100) * multiplier,
+                    0.9,
+                    0.8,
+                )
+                for gameweek, multiplier in weekly.items()
+            ),
+        )
+        for index, position in enumerate(positions, start=1)
+    )
+
+
+def _double_replay(policy):
+    candidates = _double_gameweek_candidates()
+    outcomes = tuple(
+        RealisedPlayerOutcome(player.source_player_id, 3, 90)
+        for player in candidates
+    )
+    return replay_transfer_continuity(
+        tuple(
+            TransferReplayWeek(gameweek, candidates, outcomes)
+            for gameweek in (2, 3, 4, 5)
+        ),
+        CurrentSquad(
+            player_ids=OWNED,
+            selling_prices_tenths={player_id: 50 for player_id in OWNED},
+            bank_tenths=0,
+            free_transfers=1,
+            available_chips=("bench_boost", "triple_captain"),
+        ),
+        rules=RULES,
+        max_transfers_per_week=1,
+        chip_policy=policy,
+    )
+
+
+def test_a_chip_value_rises_with_a_double_gameweek() -> None:
+    report = _double_replay(None)
+
+    first = report.weeks[0]
+    # The look-ahead saw GW4 worth roughly twice GW2, without playing anything.
+    assert first.chip_lookahead_gameweeks == (3, 4, 5)
+    later = first.chip_best_later_forecast
+    now = report.chip_counterfactual["bench_boost"][0]["realised_gain"]
+    assert later["bench_boost"] > 0
+    assert now >= 0
+
+
+def test_a_threshold_policy_spends_the_chip_before_the_double() -> None:
+    report = _double_replay(ScoringChipPolicy(bench_boost_threshold=1.0))
+
+    # Myopic: the first week clearing the threshold takes it, and GW4 is gone.
+    assert [play["gameweek_number"] for play in report.chip_plays] == [2]
+
+
+def test_a_lookahead_policy_waits_for_the_double_gameweek() -> None:
+    report = _double_replay(LookaheadChipPolicy(enabled=True))
+
+    played = {play["chip"]: play["gameweek_number"] for play in report.chip_plays}
+    # Holding the chip while a better Gameweek remains is the whole point.
+    assert played["bench_boost"] == 4
+    assert report.weeks[0].active_chip is None
+    assert report.weeks[0].chip_best_later_forecast["bench_boost"] > 0
+
+
+def test_a_lookahead_policy_records_how_far_it_could_see() -> None:
+    report = _double_replay(LookaheadChipPolicy(enabled=True))
+
+    first = report.weeks[0]
+    # The window stops at the projection horizon, well short of the GW19 set
+    # expiry, and that shortfall is reported rather than assumed away.
+    assert first.chip_lookahead_reaches_expiry is False
+    assert first.chip_lookahead_gameweeks == (3, 4, 5)
+
+
+def test_a_disabled_lookahead_policy_plays_nothing() -> None:
+    report = _double_replay(LookaheadChipPolicy())
+
+    assert report.chip_plays == ()
+
+
+def test_a_margin_makes_the_policy_wait_when_weeks_are_close() -> None:
+    context = ChipDecisionContext(
+        gameweek_number=2,
+        values_by_gameweek={
+            2: {Chip.BENCH_BOOST: 6.0, Chip.TRIPLE_CAPTAIN: 0.0},
+            3: {Chip.BENCH_BOOST: 5.5, Chip.TRIPLE_CAPTAIN: 0.0},
+        },
+        legal_by_gameweek={
+            2: (Chip.BENCH_BOOST,),
+            3: (Chip.BENCH_BOOST,),
+        },
+        expiry_gameweek=19,
+    )
+
+    # Without a margin the marginally better week wins.
+    assert LookaheadChipPolicy(enabled=True).choose(context) == Chip.BENCH_BOOST
+    # With one, a close call defers to the less certain later week.
+    assert (
+        LookaheadChipPolicy(enabled=True, margin=1.0).choose(context) is None
+    )
+    # A minimum gain refuses trivial plays outright.
+    assert (
+        LookaheadChipPolicy(enabled=True, minimum_gain=10.0).choose(context)
+        is None
+    )
+
+
+def test_lookahead_stops_at_the_set_expiry() -> None:
+    context = ChipDecisionContext(
+        gameweek_number=18,
+        values_by_gameweek={
+            18: {Chip.BENCH_BOOST: 4.0},
+            # A far better week, but in the second half where a first-half
+            # chip cannot be played.
+            22: {Chip.BENCH_BOOST: 40.0},
+        },
+        legal_by_gameweek={18: (Chip.BENCH_BOOST,), 22: (Chip.BENCH_BOOST,)},
+        expiry_gameweek=19,
+    )
+
+    assert context.lookahead_gameweeks == ()
+    assert context.best_later_value(Chip.BENCH_BOOST) == 0.0
+    # Use it or lose it: waiting for GW22 would waste the chip.
+    assert LookaheadChipPolicy(enabled=True).choose(context) == Chip.BENCH_BOOST

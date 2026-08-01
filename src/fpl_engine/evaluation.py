@@ -1218,17 +1218,36 @@ def replay_backtest_transfer_continuity(
         raise ValueError(f"Completed backtest run {backtest_run_id} is unavailable")
     if rules.season != str(run["season_code"]):
         raise ValueError("Continuity rules must match the backtest season")
+    # The whole horizon, not only the scored Gameweek. A chip policy that can
+    # only see this week will always spend the chip now, whatever is coming.
     rows = database.connection.execute(
         """
-        SELECT origin_gameweek, player_season_id, expected_points,
-               appearance_probability, expected_minutes,
-               actual_points, actual_minutes
+        SELECT origin_gameweek, target_gameweek, player_season_id,
+               expected_points, appearance_probability, sixty_probability,
+               expected_minutes, actual_points, actual_minutes
         FROM projection_backtest_predictions
-        WHERE backtest_run_id = ? AND origin_gameweek = target_gameweek
-        ORDER BY origin_gameweek, player_season_id
+        WHERE backtest_run_id = ?
+        ORDER BY origin_gameweek, target_gameweek, player_season_id
         """,
         (backtest_run_id,),
     ).fetchall()
+    horizon: dict[int, dict[int, list[Any]]] = {}
+    horizon_targets: dict[int, tuple[int, ...]] = {}
+    for row in rows:
+        horizon.setdefault(int(row["origin_gameweek"]), {}).setdefault(
+            int(row["player_season_id"]), []
+        ).append(row)
+    for origin, players in horizon.items():
+        horizon_targets[origin] = tuple(
+            sorted(
+                {
+                    int(value["target_gameweek"])
+                    for rows_for_player in players.values()
+                    for value in rows_for_player
+                }
+            )
+        )
+    rows = [row for row in rows if row["origin_gameweek"] == row["target_gameweek"]]
     if not rows:
         raise ValueError(
             "Continuity replay needs same-Gameweek forecasts; this run has no "
@@ -1286,6 +1305,36 @@ def replay_backtest_transfer_continuity(
                 appearance = float(row["appearance_probability"])
                 if appearance == 0 and float(row["expected_minutes"]) > 0:
                     appearance = min(1.0, float(row["expected_minutes"]) / 60.0)
+            # Every projected Gameweek from this origin, so a later double
+            # Gameweek is visible to a chip or lineup decision taken now. A
+            # player with no row for a Gameweek has no fixture in it, so the
+            # blank is filled with zero rather than left ragged — the optimiser
+            # requires every candidate to cover the same Gameweeks.
+            by_target = {
+                int(value["target_gameweek"]): value
+                for value in horizon.get(gameweek, {}).get(player_season_id, [])
+            }
+            values = tuple(
+                GameweekPlayerValue(
+                    gameweek_number=target,
+                    expected_points=(
+                        0.0
+                        if target not in by_target
+                        else float(by_target[target]["expected_points"])
+                    ),
+                    appearance_probability=(
+                        0.0
+                        if target not in by_target
+                        else float(by_target[target]["appearance_probability"])
+                    ),
+                    sixty_probability=(
+                        0.0
+                        if target not in by_target
+                        else float(by_target[target]["sixty_probability"] or 0.0)
+                    ),
+                )
+                for target in horizon_targets[gameweek]
+            )
             candidates.append(
                 CandidatePlayer(
                     source_player_id=source_player_id,
@@ -1294,9 +1343,14 @@ def replay_backtest_transfer_continuity(
                     team_short_name=str(player["team_short_name"]),
                     position=Position(str(player["position"])),
                     price_tenths=int(player["price_tenths"]),
-                    expected_points=expected,
+                    expected_points=(
+                        sum(value.expected_points for value in values)
+                        if values
+                        else expected
+                    ),
                     gameweek_expected_points=expected,
                     appearance_probability=appearance,
+                    gameweek_values=values,
                 )
             )
             outcomes.append(

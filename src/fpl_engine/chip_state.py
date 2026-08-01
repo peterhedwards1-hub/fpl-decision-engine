@@ -139,14 +139,82 @@ class _Error:
     message: str
 
 
+def set_expiry_gameweek(gameweek_number: int, rules: SeasonRules) -> int:
+    """The last Gameweek of the chip set this Gameweek belongs to.
+
+    Chips do not carry across the halves, so look-ahead must stop at the
+    boundary; waiting for a better week beyond it is waiting for a week the
+    chip cannot be played in.
+    """
+
+    if gameweek_number <= rules.chips.first_set_expiry_gameweek:
+        return rules.chips.first_set_expiry_gameweek
+    return 38
+
+
+@dataclass(frozen=True)
+class ChipDecisionContext:
+    """Everything a chip policy may consider at one Gameweek.
+
+    `values_by_gameweek` holds the forecast gain of each chip in this Gameweek
+    and in every later Gameweek the projection covers, so a policy can decline
+    now because a double Gameweek is coming. It reaches only as far as the
+    projection horizon: `reaches_expiry` says whether that was far enough to
+    see the whole set.
+    """
+
+    gameweek_number: int
+    values_by_gameweek: dict[int, dict[Chip, float]]
+    legal_by_gameweek: dict[int, tuple[Chip, ...]]
+    expiry_gameweek: int
+
+    @property
+    def legal_now(self) -> tuple[Chip, ...]:
+        return self.legal_by_gameweek.get(self.gameweek_number, ())
+
+    @property
+    def lookahead_gameweeks(self) -> tuple[int, ...]:
+        return tuple(
+            sorted(
+                gameweek
+                for gameweek in self.values_by_gameweek
+                if self.gameweek_number < gameweek <= self.expiry_gameweek
+            )
+        )
+
+    @property
+    def reaches_expiry(self) -> bool:
+        """Whether the look-ahead saw every Gameweek the chip could be used in."""
+
+        return max(self.values_by_gameweek, default=self.gameweek_number) >= (
+            self.expiry_gameweek
+        )
+
+    def value(self, chip: Chip, gameweek_number: int) -> float:
+        return self.values_by_gameweek.get(gameweek_number, {}).get(chip, 0.0)
+
+    def best_later_value(self, chip: Chip) -> float:
+        """The best forecast gain still available to this chip after now."""
+
+        return max(
+            (
+                self.value(chip, gameweek)
+                for gameweek in self.lookahead_gameweeks
+                if chip in self.legal_by_gameweek.get(gameweek, ())
+            ),
+            default=0.0,
+        )
+
+
 @dataclass(frozen=True)
 class ScoringChipPolicy:
-    """When to play a scoring chip, declared rather than learned.
+    """Play a scoring chip as soon as its gain clears a threshold.
 
-    Both thresholds are in expected points and default high enough that the
-    chip is never played, so a replay stays chip-free unless a policy is
-    deliberately declared. A weakly validated chip adviser left switched on
-    would obscure whether the underlying projections improved.
+    Myopic by construction: it never asks whether a better Gameweek is coming.
+    Both thresholds default high enough that nothing is played, so a replay
+    stays chip-free unless a policy is deliberately declared — a weakly
+    validated chip adviser left switched on would obscure whether the
+    underlying projections improved.
     """
 
     bench_boost_threshold: float = float("inf")
@@ -165,18 +233,12 @@ class ScoringChipPolicy:
             self.threshold(chip) != float("inf") for chip in SCORING_CHIPS
         )
 
-    def choose(
-        self,
-        forecast_gains: dict[Chip, float],
-        available: tuple[Chip, ...],
-    ) -> Chip | None:
-        """Pick the legal chip with the largest gain that clears its threshold."""
-
+    def choose(self, context: ChipDecisionContext) -> Chip | None:
         eligible = [
-            (forecast_gains[chip], chip.value, chip)
-            for chip in available
-            if chip in forecast_gains
-            and forecast_gains[chip] >= self.threshold(chip)
+            (context.value(chip, context.gameweek_number), chip.value, chip)
+            for chip in context.legal_now
+            if context.value(chip, context.gameweek_number)
+            >= self.threshold(chip)
         ]
         if not eligible:
             return None
@@ -184,6 +246,54 @@ class ScoringChipPolicy:
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "kind": "threshold",
             "bench_boost_threshold": self.bench_boost_threshold,
             "triple_captain_threshold": self.triple_captain_threshold,
+        }
+
+
+@dataclass(frozen=True)
+class LookaheadChipPolicy:
+    """Play a chip only when this Gameweek beats every later one still available.
+
+    This is what makes a double Gameweek pull the chip toward it: a modest
+    week is declined while a bigger week remains reachable before the set
+    expires, and the chip is played once nothing better is left.
+
+    `minimum_gain` refuses trivial plays outright. `margin` requires this week
+    to beat the best later week by a stated amount, which biases toward
+    waiting when the two are close and the later forecast is less certain.
+    """
+
+    minimum_gain: float = 0.0
+    margin: float = 0.0
+    enabled: bool = False
+
+    @property
+    def plays_anything(self) -> bool:
+        return self.enabled
+
+    def choose(self, context: ChipDecisionContext) -> Chip | None:
+        if not self.enabled:
+            return None
+        eligible = []
+        for chip in context.legal_now:
+            now = context.value(chip, context.gameweek_number)
+            if now < self.minimum_gain:
+                continue
+            # An empty look-ahead means nothing is left before expiry, so the
+            # comparison becomes "play it or lose it".
+            if now < context.best_later_value(chip) + self.margin:
+                continue
+            eligible.append((now, chip.value, chip))
+        if not eligible:
+            return None
+        return max(eligible)[2]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": "lookahead",
+            "enabled": self.enabled,
+            "minimum_gain": self.minimum_gain,
+            "margin": self.margin,
         }
