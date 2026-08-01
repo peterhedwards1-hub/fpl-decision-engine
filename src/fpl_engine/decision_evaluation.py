@@ -8,6 +8,7 @@ from typing import Any
 from .config import SeasonRules
 from .domain import Player, Squad
 from .optimisation import CandidatePlayer, FullSquadResult
+from .pricing import PurchaseLedger
 from .rules import calculate_team_score
 from .transfers import CurrentSquad, recommend_transfers
 
@@ -40,6 +41,8 @@ class TransferReplayResult:
     transfers_in: tuple[str, ...]
     autosub_count: int
     effective_captain_id: str | None
+    bank_tenths: int
+    squad_selling_value_tenths: int
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,8 @@ class TransferContinuityReport:
     total_regret: int
     total_hits: int
     final_free_transfers: int
+    final_bank_tenths: int
+    final_purchase_prices_tenths: dict[str, int]
     limitations: tuple[str, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -65,8 +70,16 @@ def replay_transfer_continuity(
     *,
     rules: SeasonRules,
     max_transfers_per_week: int = 2,
+    initial_ledger: PurchaseLedger | None = None,
 ) -> TransferContinuityReport:
-    """Replay one persistent model-owned squad over consecutive Gameweeks."""
+    """Replay one persistent model-owned squad over consecutive Gameweeks.
+
+    Sale values follow the FPL half-profit rule from a carried purchase-price
+    ledger. Supply `initial_ledger` when the opening squad's purchase prices
+    differ from its selling prices; without it the opening selling prices are
+    taken as the purchase prices, which is correct for a squad bought at the
+    first replayed Gameweek.
+    """
 
     if not weeks:
         raise ValueError("At least one replay week is required")
@@ -77,6 +90,13 @@ def replay_transfer_continuity(
     if len({week.gameweek_number for week in weeks}) != len(weeks):
         raise ValueError("Replay Gameweeks must be unique")
     current = initial_squad
+    ledger = initial_ledger or PurchaseLedger.from_entry_prices(
+        initial_squad.selling_prices_tenths
+    )
+    if ledger.player_ids != current.player_ids:
+        raise ValueError(
+            "The purchase ledger must cover exactly the opening squad"
+        )
     results = []
     for week in weeks:
         forecast_by_id = {player.source_player_id: player for player in week.forecast_candidates}
@@ -88,6 +108,19 @@ def replay_transfer_continuity(
         realised = {outcome.source_player_id: outcome for outcome in week.realised_outcomes}
         if set(forecast_by_id) - set(realised):
             raise ValueError(f"GW{week.gameweek_number} needs outcomes for every candidate")
+        # Sale value is re-derived from this Gameweek's market prices against
+        # the prices the squad was bought at, so a rise between Gameweeks adds
+        # only half its value to the money available now.
+        current = replace(
+            current,
+            selling_prices_tenths=ledger.selling_prices(
+                {
+                    player_id: forecast_by_id[player_id].price_tenths
+                    for player_id in current.player_ids
+                },
+                rules,
+            ),
+        )
         recommendation = recommend_transfers(
             week.forecast_candidates,
             current,
@@ -141,16 +174,36 @@ def replay_transfer_continuity(
                 transfers_in=tuple(player.source_player_id for player in route.transfers_in),
                 autosub_count=autosubs,
                 effective_captain_id=captain,
+                bank_tenths=route.bank_tenths,
+                squad_selling_value_tenths=sum(
+                    current.selling_prices_tenths.values()
+                ),
             )
         )
         selected_ids = frozenset(
             player.source_player_id for player in route.resulting_squad.players
         )
+        # Arrivals are bought at this Gameweek's price; everyone kept holds the
+        # price they were originally bought at, so a later sale returns only
+        # half of any profit.
+        ledger = ledger.after_transfers(
+            sold=current.player_ids - selected_ids,
+            bought={
+                player_id: forecast_by_id[player_id].price_tenths
+                for player_id in selected_ids - current.player_ids
+            },
+        )
         current = CurrentSquad(
             player_ids=selected_ids,
-            selling_prices_tenths={
-                player_id: forecast_by_id[player_id].price_tenths for player_id in selected_ids
-            },
+            # Provisional: the next iteration re-derives these against that
+            # Gameweek's prices before any decision is taken.
+            selling_prices_tenths=ledger.selling_prices(
+                {
+                    player_id: forecast_by_id[player_id].price_tenths
+                    for player_id in selected_ids
+                },
+                rules,
+            ),
             bank_tenths=route.bank_tenths,
             free_transfers=route.next_free_transfers,
         )
@@ -163,14 +216,19 @@ def replay_transfer_continuity(
         total_regret=sum(result.regret for result in results),
         total_hits=sum(result.points_hit for result in results),
         final_free_transfers=current.free_transfers,
+        final_bank_tenths=current.bank_tenths,
+        final_purchase_prices_tenths=dict(
+            sorted(ledger.purchase_prices_tenths.items())
+        ),
         limitations=(
             "The squad, bank and free-transfer state persist between Gameweeks.",
             "Realised scoring applies the forecast lineup, bench order, exact "
             "autosubs and captain fallback.",
             "The comparator is a same-state one-Gameweek hindsight action, "
             "not a globally clairvoyant season policy.",
-            "Selling prices use the supplied candidate price at each replay "
-            "origin; purchase-price profit history is not reconstructed.",
+            "Selling prices apply the FPL half-profit rule to a carried "
+            "purchase-price ledger, so a price rise adds only half its value "
+            "to spending power.",
         ),
     )
 

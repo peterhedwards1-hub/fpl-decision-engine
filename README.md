@@ -355,9 +355,17 @@ fpl-history --database data/fpl_history.sqlite3 \
   replay-transfer-continuity <run-id> --max-transfers-per-week 1
 ```
 
-It reports per-Gameweek transfers, hits, autosub counts and net points, plus a
-`season_points` total. Chips are not played and the candidate universe is fixed at the
-opening Gameweek.
+It reports per-Gameweek transfers, hits, autosub counts, bank, squad selling value and net
+points, plus a `season_points` total and the final purchase-price ledger.
+
+Sale values come from that ledger, not the market. A player is carried at the price they
+were bought for, and selling applies the season's configured profit-sharing rule
+(`selling_prices` in the season config — 2026/27 returns one tenth per two tenths of
+profit, and takes losses in full). Players kept through a Wildcard retain their original
+purchase price; a Free Hit squad is temporary and leaves the ledger untouched. Without
+this the replay would spend money the real game never returns.
+
+Chips are not played and the candidate universe is fixed at the opening Gameweek.
 
 The latest completed scorecard also appears in the app's Data Health view. Backtest runs
 do not create ordinary production projection runs.

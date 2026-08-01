@@ -892,11 +892,9 @@ def replay_backtest_transfer_continuity(
         "Chips are not played; every Gameweek uses the base scoring rules.",
         "The candidate universe is fixed at the opening Gameweek, so players "
         "who first appear later are never signed.",
-        "Selling prices are each week's market price, not the FPL "
-        "purchase-price and half-profit rule, so spending power is overstated "
-        "after a price rise. The season score is therefore not yet fully "
-        "reachable, and this must be repaired before transfer regret becomes "
-        "a promotion gate.",
+        "Sale values apply the season's configured profit-sharing rule to a "
+        "carried purchase-price ledger, so a price rise funds only its "
+        "configured share of the next transfer.",
     ]
     return {
         "backtest_run_id": backtest_run_id,
