@@ -169,8 +169,6 @@ def test_candidate_backtest_and_decision_evidence_feed_the_gate(
         str(pair["incumbent_run_id"]),
         "--challenger-run",
         str(pair["challenger_run_id"]),
-        "--transfer-regret-change",
-        "0.0",
         "--output",
         str(evidence_path),
     )
@@ -183,8 +181,9 @@ def test_candidate_backtest_and_decision_evidence_feed_the_gate(
     }
     # Both squad and captain gates are now measured from the pair; only the
     # continuous transfer gate is still supplied by the operator.
-    assert "owned-captain-regret" in evidence["source_report"]
+    # Every decision gate is now derived; none can be typed in.
     assert "captain_decisions=" in evidence["source_report"]
+    assert "transfer_decisions=" in evidence["source_report"]
     assert json.loads(evidence_path.read_text()) == evidence
 
 

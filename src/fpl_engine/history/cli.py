@@ -22,6 +22,7 @@ from ..evaluation import (
     compare_backtest_to_baselines,
     evaluate_legal_squad_regret,
     evaluate_owned_captain_regret,
+    evaluate_transfer_regret,
     replay_backtest_transfer_continuity,
     write_json_report,
 )
@@ -412,6 +413,20 @@ def main() -> None:
     captain_parser.add_argument("--rules")
     captain_parser.add_argument("--method", default="model")
     captain_parser.add_argument("--output")
+    transfer_regret_parser = subparsers.add_parser(
+        "evaluate-transfer-regret",
+        help="Score each transfer action against the best from the same state",
+    )
+    transfer_regret_parser.add_argument("run_id", type=int)
+    transfer_regret_parser.add_argument("--rules")
+    transfer_regret_parser.add_argument("--first-gameweek", type=int)
+    transfer_regret_parser.add_argument("--last-gameweek", type=int)
+    transfer_regret_parser.add_argument(
+        "--max-transfers-per-week",
+        type=int,
+        default=1,
+    )
+    transfer_regret_parser.add_argument("--output")
     suite_parser = subparsers.add_parser(
         "compile-model-evaluation",
         help="Compile horizon, baseline and challenger gates from backtest runs",
@@ -537,13 +552,12 @@ def main() -> None:
     )
     evidence_parser.add_argument("--incumbent-run", type=int, required=True)
     evidence_parser.add_argument("--challenger-run", type=int, required=True)
-    evidence_parser.add_argument(
-        "--transfer-regret-change",
-        type=float,
-        required=True,
-        help="No replay producer exists yet; supply the measured change explicitly",
-    )
     evidence_parser.add_argument("--method", default="model")
+    evidence_parser.add_argument(
+        "--max-transfers-per-week",
+        type=int,
+        default=1,
+    )
     evidence_parser.add_argument("--rules")
     evidence_parser.add_argument("--output")
 
@@ -715,6 +729,34 @@ def main() -> None:
             if args.output:
                 write_json_report(captain.as_dict(), args.output)
             print(json.dumps(captain.as_dict(), indent=2))
+            return
+
+        if args.command == "evaluate-transfer-regret":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            transfer = evaluate_transfer_regret(
+                database,
+                args.run_id,
+                rules,
+                first_gameweek=args.first_gameweek,
+                last_gameweek=args.last_gameweek,
+                max_transfers_per_week=args.max_transfers_per_week,
+            )
+            if args.output:
+                write_json_report(transfer.as_dict(), args.output)
+            print(json.dumps(transfer.as_dict(), indent=2))
             return
 
         if args.command == "replay-transfer-continuity":
@@ -940,8 +982,8 @@ def main() -> None:
                 rules,
                 incumbent_run_id=args.incumbent_run,
                 challenger_run_id=args.challenger_run,
-                transfer_regret_change=args.transfer_regret_change,
                 method=args.method,
+                max_transfers_per_week=args.max_transfers_per_week,
             )
             if args.output:
                 write_json_report(asdict(evidence), args.output)

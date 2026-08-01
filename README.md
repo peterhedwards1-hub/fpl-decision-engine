@@ -317,10 +317,9 @@ fpl-history --database data/fpl.sqlite3 build-decision-evidence \
   --output data/preseason-priors-v1-decision-evidence.json
 ```
 
-`build-decision-evidence` measures `legal_squad_regret_change` and
-`owned_captain_regret_change` from the run pair. Continuous transfer regret has no replay
-producer yet and must be supplied explicitly, so that gate cannot pass on a silent zero —
-though nothing yet checks the supplied number came from a measurement. To run any full configuration
+`build-decision-evidence` derives all three decision gates from the run pair —
+legal-squad, owned-captain and same-state transfer regret. Nothing is supplied by an
+operator, so the gate cannot be passed on an asserted number. To run any full configuration
 outside the candidate flow, pass `backtest-projections --model-config <path>`;
 individual flags still override single fields on top of it.
 
@@ -371,7 +370,31 @@ fpl-history --database data/fpl_history.sqlite3 \
 ```
 
 It reports per-Gameweek transfers, hits, autosub counts, bank, squad selling value and net
-points, plus a `season_points` total and the final purchase-price ledger.
+points, plus a `season_points` total and the final purchase-price ledger. Each week also
+records the state its decision was taken from — owned squad, purchase prices, selling
+prices, bank, free transfers, chip availability and the transfer limit.
+
+`evaluate-transfer-regret` scores that replay as decisions rather than points:
+
+```bash
+fpl-history --database data/fpl_history.sqlite3 \
+  evaluate-transfer-regret <run-id> --max-transfers-per-week 1
+```
+
+It reports two measures, kept apart deliberately:
+
+- **`same_state_mean_regret`** is the gate metric. From the state that really existed each
+  Gameweek, how much did the chosen action cost against the best action available from
+  that *identical* state — same squad, prices, bank, free transfers and chip availability,
+  with outcomes known only to the hindsight branch. It does not compound.
+- **`continuous_policy_points`** is the season-representative one: what the carried squad
+  actually scored. More meaningful to a manager, but it accumulates every earlier decision
+  and forecast error.
+
+The model chooses over its full forecast horizon while hindsight optimises the scored
+Gameweek alone, so a horizon-aware model shows positive regret by construction; only the
+change between matched runs at the same horizon is comparable. Neither branch plays a
+chip, so availability is carried but never spent.
 
 Sale values come from that ledger, not the market. A player is carried at the price they
 were bought for, and selling applies the season's configured profit-sharing rule

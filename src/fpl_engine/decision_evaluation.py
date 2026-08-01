@@ -28,6 +28,24 @@ class TransferReplayWeek:
 
 
 @dataclass(frozen=True)
+class TransferDecisionState:
+    """The state a transfer decision was actually taken from.
+
+    Both the model and the hindsight branch see exactly this, so the only
+    difference between them is that hindsight knows the Gameweek's outcomes.
+    """
+
+    gameweek_number: int
+    player_ids: tuple[str, ...]
+    purchase_prices_tenths: dict[str, int]
+    selling_prices_tenths: dict[str, int]
+    bank_tenths: int
+    free_transfers: int
+    available_chips: tuple[str, ...]
+    max_transfers: int
+
+
+@dataclass(frozen=True)
 class TransferReplayResult:
     gameweek_number: int
     transfers_made: int
@@ -43,6 +61,7 @@ class TransferReplayResult:
     effective_captain_id: str | None
     bank_tenths: int
     squad_selling_value_tenths: int
+    state: TransferDecisionState
 
 
 @dataclass(frozen=True)
@@ -121,6 +140,20 @@ def replay_transfer_continuity(
                 rules,
             ),
         )
+        state = TransferDecisionState(
+            gameweek_number=week.gameweek_number,
+            player_ids=tuple(sorted(current.player_ids)),
+            purchase_prices_tenths=dict(
+                sorted(ledger.purchase_prices_tenths.items())
+            ),
+            selling_prices_tenths=dict(
+                sorted(current.selling_prices_tenths.items())
+            ),
+            bank_tenths=current.bank_tenths,
+            free_transfers=current.free_transfers,
+            available_chips=current.available_chips,
+            max_transfers=max_transfers_per_week,
+        )
         recommendation = recommend_transfers(
             week.forecast_candidates,
             current,
@@ -178,6 +211,7 @@ def replay_transfer_continuity(
                 squad_selling_value_tenths=sum(
                     current.selling_prices_tenths.values()
                 ),
+                state=state,
             )
         )
         selected_ids = frozenset(
@@ -206,6 +240,9 @@ def replay_transfer_continuity(
             ),
             bank_tenths=route.bank_tenths,
             free_transfers=route.next_free_transfers,
+            # No route plays a chip, so availability is carried unchanged and
+            # both branches remain equally constrained.
+            available_chips=current.available_chips,
         )
     return TransferContinuityReport(
         weeks=tuple(results),
@@ -226,6 +263,12 @@ def replay_transfer_continuity(
             "autosubs and captain fallback.",
             "The comparator is a same-state one-Gameweek hindsight action, "
             "not a globally clairvoyant season policy.",
+            "The model chooses over its full forecast horizon while hindsight "
+            "optimises the scored Gameweek alone, so a horizon-aware model "
+            "shows positive regret by construction; only the change between "
+            "matched runs at the same horizon is comparable.",
+            "No chip is played by either branch, so chip availability is "
+            "carried but never spent.",
             "Selling prices apply the FPL half-profit rule to a carried "
             "purchase-price ledger, so a price rise adds only half its value "
             "to spending power.",

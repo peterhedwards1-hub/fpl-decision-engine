@@ -12,7 +12,11 @@ from typing import Any
 
 from .backtest import ProjectionBacktester
 from .config import SeasonRules
-from .evaluation import evaluate_legal_squad_regret, evaluate_owned_captain_regret
+from .evaluation import (
+    evaluate_legal_squad_regret,
+    evaluate_owned_captain_regret,
+    evaluate_transfer_regret,
+)
 from .history.database import HistoricalDatabase
 from .projections import MODEL_VERSION, ProjectionModelConfig
 
@@ -261,16 +265,16 @@ def build_decision_gate_evidence(
     *,
     incumbent_run_id: int,
     challenger_run_id: int,
-    transfer_regret_change: float,
     method: str = "model",
+    max_transfers_per_week: int = 1,
 ) -> DecisionGateEvidence:
-    """Measure the decision gates that have producers, from a matched run pair.
+    """Measure every decision gate from a matched run pair.
 
-    Legal-squad and owned-captain regret are both measured here. Continuous
-    transfer regret has no replay producer yet, so it remains an explicit
-    operator input rather than being silently defaulted to zero — which is
-    weaker than deriving it, since nothing checks the supplied number came
-    from a measurement.
+    All three changes are now derived: legal-squad regret from replayed squad
+    selection, owned-captain regret from the armband available in that squad,
+    and transfer regret from the same-state one-Gameweek comparison. Nothing
+    here is supplied by an operator, so the gate cannot be passed on an
+    asserted number.
     """
 
     incumbent = evaluate_legal_squad_regret(
@@ -313,15 +317,37 @@ def build_decision_gate_evidence(
     captain_change = (
         challenger_captain.mean_regret - incumbent_captain.mean_regret
     )
+    incumbent_transfer = evaluate_transfer_regret(
+        database,
+        incumbent_run_id,
+        rules,
+        max_transfers_per_week=max_transfers_per_week,
+    )
+    challenger_transfer = evaluate_transfer_regret(
+        database,
+        challenger_run_id,
+        rules,
+        max_transfers_per_week=max_transfers_per_week,
+    )
+    if incumbent_transfer.gameweeks != challenger_transfer.gameweeks:
+        raise ValueError(
+            "Transfer evidence requires both runs to cover identical Gameweeks"
+        )
+    transfer_change = (
+        challenger_transfer.same_state_mean_regret
+        - incumbent_transfer.same_state_mean_regret
+    )
     return DecisionGateEvidence(
         legal_squad_regret_change=round(change, 6),
         owned_captain_regret_change=round(captain_change, 6),
-        transfer_regret_change=transfer_regret_change,
+        transfer_regret_change=round(transfer_change, 6),
         source_report=(
-            f"legal-squad-regret and owned-captain-regret method={method} "
-            f"incumbent_run={incumbent_run_id} challenger_run={challenger_run_id} "
+            f"legal-squad, owned-captain and same-state transfer regret "
+            f"method={method} incumbent_run={incumbent_run_id} "
+            f"challenger_run={challenger_run_id} "
             f"origins={len(incumbent_origins)} "
-            f"captain_decisions={incumbent_captain.samples}"
+            f"captain_decisions={incumbent_captain.samples} "
+            f"transfer_decisions={incumbent_transfer.decisions}"
         ),
     )
 

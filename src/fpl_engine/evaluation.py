@@ -663,6 +663,97 @@ def _origin_candidate_sets(
 
 
 @dataclass(frozen=True)
+class TransferRegretReport:
+    """Two distinct measures of the same replay, kept apart deliberately.
+
+    `same_state_mean_regret` is the gate metric: from the state that really
+    existed each Gameweek, how much did the chosen action cost against the best
+    action available from that identical state. It does not compound.
+
+    `continuous_policy_points` is the season-representative one: what the
+    carried squad actually scored, which is more meaningful to a manager but
+    accumulates every earlier decision and forecast error.
+    """
+
+    backtest_run_id: int
+    season_code: str
+    model_version: str
+    gameweeks: tuple[int, ...]
+    decisions: int
+    same_state_total_regret: int
+    same_state_mean_regret: float
+    continuous_policy_points: int
+    continuous_hindsight_points: int
+    total_hits: int
+    weeks: tuple[dict[str, Any], ...]
+    limitations: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "backtest_run_id": self.backtest_run_id,
+            "season_code": self.season_code,
+            "model_version": self.model_version,
+            "gameweeks": list(self.gameweeks),
+            "decisions": self.decisions,
+            "same_state_total_regret": self.same_state_total_regret,
+            "same_state_mean_regret": self.same_state_mean_regret,
+            "continuous_policy_points": self.continuous_policy_points,
+            "continuous_hindsight_points": self.continuous_hindsight_points,
+            "total_hits": self.total_hits,
+            "weeks": list(self.weeks),
+            "limitations": list(self.limitations),
+        }
+
+
+def evaluate_transfer_regret(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+    rules: SeasonRules,
+    *,
+    first_gameweek: int | None = None,
+    last_gameweek: int | None = None,
+    max_transfers_per_week: int = 1,
+) -> TransferRegretReport:
+    """Score each transfer action against the best one from the same state.
+
+    Both branches start from an identical prior state — owned squad, purchase
+    prices, bank, free transfers, chip availability and transfer limit — and
+    differ only in that the hindsight branch knows the Gameweek's outcomes.
+    """
+
+    replay = replay_backtest_transfer_continuity(
+        database,
+        backtest_run_id,
+        rules,
+        first_gameweek=first_gameweek,
+        last_gameweek=last_gameweek,
+        max_transfers_per_week=max_transfers_per_week,
+    )
+    weeks = replay["weeks"]
+    if not weeks:
+        raise ValueError(
+            f"Backtest run {backtest_run_id} produced no transfer decisions"
+        )
+    total_regret = sum(int(week["regret"]) for week in weeks)
+    return TransferRegretReport(
+        backtest_run_id=backtest_run_id,
+        season_code=str(replay["season_code"]),
+        model_version=str(replay["model_version"]),
+        gameweeks=tuple(int(week["gameweek_number"]) for week in weeks),
+        decisions=len(weeks),
+        same_state_total_regret=total_regret,
+        same_state_mean_regret=round(total_regret / len(weeks), 4),
+        continuous_policy_points=int(replay["season_points"]),
+        continuous_hindsight_points=int(
+            replay["total_same_state_hindsight_points"]
+        ),
+        total_hits=int(replay["total_hits"]),
+        weeks=tuple(weeks),
+        limitations=tuple(replay["limitations"]),
+    )
+
+
+@dataclass(frozen=True)
 class OwnedCaptainGameweekRegret:
     """One Gameweek's captaincy decision, scored against the same squad."""
 

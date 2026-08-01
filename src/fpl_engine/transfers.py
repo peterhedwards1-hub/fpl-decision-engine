@@ -26,6 +26,10 @@ class CurrentSquad:
     selling_prices_tenths: dict[str, int]
     bank_tenths: int
     free_transfers: int
+    #: Chips not yet spent. Carried so a decision's state is complete and both
+    #: branches of a regret comparison are equally constrained; no route in
+    #: this module plays one.
+    available_chips: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
