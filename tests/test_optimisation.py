@@ -8,6 +8,7 @@ from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
 from fpl_engine.optimisation import (
     CandidatePlayer,
+    GameweekPlayerValue,
     _expected_weekly_score,
     _optimal_captaincy,
     _used_outfield_bench_indexes,
@@ -327,6 +328,18 @@ def test_bench_order_beats_every_other_permutation() -> None:
         candidates, budget_tenths=1000, rules=RULES
     )
 
+    points = {
+        player.source_player_id: (
+            player.expected_points
+            if player.gameweek_expected_points is None
+            else player.gameweek_expected_points
+        )
+        for player in result.players
+    }
+    appearance = {
+        player.source_player_id: player.appearance_probability
+        for player in result.players
+    }
     outfield_bench = result.bench_player_ids[1:]
     for ordering in permutations(outfield_bench):
         expected, _, _ = _expected_weekly_score(
@@ -336,6 +349,8 @@ def test_bench_order_beats_every_other_permutation() -> None:
             result.captain_id,
             result.vice_captain_id,
             RULES,
+            points=points,
+            appearance=appearance,
         )
         assert result.gameweek_expected_points >= round(expected, 3)
 
@@ -394,3 +409,74 @@ def test_exact_bench_evaluator_skips_an_illegal_higher_priority_substitute() -> 
         outcomes,
         RULES,
     ) == (1,)
+
+
+def _rotating_candidates() -> tuple[CandidatePlayer, ...]:
+    """Exactly fifteen legal players whose best XI differs between Gameweeks.
+
+    The squad is forced, so the only decision left is who starts each week. Two
+    midfielders swap: one is worthless in GW2, the other worthless in GW1.
+    """
+
+    shape = (
+        *((Position.GK, f"gk{index}") for index in range(2)),
+        *((Position.DEF, f"def{index}") for index in range(5)),
+        *((Position.MID, f"mid{index}") for index in range(5)),
+        *((Position.FWD, f"fwd{index}") for index in range(3)),
+    )
+    rotating = {"mid3": (9.0, 0.0), "mid4": (0.0, 9.0)}
+    candidates = []
+    for index, (position, identifier) in enumerate(shape):
+        first, second = rotating.get(identifier, (5.0 + index * 0.01, 5.0 + index * 0.01))
+        candidates.append(
+            CandidatePlayer(
+                source_player_id=identifier,
+                web_name=identifier,
+                team_id=str(index % 8),
+                team_short_name=f"T{index % 8}",
+                position=position,
+                price_tenths=60,
+                expected_points=first + second,
+                gameweek_expected_points=first,
+                appearance_probability=0.9,
+                gameweek_values=(
+                    GameweekPlayerValue(1, first, 0.9, 0.8),
+                    GameweekPlayerValue(2, second, 0.9, 0.8),
+                ),
+            )
+        )
+    return tuple(candidates)
+
+
+def test_every_gameweek_plan_carries_its_own_legal_bench() -> None:
+    result = optimise_full_squad(
+        _rotating_candidates(),
+        budget_tenths=1000,
+        rules=RULES,
+    )
+
+    squad_ids = {player.source_player_id for player in result.players}
+    assert len(result.gameweek_plans) == 2
+    for plan in result.gameweek_plans:
+        assert len(plan.bench_player_ids) == 4
+        # A player is either starting or benched in a given Gameweek, never both
+        # and never neither.
+        assert not set(plan.bench_player_ids) & plan.starting_player_ids
+        assert set(plan.bench_player_ids) | set(plan.starting_player_ids) == squad_ids
+        assert len(set(plan.bench_player_ids)) == 4
+
+
+def test_a_rotated_lineup_gets_a_rotated_bench() -> None:
+    result = optimise_full_squad(
+        _rotating_candidates(),
+        budget_tenths=1000,
+        rules=RULES,
+    )
+
+    first, second = result.gameweek_plans
+    assert first.starting_player_ids != second.starting_player_ids
+    # mid3 is worthless in GW2 and mid4 worthless in GW1, so they swap.
+    assert "mid3" in first.starting_player_ids
+    assert "mid3" in second.bench_player_ids
+    assert "mid4" in first.bench_player_ids
+    assert "mid4" in second.starting_player_ids

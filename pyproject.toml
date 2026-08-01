@@ -23,6 +23,7 @@ dev = [
   "ruff>=0.5",
 ]
 ui = [
+  "pandas>=2.2,<3",
   "pulp>=3.2,<4",
   "streamlit>=1.47",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from fpl_engine.optimisation import (
     FullSquadResult,
     GameweekLineupPlan,
     GameweekPlayerValue,
+    optimise_full_squad,
 )
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
@@ -249,3 +251,88 @@ def test_continuity_replay_rejects_rules_from_another_season(tmp_path) -> None:
             )
     finally:
         database.__exit__(None, None, None)
+
+
+def _rotating_result():
+    """A two-Gameweek squad whose XI and bench swap between the weeks."""
+
+    shape = (
+        *((Position.GK, f"gk{index}") for index in range(2)),
+        *((Position.DEF, f"def{index}") for index in range(5)),
+        *((Position.MID, f"mid{index}") for index in range(5)),
+        *((Position.FWD, f"fwd{index}") for index in range(3)),
+    )
+    rotating = {"mid3": (9.0, 0.0), "mid4": (0.0, 9.0)}
+    candidates = tuple(
+        CandidatePlayer(
+            source_player_id=identifier,
+            web_name=identifier,
+            team_id=str(index % 8),
+            team_short_name=f"T{index % 8}",
+            position=position,
+            price_tenths=60,
+            expected_points=sum(rotating.get(identifier, (5.0, 5.0))),
+            gameweek_expected_points=rotating.get(identifier, (5.0, 5.0))[0],
+            appearance_probability=0.9,
+            gameweek_values=(
+                GameweekPlayerValue(1, rotating.get(identifier, (5.0, 5.0))[0], 0.9, 0.8),
+                GameweekPlayerValue(2, rotating.get(identifier, (5.0, 5.0))[1], 0.9, 0.8),
+            ),
+        )
+        for index, (position, identifier) in enumerate(shape)
+    )
+    return optimise_full_squad(candidates, budget_tenths=1000, rules=RULES)
+
+
+def _rotating_lookup(result, *, blanking: frozenset[str] = frozenset()):
+    return {
+        (player.source_player_id, gameweek): GameweekPlayerValue(
+            gameweek_number=gameweek,
+            expected_points=0.0 if player.source_player_id in blanking else 2.0,
+            appearance_probability=(
+                0.0 if player.source_player_id in blanking else 1.0
+            ),
+        )
+        for player in result.players
+        for gameweek in (1, 2)
+    }
+
+
+def test_a_rotated_gameweek_substitutes_from_that_weeks_bench() -> None:
+    result = _rotating_result()
+    first, second = result.gameweek_plans
+    # mid3 starts in GW1 and is benched in GW2; mid4 does the reverse.
+    assert "mid4" in second.starting_player_ids
+    assert "mid3" in second.bench_player_ids
+
+    clean = _replayed_squad_points(result, _rotating_lookup(result), (2,), RULES)
+    blanked = _replayed_squad_points(
+        result,
+        _rotating_lookup(result, blanking=frozenset({"mid4"})),
+        (2,),
+        RULES,
+    )
+
+    # Scoring GW2 against the opening Gameweek's bench would list mid4 as both a
+    # starter and a substitute, and omit mid3 entirely.
+    assert clean == 24.0
+    assert blanked == 24.0
+
+
+def test_replay_rejects_a_plan_whose_bench_overlaps_its_starters() -> None:
+    result = _rotating_result()
+    second = result.gameweek_plans[1]
+    corrupted = replace(
+        result,
+        gameweek_plans=(
+            result.gameweek_plans[0],
+            replace(
+                second,
+                bench_player_ids=(second.bench_player_ids[0],)
+                + tuple(sorted(second.starting_player_ids))[:3],
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="lists a starter on its bench"):
+        _replayed_squad_points(corrupted, _rotating_lookup(result), (2,), RULES)

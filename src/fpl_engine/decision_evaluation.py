@@ -212,10 +212,23 @@ def score_squad_gameweek(
     starting = result.starting_player_ids if plan is None else plan.starting_player_ids
     captain = result.captain_id if plan is None else plan.captain_id
     vice = result.vice_captain_id if plan is None else plan.vice_captain_id
+    # The plan's own bench, never the squad-level one: a rotated XI leaves the
+    # opening Gameweek's bench listing a player who is now starting and
+    # omitting the one who is not.
+    bench = (
+        result.bench_player_ids
+        if plan is None or not plan.bench_player_ids
+        else plan.bench_player_ids
+    )
+    if plan is not None and plan.bench_player_ids and set(bench) & set(starting):
+        raise ValueError(
+            f"GW{gameweek} plan lists a starter on its bench; the lineup is not "
+            "a legal squad"
+        )
     squad = Squad(
         players=players,
         starting_player_ids=frozenset(id_lookup[value] for value in starting),
-        bench_player_ids=tuple(id_lookup[value] for value in result.bench_player_ids),
+        bench_player_ids=tuple(id_lookup[value] for value in bench),
         captain_id=id_lookup[captain],
         vice_captain_id=id_lookup[vice],
     )

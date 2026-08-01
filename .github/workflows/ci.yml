@@ -29,7 +29,7 @@ jobs:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         run: |
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet -e ".[dev,optimize,modeling]"
+          python -m pip install --quiet -e ".[dev,optimize,modeling,ui]"
 
       - name: Lint
         run: python -m ruff check . --output-format=concise
@@ -41,11 +41,6 @@ jobs:
         run: |
           python -m fpl_engine.history.cli \
             --database data/ci-smoke.sqlite3 init
-
-      - name: Install UI smoke-test dependencies
-        env:
-          PIP_DISABLE_PIP_VERSION_CHECK: "1"
-        run: python -m pip install --quiet -e ".[ui]"
 
       - name: UI launch smoke test
         env:

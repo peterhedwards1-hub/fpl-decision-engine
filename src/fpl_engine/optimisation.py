@@ -51,10 +51,18 @@ class StartingXIResult:
 
 @dataclass(frozen=True)
 class GameweekLineupPlan:
+    """One Gameweek's lineup decision.
+
+    The bench belongs here, not only on the squad: the optimiser may start a
+    different XI each Gameweek, so a squad-level bench order is only correct
+    for the Gameweek it was computed against.
+    """
+
     gameweek_number: int
     starting_player_ids: frozenset[str]
     captain_id: str
     vice_captain_id: str
+    bench_player_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -511,14 +519,33 @@ def optimise_full_squad(
                 for player_id, value in gameweek_values.items()
             },
         )
+        gameweek_starter_ids = frozenset(
+            player.source_player_id for player in gameweek_starters
+        )
+        # Each Gameweek gets its own legal bench and exact order. Reusing the
+        # opening Gameweek's bench would leave a rotated-in starter listed as a
+        # substitute and the newly benched player missing altogether, which is
+        # not a squad the autosub rules can be applied to.
+        gameweek_points, gameweek_appearance = _gameweek_value_maps(
+            selected,
+            gameweek,
+        )
+        gameweek_bench, _, _, _ = _best_bench_order(
+            selected,
+            gameweek_starter_ids,
+            captain_id,
+            vice_id,
+            rules,
+            points=gameweek_points,
+            appearance=gameweek_appearance,
+        )
         plans.append(
             GameweekLineupPlan(
                 gameweek_number=gameweek,
-                starting_player_ids=frozenset(
-                    player.source_player_id for player in gameweek_starters
-                ),
+                starting_player_ids=gameweek_starter_ids,
                 captain_id=captain_id,
                 vice_captain_id=vice_id,
+                bench_player_ids=gameweek_bench,
             )
         )
     starter_ids = plans[0].starting_player_ids
@@ -541,13 +568,14 @@ def optimise_full_squad(
             for player in current_starters
         },
     )
-    plans[0] = GameweekLineupPlan(
-        gameweek_number=plans[0].gameweek_number,
-        starting_player_ids=starter_ids,
-        captain_id=captain_id,
-        vice_captain_id=vice_id,
-    )
-    gameweek_plans = tuple(plans)
+    headline_points = {
+        player.source_player_id: _gameweek_points(player)
+        for player in selected
+    }
+    headline_appearance = {
+        player.source_player_id: player.appearance_probability
+        for player in selected
+    }
     bench, expected, bench_contribution, captain_contribution = (
         _best_bench_order(
             selected,
@@ -555,8 +583,18 @@ def optimise_full_squad(
             captain_id,
             vice_id,
             rules,
+            points=headline_points,
+            appearance=headline_appearance,
         )
     )
+    plans[0] = GameweekLineupPlan(
+        gameweek_number=plans[0].gameweek_number,
+        starting_player_ids=starter_ids,
+        captain_id=captain_id,
+        vice_captain_id=vice_id,
+        bench_player_ids=bench,
+    )
+    gameweek_plans = tuple(plans)
     squad = _domain_squad(
         selected, starter_ids, bench, captain_id, vice_id
     )
@@ -728,6 +766,9 @@ def _best_bench_order(
     captain_id: str,
     vice_id: str,
     rules: SeasonRules,
+    *,
+    points: dict[str, float],
+    appearance: dict[str, float],
 ) -> tuple[tuple[str, ...], float, float, float]:
     """Order the bench to maximise exact autosub value.
 
@@ -765,6 +806,8 @@ def _best_bench_order(
                 captain_id,
                 vice_id,
                 rules,
+                points=points,
+                appearance=appearance,
             )
         )
         # Negated so the smallest key is the highest value, leaving the bench
@@ -785,6 +828,9 @@ def _expected_weekly_score(
     captain_id: str,
     vice_id: str,
     rules: SeasonRules,
+    *,
+    points: dict[str, float],
+    appearance: dict[str, float],
 ) -> tuple[float, float, float]:
     by_id = {player.source_player_id: player for player in selected}
     domain_squad = _domain_squad(
@@ -801,20 +847,16 @@ def _expected_weekly_score(
     # state, so enumerate the 10 outfield starters and three outfield
     # substitutes rather than repeatedly invoking the full rule engine for
     # all 2^15 states.
-    without_bench = sum(
-        _gameweek_points(by_id[player_id]) for player_id in starter_ids
-    )
+    without_bench = sum(points[player_id] for player_id in starter_ids)
     starting_goalkeeper = next(
         player
         for player in selected
         if player.source_player_id in starter_ids
         and player.position == Position.GK
     )
-    bench_goalkeeper = by_id[bench[0]]
     bench_contribution = (
-        (1.0 - starting_goalkeeper.appearance_probability)
-        * _gameweek_points(bench_goalkeeper)
-    )
+        1.0 - appearance[starting_goalkeeper.source_player_id]
+    ) * points[bench[0]]
     starting_outfield = tuple(
         player
         for player in selected
@@ -826,7 +868,7 @@ def _expected_weekly_score(
     for outcomes in product((False, True), repeat=len(state_players)):
         probability = 1.0
         for player, did_appear in zip(state_players, outcomes, strict=True):
-            appearance_probability = player.appearance_probability
+            appearance_probability = appearance[player.source_player_id]
             probability *= (
                 appearance_probability
                 if did_appear
@@ -841,13 +883,15 @@ def _expected_weekly_score(
             rules,
         )
         bench_contribution += probability * sum(
-            _conditional_points(bench_outfield[index])
+            _conditional_points(
+                bench_outfield[index].source_player_id,
+                points,
+                appearance,
+            )
             for index in used_bench_indexes
         )
-    captain = by_id[captain_id]
-    vice = by_id[vice_id]
-    expected_captain = _gameweek_points(captain) + (
-        (1.0 - captain.appearance_probability) * _gameweek_points(vice)
+    expected_captain = points[captain_id] + (
+        (1.0 - appearance[captain_id]) * points[vice_id]
     )
     expected_base = without_bench + bench_contribution
     return (
@@ -1028,7 +1072,31 @@ def _value_for_gameweek(
         ) from error
 
 
-def _conditional_points(player: CandidatePlayer) -> float:
-    if player.appearance_probability <= 0:
+def _gameweek_value_maps(
+    selected: tuple[CandidatePlayer, ...],
+    gameweek_number: int,
+) -> tuple[dict[str, float], dict[str, float]]:
+    values = {
+        player.source_player_id: _value_for_gameweek(player, gameweek_number)
+        for player in selected
+    }
+    return (
+        {
+            player_id: value.expected_points
+            for player_id, value in values.items()
+        },
+        {
+            player_id: value.appearance_probability
+            for player_id, value in values.items()
+        },
+    )
+
+
+def _conditional_points(
+    player_id: str,
+    points: dict[str, float],
+    appearance: dict[str, float],
+) -> float:
+    if appearance[player_id] <= 0:
         return 0.0
-    return _gameweek_points(player) / player.appearance_probability
+    return points[player_id] / appearance[player_id]
