@@ -1,0 +1,81 @@
+{
+  "at_high_boundary": false,
+  "at_low_boundary": false,
+  "best_mean_score": 2.188675,
+  "best_value": 0.816667,
+  "curve": [
+    {
+      "mean_score": 2.189525,
+      "season_scores": {
+        "2022-23": 2.24315,
+        "2023-24": 2.1359
+      },
+      "value": 0.55
+    },
+    {
+      "mean_score": 2.18905,
+      "season_scores": {
+        "2022-23": 2.24175,
+        "2023-24": 2.13635
+      },
+      "value": 0.683333
+    },
+    {
+      "mean_score": 2.188675,
+      "season_scores": {
+        "2022-23": 2.2407,
+        "2023-24": 2.13665
+      },
+      "value": 0.816667
+    },
+    {
+      "mean_score": 2.18885,
+      "season_scores": {
+        "2022-23": 2.24035,
+        "2023-24": 2.13735
+      },
+      "value": 0.95
+    },
+    {
+      "mean_score": 2.1897,
+      "season_scores": {
+        "2022-23": 2.24085,
+        "2023-24": 2.13855
+      },
+      "value": 1.083333
+    },
+    {
+      "mean_score": 2.191225,
+      "season_scores": {
+        "2022-23": 2.24215,
+        "2023-24": 2.1403
+      },
+      "value": 1.216667
+    },
+    {
+      "mean_score": 2.193275,
+      "season_scores": {
+        "2022-23": 2.24405,
+        "2023-24": 2.1425
+      },
+      "value": 1.35
+    }
+  ],
+  "held_at": {
+    "carry_forward_regression_matches": 12.0,
+    "cold_start_maximum_factor": 3.0,
+    "cold_start_minimum_factor": 0.35,
+    "cold_start_price_elasticity": 1.5,
+    "promoted_team_defence_multiplier": 1.2
+  },
+  "high": 1.35,
+  "horizon_gameweeks": 1,
+  "low": 0.55,
+  "note": "A minimum at either boundary means the range is too narrow to identify this parameter, not that the boundary is the estimate.",
+  "objective_version": "preseason-rmse-bias-v2",
+  "parameter": "promoted_team_attack_multiplier",
+  "target_seasons": [
+    "2022-23",
+    "2023-24"
+  ]
+}

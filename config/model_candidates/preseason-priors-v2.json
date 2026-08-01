@@ -23,11 +23,11 @@
   "defensive_contribution_model": "threshold_poisson",
   "include_penalty_events": true,
   "team_strength_carry_forward": true,
-  "carry_forward_regression_matches": 25.206504650560742,
-  "promoted_team_attack_multiplier": 1.037831173352192,
-  "promoted_team_defence_multiplier": 1.2,
+  "carry_forward_regression_matches": 34.78887265121832,
+  "promoted_team_attack_multiplier": 0.85,
+  "promoted_team_defence_multiplier": 1.4140000000000001,
   "cold_start_prior": "position_price",
-  "cold_start_price_elasticity": 0.5854534292366105,
+  "cold_start_price_elasticity": 1.5,
   "cold_start_minimum_factor": 0.35,
-  "cold_start_maximum_factor": 3.0
+  "cold_start_maximum_factor": 0.8367886371661224
 }

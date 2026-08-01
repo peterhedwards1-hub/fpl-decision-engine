@@ -11,11 +11,14 @@ from fpl_engine.history.database import HistoricalDatabase
 from fpl_engine.preseason_fit import (
     EXHAUSTED_SEASONS,
     PRESEASON_PARAMETER_NAMES,
-    _config_from_preseason_parameters,
+    PRESEASON_SEARCH_SPACE,
     _require_prior_seasons,
     _robust_config,
-    _suggest_preseason_config,
+    config_from_point,
+    design_points,
     fit_preseason_priors,
+    halton,
+    profile_preseason_prior,
 )
 from fpl_engine.projections import (
     CORRECTED_V4_MODEL_CONFIG,
@@ -26,21 +29,6 @@ RULES = {
     "2022-23": load_season_rules(Path("config/seasons/2022-23.json")),
     "2023-24": load_season_rules(Path("config/seasons/2023-24.json")),
 }
-
-
-class _StubTrial:
-    """Records the search space without needing optuna in the test."""
-
-    def __init__(self, position: float) -> None:
-        self.position = position
-        self.suggested: dict[str, float] = {}
-
-    def suggest_float(
-        self, name: str, low: float, high: float, *, log: bool = False
-    ) -> float:
-        value = low + (high - low) * self.position
-        self.suggested[name] = value
-        return value
 
 
 def _database(tmp_path, seasons: tuple[str, ...]):
@@ -134,85 +122,83 @@ def test_rules_must_cover_exactly_the_target_seasons(tmp_path) -> None:
         database.__exit__(None, None, None)
 
 
-def test_the_search_space_only_moves_stage_3a_fields() -> None:
-    config = _suggest_preseason_config(_StubTrial(0.5), PRESEASON_V5_MODEL_CONFIG)
-
-    changed = {
-        name
-        for name in PRESEASON_V5_MODEL_CONFIG.__dataclass_fields__
-        if getattr(config, name) != getattr(PRESEASON_V5_MODEL_CONFIG, name)
-    }
-    assert changed <= set(PRESEASON_PARAMETER_NAMES)
-    assert config.team_strength_carry_forward is True
-    assert config.cold_start_prior == "position_price"
-
-
-@pytest.mark.parametrize("position", (0.0, 0.25, 0.5, 0.75, 1.0))
-def test_cold_start_bounds_stay_ordered_across_the_search_space(
-    position: float,
-) -> None:
-    trial = _StubTrial(position)
-
-    config = _suggest_preseason_config(trial, PRESEASON_V5_MODEL_CONFIG)
-
-    # The span parameterisation is what keeps minimum <= maximum legal, so no
-    # trial is ever wasted on a configuration the dataclass rejects.
-    assert 0 < config.cold_start_minimum_factor <= 1
-    assert config.cold_start_maximum_factor >= config.cold_start_minimum_factor
-    assert "cold_start_factor_span" in trial.suggested
+def test_profile_refuses_an_unknown_parameter(tmp_path) -> None:
+    database = _database(tmp_path, ("2022-23", "2023-24"))
+    try:
+        with pytest.raises(ValueError, match="Unknown preseason parameter"):
+            profile_preseason_prior(
+                database,
+                {"2023-24": RULES["2023-24"]},
+                parameter="recent_gameweeks",
+                target_seasons=("2023-24",),
+                low=1.0,
+                high=2.0,
+            )
+    finally:
+        database.__exit__(None, None, None)
 
 
-def test_a_trial_round_trips_from_its_recorded_parameters() -> None:
-    trial = _StubTrial(0.3)
-    config = _suggest_preseason_config(trial, PRESEASON_V5_MODEL_CONFIG)
-
-    rebuilt = _config_from_preseason_parameters(
-        trial.suggested,
-        PRESEASON_V5_MODEL_CONFIG,
-    )
-
-    # Leave-one-season-out rebuilds a fold's winner from its stored params, so
-    # the rebuild has to reproduce the configuration the trial actually ran.
-    assert rebuilt == config
-
-
-class _StubCompletedTrial:
-    def __init__(self, number: int, params: dict, season_scores: dict) -> None:
-        self.number = number
-        self.params = params
-        self.user_attrs = {"season_scores": season_scores}
-
-
-def _trial(number: int, *, attack: float, elasticity: float, score: float):
-    """A trial that varies the promoted attack multiplier and nothing else."""
-
-    return _StubCompletedTrial(
-        number,
-        {
-            "carry_forward_regression_matches": 12.0,
-            "promoted_team_attack_multiplier": attack,
-            "promoted_team_defence_multiplier": 1.20,
-            "cold_start_price_elasticity": elasticity,
-            "cold_start_minimum_factor": 0.35,
-            "cold_start_factor_span": 3.0 / 0.35,
-        },
-        {"2022-23": score, "2023-24": score},
-    )
-
-
-def test_a_parameter_the_leading_trials_agree_on_replaces_the_declared_value() -> None:
-    # The best trials all sit near 1.05 while the search ranged over 0.6-1.05.
-    trials = [
-        _trial(0, attack=1.05, elasticity=1.5, score=1.0),
-        _trial(1, attack=1.04, elasticity=1.5, score=1.1),
-        _trial(2, attack=1.06, elasticity=1.5, score=1.2),
-        _trial(3, attack=0.60, elasticity=1.5, score=3.0),
-        _trial(4, attack=0.70, elasticity=1.5, score=3.1),
-        _trial(5, attack=0.80, elasticity=1.5, score=3.2),
+def test_halton_reproduces_its_known_leading_terms() -> None:
+    assert [halton(index, 2) for index in range(1, 8)] == [
+        0.5,
+        0.25,
+        0.75,
+        0.125,
+        0.625,
+        0.375,
+        0.875,
     ]
+    assert halton(1, 3) == pytest.approx(1 / 3)
+    assert halton(2, 3) == pytest.approx(2 / 3)
+    with pytest.raises(ValueError, match="start at 1"):
+        halton(0, 2)
+
+
+def test_the_design_is_fixed_space_filling_and_within_range() -> None:
+    first = design_points(48)
+    second = design_points(48)
+
+    # The design must not depend on anything measured, or leave-one-season-out
+    # would be scoring points the withheld season helped choose.
+    assert first == second
+    assert len(first) == 48
+    assert len({tuple(sorted(point.items())) for point in first}) == 48
+    for point in first:
+        assert set(point) == set(PRESEASON_SEARCH_SPACE)
+        for name, value in point.items():
+            low, high, _ = PRESEASON_SEARCH_SPACE[name]
+            assert low <= value <= high
+
+
+def test_every_design_point_builds_a_legal_configuration() -> None:
+    for point in design_points(48):
+        config = config_from_point(point, PRESEASON_V5_MODEL_CONFIG)
+        assert config.cold_start_minimum_factor <= config.cold_start_maximum_factor
+        changed = {
+            name
+            for name in PRESEASON_V5_MODEL_CONFIG.__dataclass_fields__
+            if getattr(config, name)
+            != getattr(PRESEASON_V5_MODEL_CONFIG, name)
+        }
+        assert changed <= set(PRESEASON_PARAMETER_NAMES)
+
+
+def _matrix_for(points, chooser):
+    return [{"2022-23": chooser(point), "2023-24": chooser(point)} for point in points]
+
+
+def test_a_parameter_the_leading_points_agree_on_replaces_the_declared_value() -> None:
+    points = design_points(48)
+    # Score improves the closer the promoted attack multiplier is to 1.0, well
+    # inside the search range, so the leading points cluster there.
+    matrix = _matrix_for(
+        points,
+        lambda point: abs(point["promoted_team_attack_multiplier"] - 1.0),
+    )
 
     config, evidence = _robust_config(
-        trials,
+        points,
+        matrix,
         ("2022-23", "2023-24"),
         PRESEASON_V5_MODEL_CONFIG,
         PRESEASON_V5_MODEL_CONFIG,
@@ -220,24 +206,50 @@ def test_a_parameter_the_leading_trials_agree_on_replaces_the_declared_value() -
 
     by_name = {item.name: item for item in evidence}
     assert by_name["promoted_team_attack_multiplier"].identified is True
-    assert by_name["promoted_team_attack_multiplier"].retained == "fitted"
-    assert config.promoted_team_attack_multiplier == pytest.approx(1.05, abs=0.02)
+    assert by_name["promoted_team_attack_multiplier"].at_boundary is False
+    assert config.promoted_team_attack_multiplier == pytest.approx(1.0, abs=0.05)
 
 
-def test_a_parameter_the_leading_trials_scatter_over_keeps_its_declared_value() -> None:
-    # Elasticity is uncorrelated with the score here, so the leading trials
-    # scatter across the range and nothing about it has been established.
-    trials = [
-        _trial(0, attack=1.05, elasticity=0.1, score=1.0),
-        _trial(1, attack=1.04, elasticity=2.9, score=1.1),
-        _trial(2, attack=1.06, elasticity=1.4, score=1.2),
-        _trial(3, attack=0.60, elasticity=0.5, score=3.0),
-        _trial(4, attack=0.70, elasticity=2.2, score=3.1),
-        _trial(5, attack=0.80, elasticity=1.9, score=3.2),
-    ]
+def test_a_parameter_pressed_against_a_search_bound_is_censored() -> None:
+    points = design_points(48)
+    # Monotone in the multiplier, so the best points pile up at the low bound.
+    matrix = _matrix_for(
+        points,
+        lambda point: point["promoted_team_attack_multiplier"],
+    )
 
     config, evidence = _robust_config(
-        trials,
+        points,
+        matrix,
+        ("2022-23", "2023-24"),
+        PRESEASON_V5_MODEL_CONFIG,
+        PRESEASON_V5_MODEL_CONFIG,
+    )
+
+    by_name = {item.name: item for item in evidence}
+    # The bound chose that value, not the data, so the declared value stands.
+    assert by_name["promoted_team_attack_multiplier"].at_boundary is True
+    assert by_name["promoted_team_attack_multiplier"].identified is False
+    assert by_name["promoted_team_attack_multiplier"].retained == (
+        "declared (censored)"
+    )
+    assert (
+        config.promoted_team_attack_multiplier
+        == PRESEASON_V5_MODEL_CONFIG.promoted_team_attack_multiplier
+    )
+
+
+def test_a_parameter_the_leading_points_scatter_over_keeps_its_declared_value() -> None:
+    points = design_points(48)
+    # The score ignores elasticity entirely, so its leading values scatter.
+    matrix = _matrix_for(
+        points,
+        lambda point: abs(point["promoted_team_attack_multiplier"] - 1.0),
+    )
+
+    config, evidence = _robust_config(
+        points,
+        matrix,
         ("2022-23", "2023-24"),
         PRESEASON_V5_MODEL_CONFIG,
         PRESEASON_V5_MODEL_CONFIG,
@@ -245,31 +257,37 @@ def test_a_parameter_the_leading_trials_scatter_over_keeps_its_declared_value() 
 
     by_name = {item.name: item for item in evidence}
     assert by_name["cold_start_price_elasticity"].identified is False
-    assert by_name["cold_start_price_elasticity"].retained == "declared"
     assert (
         config.cold_start_price_elasticity
         == PRESEASON_V5_MODEL_CONFIG.cold_start_price_elasticity
     )
 
 
-def test_an_untouched_parameter_never_moves() -> None:
-    trials = [
-        _trial(index, attack=1.05, elasticity=1.5, score=1.0 + index / 10)
-        for index in range(6)
+def test_folds_select_from_the_same_outcome_independent_design() -> None:
+    points = design_points(48)
+    # 2022-23 prefers a high multiplier, 2023-24 a low one. A fold that trains
+    # on one season must therefore pick a different configuration to the other.
+    matrix = [
+        {
+            "2022-23": abs(point["promoted_team_attack_multiplier"] - 1.2),
+            "2023-24": abs(point["promoted_team_attack_multiplier"] - 0.8),
+        }
+        for point in points
     ]
 
-    config, evidence = _robust_config(
-        trials,
-        ("2022-23",),
-        PRESEASON_V5_MODEL_CONFIG,
-        PRESEASON_V5_MODEL_CONFIG,
+    first, _ = _robust_config(
+        points, matrix, ("2022-23",), PRESEASON_V5_MODEL_CONFIG, PRESEASON_V5_MODEL_CONFIG
+    )
+    second, _ = _robust_config(
+        points, matrix, ("2023-24",), PRESEASON_V5_MODEL_CONFIG, PRESEASON_V5_MODEL_CONFIG
     )
 
-    # Every trial declared the same defence multiplier, so its leading spread is
-    # zero and it can only be "identified" if it differs from the declared value.
-    by_name = {item.name: item for item in evidence}
-    assert by_name["promoted_team_defence_multiplier"].identified is False
-    assert config.cold_start_minimum_factor <= config.cold_start_maximum_factor
+    assert (
+        first.promoted_team_attack_multiplier
+        != second.promoted_team_attack_multiplier
+    )
+    assert first.promoted_team_attack_multiplier > 1.0
+    assert second.promoted_team_attack_multiplier < 1.0
 
 
 def test_the_shipped_fit_only_moved_identified_parameters() -> None:
@@ -282,5 +300,5 @@ def test_the_shipped_fit_only_moved_identified_parameters() -> None:
     moved = {name for name in declared if declared[name] != shipped[name]}
     assert moved == set(report["identified_parameters"])
     assert moved <= set(PRESEASON_PARAMETER_NAMES)
-    # Both withheld seasons preferred the shipped rule to the declared values.
-    assert report["transfers_across_seasons"] is True
+    assert not moved & set(report["censored_parameters"])
+    assert report["objective_version"] == "preseason-rmse-bias-v2"

@@ -269,6 +269,11 @@ def build_decision_gate_evidence(
 
     Owned-captain and transfer regret have no replay producer yet, so both remain
     explicit operator inputs rather than being silently defaulted to zero.
+
+    Requiring them is weaker than deriving them: nothing here checks that the
+    supplied numbers came from a measurement, so the gate can still be passed
+    on operator-entered values. They should reference persisted evidence
+    records once dedicated replay commands produce them.
     """
 
     incumbent = evaluate_legal_squad_regret(

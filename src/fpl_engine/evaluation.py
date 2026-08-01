@@ -507,7 +507,7 @@ def evaluate_legal_squad_regret(
     method_names = tuple(dict.fromkeys(methods))
     regrets = []
     for origin_gameweek, origin_rows in by_origin.items():
-        metadata = _player_metadata_as_of(
+        metadata = player_metadata_as_of(
             database,
             int(run["season_id"]),
             origin_gameweek,
@@ -794,7 +794,7 @@ def replay_backtest_transfer_continuity(
     # resolvable later. Restricting the universe to them keeps every week's
     # candidate set identical, which the replay requires; players who first
     # appear mid-window are therefore never signed.
-    universe = _player_metadata_as_of(
+    universe = player_metadata_as_of(
         database,
         season_id,
         gameweeks[0],
@@ -802,7 +802,7 @@ def replay_backtest_transfer_continuity(
     )
     weeks = []
     for gameweek in gameweeks:
-        metadata = _player_metadata_as_of(
+        metadata = player_metadata_as_of(
             database,
             season_id,
             gameweek,
@@ -892,6 +892,11 @@ def replay_backtest_transfer_continuity(
         "Chips are not played; every Gameweek uses the base scoring rules.",
         "The candidate universe is fixed at the opening Gameweek, so players "
         "who first appear later are never signed.",
+        "Selling prices are each week's market price, not the FPL "
+        "purchase-price and half-profit rule, so spending power is overstated "
+        "after a price rise. The season score is therefore not yet fully "
+        "reachable, and this must be repaired before transfer regret becomes "
+        "a promotion gate.",
     ]
     return {
         "backtest_run_id": backtest_run_id,
@@ -908,7 +913,7 @@ def replay_backtest_transfer_continuity(
     }
 
 
-def _player_metadata_as_of(
+def player_metadata_as_of(
     database: HistoricalDatabase,
     season_id: int,
     origin_gameweek: int,

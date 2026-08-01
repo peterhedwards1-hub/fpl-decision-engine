@@ -26,10 +26,11 @@ from ..evaluation import (
 )
 from ..learned_challenger import train_and_evaluate_learned_challenger
 from ..playing_time import train_and_evaluate_hurdle_model
-from ..preseason_fit import fit_preseason_priors
+from ..preseason_fit import fit_preseason_priors, profile_preseason_prior
 from ..projections import (
     DEFAULT_MODEL_CONFIG,
     MODEL_VERSION,
+    PRESEASON_V5_MODEL_CONFIG,
     ProjectionModelConfig,
     RatesProjectionModel,
 )
@@ -43,6 +44,7 @@ from ..promotion import (
     run_forward_candidate_pair,
 )
 from ..prospective import build_prospective_capture_status
+from ..squad_comparison import compare_opening_squads
 from ..tuning import tune_projection_model, tune_projection_model_rolling
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
@@ -214,18 +216,65 @@ def main() -> None:
     preseason_parser.add_argument("--origin-start", type=int, default=1)
     preseason_parser.add_argument("--origin-end", type=int, default=8)
     preseason_parser.add_argument("--horizon", type=int, default=1)
-    preseason_parser.add_argument("--trials", type=int, default=40)
     preseason_parser.add_argument(
-        "--study-name",
-        default="fpl-preseason-priors-fit-v1",
+        "--design-size",
+        type=int,
+        default=48,
+        help="Fixed Halton design points, generated before any outcome is seen",
     )
-    preseason_parser.add_argument("--study-storage")
-    preseason_parser.add_argument("--seed", type=int, default=20260731)
+    preseason_parser.add_argument(
+        "--confirmation-horizons",
+        nargs="*",
+        type=int,
+        default=[8],
+        help="Horizons to re-score the fitted configuration on",
+    )
     preseason_parser.add_argument(
         "--config-output",
         help="Write the fitted configuration for register-forward-candidate",
     )
     preseason_parser.add_argument("--output")
+    profile_parser = subparsers.add_parser(
+        "profile-preseason-prior",
+        help="Sweep one Stage 3a parameter with the others held fixed",
+    )
+    profile_parser.add_argument("parameter")
+    profile_parser.add_argument("--target-seasons", nargs="+", required=True)
+    profile_parser.add_argument("--low", type=float, required=True)
+    profile_parser.add_argument("--high", type=float, required=True)
+    profile_parser.add_argument("--steps", type=int, default=7)
+    profile_parser.add_argument("--origin-start", type=int, default=1)
+    profile_parser.add_argument("--origin-end", type=int, default=8)
+    profile_parser.add_argument("--horizon", type=int, default=1)
+    profile_parser.add_argument(
+        "--base-config",
+        help="Configuration to hold the other parameters at (defaults to v1)",
+    )
+    profile_parser.add_argument("--output")
+    squads_parser = subparsers.add_parser(
+        "compare-opening-squads",
+        help="Build and cross-value the squads two configurations pick",
+    )
+    squads_parser.add_argument("season_code")
+    squads_parser.add_argument("--first-label", default="v1")
+    squads_parser.add_argument("--first-config", required=True)
+    squads_parser.add_argument("--second-label", default="v2")
+    squads_parser.add_argument("--second-config", required=True)
+    squads_parser.add_argument("--gameweek", type=int, default=1)
+    squads_parser.add_argument("--horizon", type=int, default=8)
+    squads_parser.add_argument(
+        "--sensitivity-parameters",
+        nargs="*",
+        default=[],
+        help="Parameters to perturb up and down when testing squad stability",
+    )
+    squads_parser.add_argument(
+        "--sensitivity-fraction",
+        type=float,
+        default=0.25,
+    )
+    squads_parser.add_argument("--rules")
+    squads_parser.add_argument("--output")
     challenger_parser = subparsers.add_parser(
         "train-boosted-challenger",
         help=("Train on earlier completed backtests and evaluate one later validation run"),
@@ -564,10 +613,8 @@ def main() -> None:
                 origin_gameweek_start=args.origin_start,
                 origin_gameweek_end=args.origin_end,
                 horizon_gameweeks=args.horizon,
-                trials=args.trials,
-                study_name=args.study_name,
-                storage_url=args.study_storage,
-                seed=args.seed,
+                design_size=args.design_size,
+                confirmation_horizons=tuple(args.confirmation_horizons),
             )
             if args.config_output:
                 Path(args.config_output).write_text(
@@ -577,6 +624,68 @@ def main() -> None:
             if args.output:
                 write_json_report(fit.as_dict(), args.output)
             print(json.dumps(fit.as_dict(), indent=2))
+            return
+
+        if args.command == "profile-preseason-prior":
+            rules_by_season = {
+                season_code: load_season_rules(
+                    Path(f"config/seasons/{season_code}.json")
+                )
+                for season_code in args.target_seasons
+            }
+            base_config = (
+                PRESEASON_V5_MODEL_CONFIG
+                if args.base_config is None
+                else ProjectionModelConfig(
+                    **json.loads(Path(args.base_config).read_text(encoding="utf-8"))
+                )
+            )
+            profile = profile_preseason_prior(
+                database,
+                rules_by_season,
+                parameter=args.parameter,
+                target_seasons=tuple(args.target_seasons),
+                low=args.low,
+                high=args.high,
+                steps=args.steps,
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                base_config=base_config,
+            )
+            if args.output:
+                write_json_report(profile, args.output)
+            print(json.dumps(profile, indent=2))
+            return
+
+        if args.command == "compare-opening-squads":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            comparison = compare_opening_squads(
+                database,
+                rules,
+                {
+                    args.first_label: ProjectionModelConfig(
+                        **json.loads(
+                            Path(args.first_config).read_text(encoding="utf-8")
+                        )
+                    ),
+                    args.second_label: ProjectionModelConfig(
+                        **json.loads(
+                            Path(args.second_config).read_text(encoding="utf-8")
+                        )
+                    ),
+                },
+                season_code=args.season_code,
+                gameweek=args.gameweek,
+                horizon_gameweeks=args.horizon,
+                sensitivity_parameters=tuple(args.sensitivity_parameters),
+                sensitivity_fraction=args.sensitivity_fraction,
+            )
+            if args.output:
+                write_json_report(comparison, args.output)
+            print(json.dumps(comparison, indent=2))
             return
 
         if args.command == "replay-transfer-continuity":

@@ -390,22 +390,54 @@ development seasons only:
 ```bash
 fpl-history --database data/fpl.sqlite3 fit-preseason-priors \
   --target-seasons 2022-23 2023-24 \
-  --origin-start 1 --origin-end 8 --trials 40 \
+  --origin-start 1 --origin-end 8 --design-size 48 \
+  --confirmation-horizons 8 \
   --config-output config/model_candidates/preseason-priors-v2.json
 ```
 
 Only the six Stage 3a fields move; every other field is held at the base configuration, so
 this is not a re-tune of the incumbent. The command refuses design-exhausted seasons
 (2024/25, 2025/26), refuses forward seasons, and refuses a target season with no earlier
-season in the database, since carry-forward would have nothing to read. Origins are
-restricted to the opening Gameweeks because both mechanisms fade once real fixtures and
-minutes accumulate.
+season in the database, since carry-forward would have nothing to read.
 
-The report includes a leave-one-season-out fold per target season: the parameters are
-re-selected without that season, then scored on it and compared to the declared values.
-With few season starts available, that comparison — not the point estimate — is the
-evidence worth reading. The result is design evidence only; the fitted configuration
-still has to be registered and pass the forward 2026/27 gate.
+Three properties make the result readable rather than merely numeric:
+
+- The search design is a **fixed Halton sequence generated before any outcome is seen**. An
+  adaptive sampler proposes later points in response to results from every season, which
+  would leave a withheld season having helped choose the points it is then scored on.
+- The objective is **RMSE plus half the absolute bias**, not MAE. Decision metrics are
+  reported beside it rather than driving selection.
+- A parameter whose leading estimate sits within 5% of a search bound is reported as
+  **censored**, not identified: there the bound chose the value.
+
+Walk one parameter with the others held fixed to see whether an optimum is interior or
+bound-seeking:
+
+```bash
+fpl-history --database data/fpl.sqlite3 profile-preseason-prior \
+  promoted_team_attack_multiplier \
+  --target-seasons 2022-23 2023-24 --low 0.55 --high 1.35 --steps 7
+```
+
+Then see whether the change alters a decision at all, and how stable that decision is:
+
+```bash
+fpl-history --database data/fpl.sqlite3 compare-opening-squads 2026-27 \
+  --first-config config/model_candidates/preseason-priors-v1.json \
+  --second-config config/model_candidates/preseason-priors-v2.json \
+  --gameweek 1 --horizon 8 \
+  --sensitivity-parameters carry_forward_regression_matches cold_start_maximum_factor
+```
+
+Each configuration values **both** squads on its own scale, because expected points from
+two configurations are not comparable across scales; only the self-minus-other differences
+are. The sensitivity block perturbs the named parameters and reports which players hold
+their place under every variant.
+
+A fitting attempt on 2022/23 and 2023/24 is recorded in
+[the modelling plan](docs/09_ModellingAndEvaluationPlan.md) §6.1a. It improved both seasons
+in-sample and at the unfitted horizon 8, but failed its out-of-season check on one of two
+folds, so the declared v1 values stand.
 
 The completed 2025/26 study, its selected trial, held-out results, data scope and
 limitations are recorded in

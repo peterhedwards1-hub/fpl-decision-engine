@@ -354,59 +354,82 @@ them. The package is registered as the single candidate `preseason-priors-v1`
 `DEFAULT_MODEL_CONFIG` is unchanged, and a regression test asserts that the incumbent still
 returns flat preseason strengths.
 
-#### Fitting the declared values — `preseason-priors-v2`
+#### Fitting the declared values — the attempt, and what it showed
 
 `fit-preseason-priors` estimates the six Stage 3a parameters over each season's opening
 Gameweeks, where carry-forward and cold starts actually bind. Only 2022/23 and 2023/24 are
 usable: 2021/22 is the earliest imported season, so carry-forward has nothing to read from
-it, and 2024/25 onward are design-exhausted. Two season starts, 40 trials, GW1–GW8.
+it, and 2024/25 onward are design-exhausted.
 
-The important result is that **most of these parameters are not identified by that much
-evidence**. Comparing the leading trials' spread to the whole search's spread separates
-what the data established from what the winning trial merely happened to report:
+**A first attempt was withdrawn.** It used an adaptive Optuna search, `tuning_objective`,
+and ranges that two parameters pressed against. All three were wrong for this question:
 
-| Parameter | Declared | Best trial | Leading mean ± sd | Search sd | Retained |
-|---|---:|---:|---:|---:|---|
-| `carry_forward_regression_matches` | 12.0 | 28.79 | 25.21 ± 4.61 | 8.64 | fitted |
-| `promoted_team_attack_multiplier` | 0.85 | 1.050 | 1.038 ± 0.014 | 0.112 | fitted |
-| `promoted_team_defence_multiplier` | 1.20 | 1.043 | 1.185 ± 0.099 | 0.153 | declared |
-| `cold_start_price_elasticity` | 1.50 | 0.113 | 0.586 ± 0.634 | 0.751 | fitted |
-| `cold_start_minimum_factor` | 0.35 | 0.487 | 0.390 ± 0.103 | 0.183 | declared |
-| `cold_start_maximum_factor` | 3.00 | 3.324 | 2.379 ± 0.876 | 1.481 | declared |
+- The adaptive sampler proposed later trials in response to results from *both* seasons, so
+  a leave-one-season-out fold that merely re-ranked those trials was scoring parameter
+  combinations the withheld season had helped choose. Its folds were optimistic.
+- `tuning_objective` is dominated by top-100 MAE. §8.1 already concludes MAE is the wrong
+  gate for forecasts feeding an expected-points optimiser: it rewards the conditional
+  median where the optimiser needs calibrated means.
+- Two "identified" values sat against their search bounds, which shows a range that is too
+  narrow, not a parameter that is pinned down.
 
-A parameter moves only when the declared value falls outside one deviation of the leading
-trials' mean, and it moves to that mean rather than to the single winning trial — which is
-one draw from the spread beside it. Three parameters cleared that bar:
+The method now uses a fixed Halton design generated before any outcome is seen, an
+objective of RMSE plus half the absolute bias, wider ranges, and a rule that reports any
+estimate within 5% of a bound as censored rather than identified. Decision metrics are
+recorded beside the objective instead of driving selection.
 
-- **Promoted clubs' attack should not be discounted.** The declared 0.85 is nearly nine
-  leading deviations from the estimate. This is the one tightly identified parameter, and
-  it says the assumed penalty was wrong in direction, not just in size.
-- **Carry-forward should regress harder**, roughly 25 pseudo-matches rather than 12, so
-  last season's table separates clubs less than the declared value assumed.
-- **Price informs cold starts far less than assumed**, 0.59 against a declared 1.50. This
-  one only just clears the bar — the leading spread of 0.63 nearly covers the gap — so
-  treat the direction as established and the magnitude as loose.
+**Under the corrected method the earlier conclusions do not survive.**
 
-The declared promoted-*defence* multiplier is confirmed rather than overturned: the leading
-mean of 1.185 sits almost exactly on the declared 1.20. Both cold-start bounds keep their
-declared values.
-
-Scores are the standard tuning objective, lower better:
-
-| Season | Declared | Fitted (shipped) | Change | Leave-one-season-out |
+| Parameter | Declared | Leading mean ± sd | Profile optimum | Objective span over full sweep |
 |---|---:|---:|---:|---:|
-| 2022/23 | 2.9052 | 2.7858 | −0.1193 | −0.0892 |
-| 2023/24 | 3.0124 | 2.9172 | −0.0951 | −0.0601 |
+| `carry_forward_regression_matches` | 12.0 | 34.79 ± 19.39 | 80 (upper bound) | 0.0086 |
+| `promoted_team_attack_multiplier` | 0.85 | 0.71 ± 0.18 | 0.82 | 0.0046 |
+| `promoted_team_defence_multiplier` | 1.20 | 1.41 ± 0.20 | 1.30 | 0.0063 |
+| `cold_start_price_elasticity` | 1.50 | 1.67 ± 0.93 | — | — |
+| `cold_start_minimum_factor` | 0.35 | 0.37 ± 0.20 | — | — |
+| `cold_start_maximum_factor` | 3.00 | 0.84 ± 0.04 | 1.33 | 0.0289 |
 
-The leave-one-season-out column repeats the entire selection rule without the scored
-season, so it measures the configuration that would actually have been declared. Both
-withheld seasons preferred it to the declared values. The shipped configuration also beats
-the raw winning trial on 2022/23 (2.7858 against 2.8128), which is the expected consequence
-of estimating from the leading mean instead of one draw.
+The profile columns hold every other parameter at its declared value and walk one axis,
+which is the only way to tell a bound-seeking optimum from a pinned one.
 
-The output is `config/model_candidates/preseason-priors-v2.json`, differing from v1 in
-exactly the three identified fields. **It is design evidence, not a promotion.** Two season
-starts and six promoted clubs are thin, and the forward gate still applies unchanged.
+Three things follow.
+
+**The promoted-attack claim is refuted.** The withdrawn fit reported 1.038 and called the
+declared 0.85 wrong in direction. Its own profile has an interior optimum at 0.82 —
+essentially the declared value — and the corrected joint fit puts the leading mean at 0.71
+with the declared value comfortably inside one deviation. The earlier result was an
+artefact of the MAE objective and the narrow range.
+
+**Carry-forward regression is not identified.** Its objective falls monotonically to the
+upper bound at 80 and is still falling, across a total span of 0.0086. Read plainly, the
+objective mildly prefers regressing every club to the league average — that is, it does not
+find carry-forward's club signal useful at these horizons — and widening the range further
+would only chase a flat asymptote.
+
+**Every effect is small.** The largest objective span of any parameter across its whole
+sweep is 0.029, against a baseline near 2.19: about one percent.
+
+The fitted configuration is recorded at `config/model_candidates/preseason-priors-v2.json`
+(carry-forward regression 34.79, promoted defence 1.414, cold-start maximum 0.837), and it
+does improve both seasons in-sample and at the unfitted horizon 8. But the out-of-season
+check fails:
+
+| Season | Declared | Fitted | In-sample change | Leave-one-season-out |
+|---|---:|---:|---:|---:|
+| 2022/23 | 2.2405 | 2.2208 | −0.0196 | **+0.0029** |
+| 2023/24 | 2.1368 | 2.1062 | −0.0306 | −0.0261 |
+
+One withheld season prefers the fitted values and one does not. `transfers_out_of_season`
+is therefore false, and on this evidence **the declared v1 values should stand**. v2 is
+recorded as the output of a documented method, not recommended for registration.
+
+The squad consequences are recorded in `data/preseason-squad-comparison-2023-24.json` and
+sharpen the point. On 2023/24 GW1 over an eight-Gameweek horizon the two configurations
+share 11 of 15 players, and each rates its own squad above the other's by only 2.1 and 1.1
+points respectively. But perturbing the three fitted parameters by ±25% leaves just **8 of
+15 players in every squad**. The selection is being carried by parameter values the
+development evidence does not pin down, which is a stronger argument for leaving them
+declared than any of the score changes above.
 
 Not covered: the `team_share_expected` scoring path has its own strength estimator
 (`_expected_goal_team_strengths`) and does not yet carry forward.
@@ -650,7 +673,7 @@ machine-checkable.
 | 1 | Bootstrap intervals; oracle sensitivity; residual slices; calibration | **Complete for current components** | Regenerate diagnostics as new forward outcomes and candidate runs arrive |
 | 2 | Hurdle playing-time model; hierarchical pooling; learned decay | **Implemented; logistic candidate registered** | Beats v4 on genuinely forward forecast and decision tiers |
 | 3 | Share-of-team xG/xA; team and fixture model; components; DC by calibration | **Coherent design implemented; historical design result failed RMSE/top-player bias** | Forward gate, or redesign player allocation using oracle evidence |
-| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and gate-reachable; parameters fitted on 2022/23–2023/24 openings as `preseason-priors-v2`, with three of six identified and the rest left declared** | Both gate tiers on genuinely forward 2026/27 results; owned-captain and transfer regret producers still missing |
+| 3a | Preseason team-strength carry-forward, promoted priors, price-aware cold starts | **Implemented and gate-reachable; a fitting attempt on 2022/23–2023/24 openings failed its out-of-season check, so the declared v1 values stand** | Both gate tiers on genuinely forward 2026/27 results; owned-captain and transfer regret producers still missing |
 | 4 | Joint Monte Carlo with shared team factors; constrained ensemble | **Infrastructure implemented** | Accumulate forward CRPS, coverage, PIT and decision evidence |
 | 5 | Forward qualification on 2026/27 | **Executable and predeclared; outcomes pending** | Both gate tiers, no position regression |
 | A | Decision-layer repair | **Continuity, chip timing and empirical option-value infrastructure implemented; regret scoring corrected for autosubs and continuity replayable from any backtest run** | Accumulate actual actions to estimate option value and transfer regret; price chip usage into the replay |
