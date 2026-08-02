@@ -56,6 +56,22 @@ class WeeklyWorkflowRepository:
         expires_at: datetime | None = None,
         prompt_version: str | None = None,
         research_run_id: str | None = None,
+        input_package_id: str | None = None,
+        input_package_hash: str | None = None,
+        research_window_start: datetime | None = None,
+        target_deadline: datetime | None = None,
+        research_mode: str | None = None,
+        priority: str | None = None,
+        selected_player_status: str | None = None,
+        adjustment_support: str | None = None,
+        temporal_status: str | None = None,
+        conflict_group_id: str | None = None,
+        supporting_evidence: tuple[dict[str, Any], ...] = (),
+        conflicting_evidence: tuple[dict[str, Any], ...] = (),
+        unresolved_uncertainty: str | None = None,
+        resolution_event: str | None = None,
+        confidence_after_conflict: str | None = None,
+        research_result_id: int | None = None,
     ) -> int:
         if evidence_at.tzinfo is None:
             raise WorkflowError("Evidence time must be timezone-aware")
@@ -63,11 +79,11 @@ class WeeklyWorkflowRepository:
             raise WorkflowError("Evidence expiry must be timezone-aware")
         if expires_at is not None and expires_at <= evidence_at:
             raise WorkflowError("Evidence expiry must be after its publication time")
-        if schema_version not in {1, 2}:
+        if schema_version not in {1, 2, 3}:
             raise WorkflowError("Unsupported news evidence schema version")
-        season_id, gameweek_id = self._season_gameweek(
-            season_code, gameweek_number
-        )
+        if schema_version == 3 and research_mode not in {"preseason", "provisional", "final"}:
+            raise WorkflowError("Version 3 evidence needs a valid research mode")
+        season_id, gameweek_id = self._season_gameweek(season_code, gameweek_number)
         player_season_id = None
         if source_player_id is not None:
             row = self.database.connection.execute(
@@ -79,9 +95,7 @@ class WeeklyWorkflowRepository:
                 (season_id, source_player_id),
             ).fetchone()
             if row is None:
-                raise WorkflowError(
-                    f"Player {source_player_id!r} is not available"
-                )
+                raise WorkflowError(f"Player {source_player_id!r} is not available")
             player_season_id = int(row["id"])
         cursor = self.database.connection.execute(
             """
@@ -91,9 +105,14 @@ class WeeklyWorkflowRepository:
                 schema_version, source_name, published_at, source_tier,
                 model_area, suggested_adjustment_json, adjustment_basis,
                 requires_decision, decision_question, expires_at,
-                prompt_version, research_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?)
+                prompt_version, research_run_id, input_package_id, input_package_hash,
+                research_window_start, target_deadline, research_mode, priority,
+                selected_player_status, adjustment_support, temporal_status,
+                conflict_group_id, supporting_evidence_json, conflicting_evidence_json,
+                unresolved_uncertainty, resolution_event, confidence_after_conflict,
+                research_result_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
             (
@@ -110,21 +129,31 @@ class WeeklyWorkflowRepository:
                 evidence_at.astimezone(UTC).isoformat(),
                 source_tier,
                 model_area,
-                (
-                    None
-                    if suggested_adjustment is None
-                    else _json(suggested_adjustment)
-                ),
+                (None if suggested_adjustment is None else _json(suggested_adjustment)),
                 adjustment_basis,
                 int(requires_decision),
                 decision_question,
-                (
-                    None
-                    if expires_at is None
-                    else expires_at.astimezone(UTC).isoformat()
-                ),
+                (None if expires_at is None else expires_at.astimezone(UTC).isoformat()),
                 prompt_version,
                 research_run_id,
+                input_package_id,
+                input_package_hash,
+                None
+                if research_window_start is None
+                else research_window_start.astimezone(UTC).isoformat(),
+                None if target_deadline is None else target_deadline.astimezone(UTC).isoformat(),
+                research_mode,
+                priority,
+                selected_player_status,
+                adjustment_support,
+                temporal_status,
+                conflict_group_id,
+                _json(supporting_evidence),
+                _json(conflicting_evidence),
+                unresolved_uncertainty,
+                resolution_event,
+                confidence_after_conflict,
+                research_result_id,
             ),
         )
         evidence_id = int(cursor.fetchone()[0])
@@ -147,7 +176,8 @@ class WeeklyWorkflowRepository:
             raise WorkflowError("A decision maker is required")
         evidence = self.database.connection.execute(
             """
-            SELECT review_status, suggested_adjustment_json
+            SELECT review_status, suggested_adjustment_json, schema_version,
+                   adjustment_support
             FROM news_evidence WHERE id = ?
             """,
             (evidence_id,),
@@ -164,15 +194,21 @@ class WeeklyWorkflowRepository:
             and expected_minutes_adjustment is None
             and suggested is not None
             and suggested.get("kind") == "expected_minutes_delta"
+            and evidence["adjustment_support"] in {None, "supported_numeric"}
         ):
             expected_minutes_adjustment = float(suggested["value"])
         if (
-            expected_minutes_adjustment is not None
-            and not -90 <= expected_minutes_adjustment <= 90
+            status == "accepted"
+            and expected_minutes_adjustment is not None
+            and evidence["schema_version"] == 3
+            and evidence["adjustment_support"] != "supported_numeric"
         ):
             raise WorkflowError(
-                "Expected-minutes adjustment must be between -90 and 90"
+                "This v3 adjustment is not directly supported by the production model; "
+                "accept it as informational or record a separate reviewed model decision"
             )
+        if expected_minutes_adjustment is not None and not -90 <= expected_minutes_adjustment <= 90:
+            raise WorkflowError("Expected-minutes adjustment must be between -90 and 90")
         reviewed = reviewed_at or datetime.now(UTC)
         if reviewed.tzinfo is None:
             raise WorkflowError("Review time must be timezone-aware")
@@ -186,20 +222,12 @@ class WeeklyWorkflowRepository:
             """,
             (
                 status,
-                (
-                    expected_minutes_adjustment
-                    if status == "accepted"
-                    else None
-                ),
+                (expected_minutes_adjustment if status == "accepted" else None),
                 rationale.strip(),
                 reviewed.astimezone(UTC).isoformat(),
                 decision_maker.strip(),
                 expected_minutes_adjustment,
-                (
-                    expected_minutes_adjustment
-                    if status == "accepted"
-                    else None
-                ),
+                (expected_minutes_adjustment if status == "accepted" else None),
                 evidence_id,
             ),
         )
@@ -223,9 +251,7 @@ class WeeklyWorkflowRepository:
         if created.tzinfo is None:
             raise WorkflowError("Decision-run time must be timezone-aware")
         if "expected_points" not in recommendation:
-            raise WorkflowError(
-                "Recommendation must record its expected_points baseline"
-            )
+            raise WorkflowError("Recommendation must record its expected_points baseline")
         context = self.database.connection.execute(
             """
             SELECT manager.season_id, manager.gameweek_id,
@@ -245,9 +271,7 @@ class WeeklyWorkflowRepository:
             context["season_id"] != context["projection_season_id"]
             or context["gameweek_number"] != context["start_gameweek"]
         ):
-            raise WorkflowError(
-                "Manager snapshot and projection run must cover the same Gameweek"
-            )
+            raise WorkflowError("Manager snapshot and projection run must cover the same Gameweek")
         timestamp = created.astimezone(UTC).isoformat()
         if mode == "final":
             pending = self.database.connection.execute(
@@ -270,6 +294,7 @@ class WeeklyWorkflowRepository:
                     WHERE season_id = ? AND gameweek_id = ?
                       AND review_status = 'accepted'
                       AND expected_minutes_adjustment IS NOT NULL
+                      AND (temporal_status IS NULL OR temporal_status = 'current_window')
                       AND evidence_at <= ?
                       AND (expires_at IS NULL OR expires_at > ?)
                     """,
@@ -291,9 +316,7 @@ class WeeklyWorkflowRepository:
                     (projection_run_id,),
                 ).fetchone()
                 paired_ids = (
-                    set()
-                    if pair is None
-                    else {int(value) for value in json.loads(pair[0])}
+                    set() if pair is None else {int(value) for value in json.loads(pair[0])}
                 )
                 if not accepted_ids.issubset(paired_ids):
                     raise WorkflowError(
@@ -386,9 +409,7 @@ class WeeklyWorkflowRepository:
             (weekly_run_id,),
         ).fetchone()
         if row is None or not row["has_action"]:
-            raise WorkflowError(
-                "Evaluation requires a final run with its actual action recorded"
-            )
+            raise WorkflowError("Evaluation requires a final run with its actual action recorded")
         forecast = float(json.loads(row["recommendation_json"])["expected_points"])
         evaluated = evaluated_at or datetime.now(UTC)
         cursor = self.database.connection.execute(
@@ -433,18 +454,14 @@ class WeeklyWorkflowRepository:
             gameweek_number=row["gameweek_number"],
             created_at=datetime.fromisoformat(row["created_at"]),
             frozen_at=(
-                None
-                if row["frozen_at"] is None
-                else datetime.fromisoformat(row["frozen_at"])
+                None if row["frozen_at"] is None else datetime.fromisoformat(row["frozen_at"])
             ),
             recommendation=json.loads(row["recommendation_json"]),
             decision_triggers=tuple(json.loads(row["decision_triggers_json"])),
             overrides=tuple(json.loads(row["overrides_json"])),
         )
 
-    def _season_gameweek(
-        self, season_code: str, gameweek_number: int
-    ) -> tuple[int, int]:
+    def _season_gameweek(self, season_code: str, gameweek_number: int) -> tuple[int, int]:
         row = self.database.connection.execute(
             """
             SELECT seasons.id AS season_id, gameweeks.id AS gameweek_id
@@ -455,11 +472,14 @@ class WeeklyWorkflowRepository:
             (season_code, gameweek_number),
         ).fetchone()
         if row is None:
-            raise WorkflowError(
-                f"{season_code} Gameweek {gameweek_number} is unavailable"
-            )
+            raise WorkflowError(f"{season_code} Gameweek {gameweek_number} is unavailable")
         return int(row["season_id"]), int(row["gameweek_id"])
 
 
 def _json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=lambda item: item.isoformat() if isinstance(item, datetime) else str(item),
+    )

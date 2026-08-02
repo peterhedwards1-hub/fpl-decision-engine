@@ -1,22 +1,22 @@
 {
-  "checked_at": "2026-07-30T11:46:30.050601+00:00",
+  "checked_at": "2026-08-02T18:40:16.545629+00:00",
   "gameweeks": [
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 1,
-          "version_matched_runs": 1
+          "version_matched_runs": 2
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 1,
-          "version_matched_runs": 1
+          "version_matched_runs": 2
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 1,
-          "version_matched_runs": 1
+          "version_matched_runs": 2
         }
       },
       "counts": {
@@ -25,30 +25,46 @@
         "manager_snapshot": 0,
         "paired_news_projections": 0,
         "post_gameweek_snapshot": 0,
-        "pre_deadline_snapshot": 1,
+        "pre_deadline_snapshot": 2,
         "recorded_outcomes": 0,
         "weekly_evaluation": 0
       },
       "deadline_passed": false,
       "deadline_time": "2026-08-21T17:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 1,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 1,
+        "version_matched_runs": 1
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -66,24 +82,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-08-28T17:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 2,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -101,24 +133,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-09-04T17:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 3,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -136,24 +184,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-09-12T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 4,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -171,24 +235,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-09-18T17:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 5,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -206,24 +286,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-10-10T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 6,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -241,24 +337,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-10-17T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 7,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -276,24 +388,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-10-24T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 8,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -311,24 +439,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-10-31T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 9,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -346,24 +490,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-11-07T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 10,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -381,24 +541,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-11-21T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 11,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -416,24 +592,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-11-28T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 12,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -451,24 +643,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-12-02T18:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 13,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -486,24 +694,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-12-05T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 14,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -521,24 +745,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-12-12T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 15,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -556,24 +796,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-12-19T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 16,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -591,24 +847,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-12-26T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 17,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -626,24 +898,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2026-12-30T18:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 18,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -661,24 +949,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-01-02T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 19,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -696,24 +1000,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-01-06T18:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 20,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -731,24 +1051,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-01-16T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 21,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -766,24 +1102,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-01-23T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 22,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -801,24 +1153,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-01-30T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 23,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -836,24 +1204,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-02-06T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 24,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -871,24 +1255,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-02-10T18:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 25,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -906,24 +1306,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-02-20T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 26,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -941,24 +1357,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-02-27T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 27,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -976,24 +1408,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-03-03T18:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 28,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1011,24 +1459,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-03-13T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 29,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1046,24 +1510,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-03-20T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 30,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1081,24 +1561,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-04-10T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 31,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1116,24 +1612,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-04-17T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 32,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1151,24 +1663,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-04-24T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 33,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1186,24 +1714,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-05-01T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 34,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1221,24 +1765,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-05-08T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 35,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1256,24 +1816,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-05-15T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 36,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1291,24 +1867,40 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-05-23T12:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 37,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
     },
     {
       "candidate_projections": {
-        "defensive-empirical-v1": {
+        "defensive-empirical-v1-r2": {
           "model_version": "rates-defensive-empirical-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "playing-time-hurdle-logistic-v1": {
+        "playing-time-hurdle-logistic-v1-r2": {
           "model_version": "rates-playing-time-hurdle-logistic-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
         },
-        "team-share-xg-v1": {
+        "team-share-xg-v1-r2": {
           "model_version": "rates-team-share-xg-v1",
           "valid_pre_deadline_runs": 0,
           "version_matched_runs": 0
@@ -1326,7 +1918,23 @@
       },
       "deadline_passed": false,
       "deadline_time": "2027-05-30T13:30:00Z",
+      "decision_record": {
+        "complete": false,
+        "final_runs": 0,
+        "missing_fields": [
+          "squad",
+          "starting_xi",
+          "captain",
+          "vice_captain",
+          "bench_order"
+        ]
+      },
       "gameweek": 38,
+      "incumbent_projection": {
+        "model_version": "rates-rules-corrected-v4",
+        "valid_pre_deadline_runs": 0,
+        "version_matched_runs": 0
+      },
       "is_finished": false,
       "missing_required": [],
       "status": "upcoming"
@@ -1335,7 +1943,10 @@
   "policy": [
     "A passed deadline requires an exact pre-deadline official snapshot, manager state, paired pre/post-news projections, a frozen decision and the actual action.",
     "A finished Gameweek additionally requires a completed-fixture capture with cumulative player outcomes and decision evaluation.",
-    "Every declared forward candidate requires a pre-deadline projection whose model version and canonical config match its immutable registration."
+    "Every declared forward candidate requires a pre-deadline projection whose model version and canonical config match its immutable registration.",
+    "The incumbent requires the same, because a challenger run with no matched comparison cannot qualify anything.",
+    "A pre-deadline projection only counts when its rows carry expected minutes and appearance probabilities; a run of nulls is not evidence.",
+    "A frozen decision only counts when it records the selected squad, weekly XI, captain, vice-captain and bench order."
   ],
   "season_code": "2026-27",
   "season_name": "2026/27",

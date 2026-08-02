@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -141,6 +142,13 @@ class ProjectionModelConfig:
     minutes_allocation: str = "team_total"
     scoring_recent_evidence_weight: float = 1.0
     scoring_event_source: str = "actual"
+    # Explicit challenger paths. ``actual`` remains the incumbent; the
+    # coherent path allocates the fixture-level team expectation across
+    # players instead of multiplying independent player rates by team form.
+    coherent_assist_unassisted_goal_fraction: float = 0.10
+    coherent_penalty_goal_fraction: float = 0.08
+    coherent_role_shrinkage_minutes: float = 900.0
+    coherent_transfer_shrinkage: float = 0.50
     team_form_half_life_gameweeks: float = 8.0
     team_assist_per_goal_prior: float = 0.72
     defensive_contribution_model: str = "legacy_linear"
@@ -158,6 +166,19 @@ class ProjectionModelConfig:
     cold_start_price_elasticity: float = 1.5
     cold_start_minimum_factor: float = 0.35
     cold_start_maximum_factor: float = 3.0
+    # ``participation_v1`` is an explicit minutes challenger.  The incumbent
+    # reconciliation remains the default and is deliberately unchanged.
+    minutes_reconciliation_mode: str = "legacy_capped"
+    minutes_reconciliation_max_relative_adjustment: float = 0.25
+    minutes_reconciliation_max_absolute_adjustment: float = 12.0
+    minutes_reconciliation_warning_deficit: float = 90.0
+    participation_start_prior_probability: float = 0.45
+    participation_start_prior_matches: float = 6.0
+    participation_substitute_prior_probability: float = 0.18
+    participation_substitute_prior_matches: float = 4.0
+    participation_start_minutes_prior: float = 78.0
+    participation_substitute_minutes_prior: float = 22.0
+    participation_role_decay_per_gameweek: float = 0.03
 
     def __post_init__(self) -> None:
         if self.player_rate_prior_minutes <= 0:
@@ -178,6 +199,7 @@ class ProjectionModelConfig:
             "legacy",
             "two_stage",
             "learned_hurdle",
+            "participation_v1",
         }:
             raise ValueError(
                 "Minutes model must be 'legacy', 'two_stage' or "
@@ -213,6 +235,7 @@ class ProjectionModelConfig:
             "actual",
             "expected_with_actual_fallback",
             "team_share_expected",
+            "coherent_team_allocation",
         }:
             raise ValueError(
                 "Scoring event source must be 'actual' or "
@@ -252,6 +275,37 @@ class ProjectionModelConfig:
             raise ValueError(
                 "Cold-start maximum factor cannot be below the minimum"
             )
+        if not 0 <= self.coherent_assist_unassisted_goal_fraction <= 1:
+            raise ValueError("Coherent unassisted-goal fraction must be between zero and one")
+        if self.coherent_penalty_goal_fraction < 0 or self.coherent_penalty_goal_fraction > 1:
+            raise ValueError("Coherent penalty-goal fraction must be between zero and one")
+        if self.coherent_role_shrinkage_minutes <= 0:
+            raise ValueError("Coherent role shrinkage minutes must be positive")
+        if not 0 <= self.coherent_transfer_shrinkage <= 1:
+            raise ValueError("Coherent transfer shrinkage must be between zero and one")
+        if self.minutes_reconciliation_mode not in {"legacy_capped", "bounded_role_preserving"}:
+            raise ValueError("Unknown minutes reconciliation mode")
+        if self.minutes_reconciliation_max_relative_adjustment < 0:
+            raise ValueError("Maximum relative minutes adjustment cannot be negative")
+        if self.minutes_reconciliation_max_absolute_adjustment < 0:
+            raise ValueError("Maximum absolute minutes adjustment cannot be negative")
+        if self.minutes_reconciliation_warning_deficit < 0:
+            raise ValueError("Minutes warning deficit cannot be negative")
+        if not 0 < self.participation_start_prior_probability < 1:
+            raise ValueError("Participation start prior must be between zero and one")
+        if (
+            self.participation_start_prior_matches <= 0
+            or self.participation_substitute_prior_matches <= 0
+        ):
+            raise ValueError("Participation prior matches must be positive")
+        if not 0 <= self.participation_substitute_prior_probability < 1:
+            raise ValueError("Participation substitute prior must be between zero and one")
+        if not 0 < self.participation_start_minutes_prior <= 90:
+            raise ValueError("Participation starting minutes prior must be within a match")
+        if not 0 < self.participation_substitute_minutes_prior <= 90:
+            raise ValueError("Participation substitute minutes prior must be within a match")
+        if not 0 <= self.participation_role_decay_per_gameweek <= 1:
+            raise ValueError("Participation role decay must be between zero and one")
 
 
 BASELINE_V2_MODEL_CONFIG = ProjectionModelConfig()
@@ -315,12 +369,29 @@ ROBUST_V4_MODEL_CONFIG = ProjectionModelConfig(
 )
 
 
+def _config_hash(config: ProjectionModelConfig) -> str:
+    """Canonical hash used in persisted projection assumptions."""
+    payload = json.dumps(asdict(config), sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class ProjectionOverride:
     source_player_id: str
     gameweek_number: int
     expected_minutes: float
     rationale: str
+    start_probability: float | None = None
+    substitute_appearance_probability: float | None = None
+    conditional_start_minutes: float | None = None
+    conditional_substitute_minutes: float | None = None
+    availability: float | None = None
+    penalty_role_probability: float | None = None
+    set_piece_role_probability: float | None = None
+    effective_from: str | None = None
+    expires_at: str | None = None
+    source: str | None = None
+    confidence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -355,6 +426,24 @@ class PlayerGameweekProjection:
     assumptions: tuple[str, ...]
     override_rationale: str | None = None
     latent_expectations: dict[str, float] | None = None
+    start_probability: float = 0.0
+    substitute_appearance_probability: float = 0.0
+    no_appearance_probability: float = 1.0
+    expected_minutes_if_start: float = 0.0
+    expected_minutes_if_substitute: float = 0.0
+    sixty_minute_probability: float = 0.0
+    role_unknown: bool = False
+    role_evidence_source: str = "historical appearance/minutes evidence"
+    reconciliation_adjustment: float = 0.0
+    unresolved_minutes: float = 0.0
+    reconciliation_warning: bool = False
+    goal_share: float = 0.0
+    assist_share: float = 0.0
+    penalty_share: float = 0.0
+    team_expected_goals: float = 0.0
+    expected_assisted_goals: float = 0.0
+    expected_goals: float = 0.0
+    expected_assists: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -446,6 +535,14 @@ class RatesProjectionModel:
             as_of=fixture_as_of,
             maximum_ingestion_run_id=source_ingestion_run_id,
         )
+        if self.config.scoring_event_source == "coherent_team_allocation":
+            self._prepare_coherent_event_allocations(
+                players,
+                fixtures,
+                strengths,
+                start_gameweek=start_gameweek,
+                horizon_gameweeks=horizon_gameweeks,
+            )
         override_lookup = {
             (override.source_player_id, override.gameweek_number): override
             for override in overrides
@@ -578,6 +675,10 @@ class RatesProjectionModel:
             career AS (
                 SELECT current_ps.id AS current_player_season_id,
                        COUNT(stats.id) AS matches,
+                       CASE WHEN COUNT(DISTINCT history_ps.team_id) > 1
+                            THEN 1 ELSE 0 END AS club_changed,
+                       COALESCE(SUM(stats.starts), 0) AS starts,
+                       COALESCE(SUM(stats.minutes = 0), 0) AS zero_minute_records,
                        COALESCE(SUM(stats.minutes > 0), 0) AS appearances,
                        COALESCE(SUM(stats.minutes >= 60), 0)
                            AS sixty_appearances,
@@ -629,6 +730,8 @@ class RatesProjectionModel:
             recent AS (
                 SELECT current_ps.id AS current_player_season_id,
                        COUNT(stats.id) AS recent_matches,
+                       COALESCE(SUM(stats.starts), 0) AS recent_starts,
+                       COALESCE(SUM(stats.minutes = 0), 0) AS recent_zero_minute_records,
                        COALESCE(SUM(stats.minutes > 0), 0)
                            AS recent_appearances,
                        COALESCE(SUM(stats.minutes >= 60), 0)
@@ -682,8 +785,11 @@ class RatesProjectionModel:
                    observations.price_tenths, observations.status,
                    observations.chance_of_playing_next_round,
                    career.matches, career.appearances,
+                   career.club_changed,
+                   career.starts, career.zero_minute_records,
                    career.sixty_appearances, career.minutes,
                    recent.recent_matches, recent.recent_appearances,
+                   recent.recent_starts, recent.recent_zero_minute_records,
                    recent.recent_sixty_appearances, recent.recent_minutes,
                    recent.recent_goals, recent.recent_assists,
                    recent.recent_expected_goals,
@@ -1282,6 +1388,128 @@ class RatesProjectionModel:
                     assist_weight / total_assists if total_assists > 0 else 0.0
                 )
 
+    def _prepare_coherent_event_allocations(
+        self,
+        players: list[dict[str, Any]],
+        fixtures: dict[int, list[dict[str, Any]]],
+        strengths: dict[str, dict[str, float]],
+        *,
+        start_gameweek: int,
+        horizon_gameweeks: int,
+    ) -> None:
+        """Allocate the fixture team expectation once, then share it.
+
+        The incumbent path estimates player events independently.  This
+        challenger deliberately reverses that order: a fixture has one team
+        goal expectation and player shares are conditional on participation.
+        The resulting allocation is stored on each prepared player and later
+        consumed without another team-strength multiplier.
+        """
+        by_team: dict[str, list[dict[str, Any]]] = {}
+        for player in players:
+            by_team.setdefault(str(player["team_id"]), []).append(player)
+            player["_coherent_by_gameweek"] = {}
+        prior_minutes = self.config.coherent_role_shrinkage_minutes
+        for gameweek in range(start_gameweek, start_gameweek + horizon_gameweeks):
+            for fixture in fixtures.get(gameweek, ()):
+                home_id = str(fixture["home_team_id"])
+                away_id = str(fixture["away_team_id"])
+                for team_id, opponent_id, is_home in (
+                    (home_id, away_id, True),
+                    (away_id, home_id, False),
+                ):
+                    team_strength = strengths[team_id]
+                    opponent_strength = strengths[opponent_id]
+                    venue_attack = (
+                        self.config.home_attack_multiplier
+                        if is_home
+                        else self.config.away_attack_multiplier
+                    )
+                    team_lambda = (
+                        team_strength["league_average_goals"]
+                        * team_strength["attack"]
+                        * opponent_strength["defence"]
+                        * venue_attack
+                    )
+                    team_players = by_team.get(team_id, ())
+                    goal_weights: list[tuple[dict[str, Any], float]] = []
+                    assist_weights: list[tuple[dict[str, Any], float]] = []
+                    for player in team_players:
+                        position = Position(player["position"])
+                        sample_minutes = float(player["minutes"])
+                        expected_xg = max(0.0, float(player["expected_goals"]))
+                        expected_xa = max(0.0, float(player["expected_assists"]))
+                        # Historical role rates are priors, not totals.  The
+                        # minutes shrinkage prevents tiny samples from taking
+                        # an extreme share; price only enters the prior path.
+                        goal_rate = (
+                            expected_xg * 90.0
+                            + POSITION_PRIORS[position]["goals"] * prior_minutes
+                        ) / (sample_minutes + prior_minutes)
+                        assist_rate = (
+                            expected_xa * 90.0
+                            + POSITION_PRIORS[position]["assists"] * prior_minutes
+                        ) / (sample_minutes + prior_minutes)
+                        if bool(player.get("_club_changed", player.get("club_changed", False))):
+                            transfer_shrinkage = self.config.coherent_transfer_shrinkage
+                            goal_rate = (
+                                (1.0 - transfer_shrinkage) * goal_rate
+                                + transfer_shrinkage * POSITION_PRIORS[position]["goals"]
+                            )
+                            assist_rate = (
+                                (1.0 - transfer_shrinkage) * assist_rate
+                                + transfer_shrinkage * POSITION_PRIORS[position]["assists"]
+                            )
+                        participation = _clamp(
+                            float(player.get("_expected_minutes_per_fixture", 0.0)) / 90.0,
+                            0.0,
+                            1.0,
+                        )
+                        if bool(player.get("_role_unknown", False)):
+                            participation *= 0.80
+                        goal_weights.append((player, max(0.0, goal_rate * participation)))
+                        assist_weights.append((player, max(0.0, assist_rate * participation)))
+                    total_goal_weight = sum(weight for _, weight in goal_weights)
+                    total_assist_weight = sum(weight for _, weight in assist_weights)
+                    goal_shares = {
+                        id(player): weight / total_goal_weight if total_goal_weight else 0.0
+                        for player, weight in goal_weights
+                    }
+                    assist_shares = {
+                        id(player): weight / total_assist_weight if total_assist_weight else 0.0
+                        for player, weight in assist_weights
+                    }
+                    penalty_total = team_lambda * self.config.coherent_penalty_goal_fraction
+                    assisted_total = team_lambda * (
+                        1.0 - self.config.coherent_assist_unassisted_goal_fraction
+                    )
+                    for player in team_players:
+                        goal_share = goal_shares.get(id(player), 0.0)
+                        assist_share = assist_shares.get(id(player), 0.0)
+                        row = player["_coherent_by_gameweek"].setdefault(
+                            gameweek,
+                            {
+                                "goals": 0.0,
+                                "assists": 0.0,
+                                "team_expected_goals": 0.0,
+                                "expected_assisted_goals": 0.0,
+                                "goal_share": 0.0,
+                                "assist_share": 0.0,
+                                "penalty_share": 0.0,
+                            },
+                        )
+                        row["goals"] += team_lambda * goal_share
+                        row["assists"] += assisted_total * assist_share
+                        row["team_expected_goals"] += team_lambda
+                        row["expected_assisted_goals"] += assisted_total
+                        row["goal_share"] += goal_share
+                        row["assist_share"] += assist_share
+                        row["penalty_share"] += (
+                            penalty_total * goal_share / team_lambda
+                            if team_lambda > 0
+                            else 0.0
+                        )
+
     def _prepare_cold_start_priors(
         self,
         players: list[dict[str, Any]],
@@ -1397,6 +1625,97 @@ class RatesProjectionModel:
                     0.0,
                     1.0,
                 )
+            elif self.config.minutes_model == "participation_v1":
+                extra_recent_weight = self.config.recent_evidence_weight - 1.0
+                weighted_matches = float(player["matches"]) + extra_recent_weight * float(
+                    player["recent_matches"]
+                )
+                weighted_starts = float(player.get("starts", 0.0)) + extra_recent_weight * float(
+                    player.get("recent_starts", 0.0)
+                )
+                weighted_zero_minutes = float(
+                    player.get("zero_minute_records", 0.0)
+                ) + extra_recent_weight * float(
+                    player.get("recent_zero_minute_records", 0.0)
+                )
+                role_unknown = weighted_matches < 3 or (
+                    float(player.get("recent_matches", 0.0)) == 0
+                    and weighted_starts / max(weighted_matches, 1.0) < 0.35
+                )
+                start_probability = (
+                    weighted_starts
+                    + self.config.participation_start_prior_matches
+                    * self.config.participation_start_prior_probability
+                ) / (weighted_matches + self.config.participation_start_prior_matches)
+                start_probability = _clamp(start_probability * availability, 0.0, 1.0)
+                non_start_matches = max(0.0, weighted_matches - weighted_starts)
+                substitute_probability = (
+                    weighted_zero_minutes
+                    + self.config.participation_substitute_prior_matches
+                    * self.config.participation_substitute_prior_probability
+                ) / (non_start_matches + self.config.participation_substitute_prior_matches)
+                substitute_probability = _clamp(substitute_probability * availability, 0.0, 1.0)
+                if role_unknown:
+                    start_probability = _clamp(
+                        0.60 * start_probability
+                        + 0.40 * self.config.participation_start_prior_probability,
+                        0.05,
+                        0.80,
+                    ) * availability
+                    substitute_probability = _clamp(
+                        0.60 * substitute_probability
+                        + 0.40 * self.config.participation_substitute_prior_probability,
+                        0.02,
+                        0.55,
+                    ) * availability
+                start_minutes = (
+                    float(player["minutes"]) / max(float(player["appearances"]), 1.0)
+                    if float(player["appearances"]) > 0
+                    else MINUTES_PRIORS[position]["conditional_minutes"]
+                )
+                start_minutes = _clamp(
+                    0.75 * start_minutes + 0.25 * self.config.participation_start_minutes_prior,
+                    1.0,
+                    90.0,
+                )
+                substitute_minutes = self.config.participation_substitute_minutes_prior
+                conditional_minutes = (
+                    start_probability * start_minutes
+                    + (1.0 - start_probability) * substitute_probability * substitute_minutes
+                ) / max(
+                    start_probability
+                    + (1.0 - start_probability) * substitute_probability,
+                    1e-9,
+                )
+                appearance_probability = start_probability + (
+                    1.0 - start_probability
+                ) * substitute_probability
+                start_sixty = _clamp((start_minutes - 45.0) / 30.0, 0.0, 1.0)
+                sub_sixty = 0.0
+                sixty_probability = (
+                    start_probability * start_sixty
+                    + (1.0 - start_probability) * substitute_probability * sub_sixty
+                )
+                sixty_given_appearance = (
+                    sixty_probability / appearance_probability
+                    if appearance_probability > 0
+                    else 0.0
+                )
+                expected_minutes = (
+                    start_probability * start_minutes
+                    + (1.0 - start_probability) * substitute_probability * substitute_minutes
+                )
+                player["_start_probability"] = start_probability
+                player["_substitute_probability"] = substitute_probability
+                player["_conditional_start_minutes"] = start_minutes
+                player["_conditional_substitute_minutes"] = substitute_minutes
+                player["_no_appearance_probability"] = 1.0 - appearance_probability
+                player["_role_unknown"] = role_unknown
+                player["_role_evidence"] = (
+                    "unknown_role: insufficient starts/minutes evidence"
+                    if role_unknown
+                    else "historical starts and minutes"
+                )
             else:
                 extra_recent_weight = self.config.recent_evidence_weight - 1.0
                 weighted_matches = float(player["matches"]) + extra_recent_weight * float(
@@ -1437,8 +1756,20 @@ class RatesProjectionModel:
             player["_sixty_given_appearance"] = sixty_given_appearance
             player["_sixty_probability"] = appearance_probability * sixty_given_appearance
             player["_expected_minutes_per_fixture"] = expected_minutes
+            player.setdefault("_start_probability", appearance_probability)
+            player.setdefault("_substitute_probability", 0.0)
+            player.setdefault("_conditional_start_minutes", conditional_minutes)
+            player.setdefault("_conditional_substitute_minutes", 0.0)
+            player.setdefault("_no_appearance_probability", 1.0 - appearance_probability)
+            player.setdefault("_role_unknown", False)
+            player.setdefault("_role_evidence", "historical appearance/minutes evidence")
+            player.setdefault("_reconciliation_adjustment", 0.0)
+            player.setdefault("_unresolved_minutes", 0.0)
 
-        if self.config.minutes_model == "legacy" or not self.config.enforce_team_minutes:
+        if (
+            self.config.minutes_model == "legacy"
+            or not self.config.enforce_team_minutes
+        ):
             return
 
         players_by_team: dict[str, list[dict[str, Any]]] = {}
@@ -1470,25 +1801,78 @@ class RatesProjectionModel:
             reconciled: list[tuple[dict[str, Any], float]] = []
             for group, target in allocation_groups:
                 group_players = list(group)
-                allocations = _allocate_capped_minutes(
-                    [float(player["_expected_minutes_per_fixture"]) for player in group_players],
-                    target=target,
-                    cap=90.0,
-                )
+                if self.config.minutes_reconciliation_mode == "bounded_role_preserving":
+                    allocations = _bounded_minutes_reconciliation(
+                        group_players,
+                        target=target,
+                        max_relative=self.config.minutes_reconciliation_max_relative_adjustment,
+                        max_absolute=self.config.minutes_reconciliation_max_absolute_adjustment,
+                    )
+                else:
+                    allocations = _allocate_capped_minutes(
+                        [
+                            float(player["_expected_minutes_per_fixture"])
+                            for player in group_players
+                        ],
+                        target=target,
+                        cap=90.0,
+                    )
                 reconciled.extend(zip(group_players, allocations, strict=True))
             for player, expected_minutes in reconciled:
-                conditional_minutes = float(player["_conditional_minutes"])
-                appearance_probability = _clamp(
-                    expected_minutes / max(conditional_minutes, 1.0),
-                    0.0,
-                    1.0,
-                )
+                prior_expected = float(player["_expected_minutes_per_fixture"])
+                adjustment = expected_minutes - prior_expected
+                if self.config.minutes_reconciliation_mode == "bounded_role_preserving":
+                    player["_reconciliation_adjustment"] = adjustment
+                    player["_unresolved_minutes"] = 0.0
+                    conditional_minutes = float(player["_conditional_minutes"])
+                    # Keep the route probabilities coherent.  A bounded
+                    # adjustment may leave a residual rather than fabricating
+                    # a certain starter.
+                    ratio = expected_minutes / max(prior_expected, 1e-9)
+                    player["_start_probability"] = _clamp(
+                        float(player["_start_probability"]) * ratio,
+                        0.0,
+                        1.0,
+                    )
+                    player["_substitute_probability"] = _clamp(
+                        float(player["_substitute_probability"]) * ratio,
+                        0.0,
+                        1.0,
+                    )
+                    appearance_probability = _clamp(
+                        float(player["_start_probability"])
+                        + (1.0 - float(player["_start_probability"]))
+                        * float(player["_substitute_probability"]),
+                        0.0,
+                        1.0,
+                    )
+                else:
+                    conditional_minutes = float(player["_conditional_minutes"])
+                    appearance_probability = _clamp(
+                        expected_minutes / max(conditional_minutes, 1.0),
+                        0.0,
+                        1.0,
+                    )
                 player["_expected_minutes_per_fixture"] = expected_minutes
                 player["_appearance_probability"] = appearance_probability
                 player["_sixty_probability"] = min(
                     appearance_probability,
                     appearance_probability * float(player["_sixty_given_appearance"]),
                 )
+            if self.config.minutes_reconciliation_mode == "bounded_role_preserving":
+                residual = max(
+                    0.0,
+                    target
+                    - sum(
+                        float(item["_expected_minutes_per_fixture"])
+                        for item in group_players
+                    ),
+                )
+                for index, player in enumerate(group_players):
+                    player["_unresolved_minutes"] = residual if index == 0 else 0.0
+                    player["_reconciliation_warning"] = (
+                        residual > self.config.minutes_reconciliation_warning_deficit
+                    )
 
     def _project_player(
         self,
@@ -1571,15 +1955,69 @@ class RatesProjectionModel:
             ]
             fixture_count = len(player_fixtures)
             override = overrides.get((player["source_player_id"], gameweek))
-            expected_minutes = minutes_per_fixture * fixture_count
+            role_decay = (
+                (1.0 - self.config.participation_role_decay_per_gameweek) ** offset
+                if self.config.minutes_model == "participation_v1"
+                else 1.0
+            )
+            if self.config.minutes_model == "participation_v1":
+                prior_start = self.config.participation_start_prior_probability
+                prior_sub = self.config.participation_substitute_prior_probability
+                start_probability = prior_start + (
+                    float(player["_start_probability"]) - prior_start
+                ) * role_decay
+                substitute_probability = prior_sub + (
+                    float(player["_substitute_probability"]) - prior_sub
+                ) * role_decay
+                conditional_start_minutes = float(player["_conditional_start_minutes"])
+                conditional_substitute_minutes = float(player["_conditional_substitute_minutes"])
+                appearance_probability = start_probability + (
+                    1.0 - start_probability
+                ) * substitute_probability
+                expected_minutes = (
+                    start_probability * conditional_start_minutes
+                    + (1.0 - start_probability)
+                    * substitute_probability
+                    * conditional_substitute_minutes
+                ) * fixture_count
+                sixty_probability = start_probability * _clamp(
+                    (conditional_start_minutes - 45.0) / 30.0,
+                    0.0,
+                    1.0,
+                ) * fixture_count
+                sixty_probability = min(appearance_probability * fixture_count, sixty_probability)
+                conditional_minutes = (
+                    expected_minutes / (appearance_probability * fixture_count)
+                    if appearance_probability * fixture_count > 0
+                    else 0.0
+                )
+            else:
+                start_probability = float(player.get("_start_probability", appearance_probability))
+                substitute_probability = float(player.get("_substitute_probability", 0.0))
+                conditional_start_minutes = float(
+                    player.get("_conditional_start_minutes", conditional_minutes)
+                )
+                conditional_substitute_minutes = float(
+                    player.get("_conditional_substitute_minutes", 0.0)
+                )
+                expected_minutes = minutes_per_fixture * fixture_count
+                sixty_probability = float(player["_sixty_probability"]) * fixture_count
             if override is not None:
                 expected_minutes = _clamp(override.expected_minutes, 0.0, 90.0 * fixture_count)
             per_fixture_minutes = 0.0 if fixture_count == 0 else expected_minutes / fixture_count
             fixture_appearance_probability = appearance_probability
-            fixture_sixty_probability = sixty_probability
+            fixture_sixty_probability = (
+                sixty_probability / fixture_count if fixture_count else 0.0
+            )
             if override is not None and self.config.minutes_model != "legacy":
+                if override.start_probability is not None:
+                    start_probability = _clamp(override.start_probability, 0.0, 1.0)
+                if override.substitute_appearance_probability is not None:
+                    substitute_probability = _clamp(
+                        override.substitute_appearance_probability, 0.0, 1.0
+                    )
                 fixture_appearance_probability = _clamp(
-                    per_fixture_minutes / max(conditional_minutes, 1.0),
+                    start_probability + (1.0 - start_probability) * substitute_probability,
                     0.0,
                     1.0,
                 )
@@ -1597,12 +2035,15 @@ class RatesProjectionModel:
                 "bonus": 0.0,
                 "deduction": 0.0,
             }
+            expected_goals_events = 0.0
+            expected_assists_events = 0.0
             latent = {
                 "team_expected_goals": 0.0,
                 "opponent_expected_goals": 0.0,
                 "goal_share": float(player.get("_goal_share", 0.0)),
                 "assist_share": float(player.get("_assist_share", 0.0)),
             }
+            coherent_events = player.get("_coherent_by_gameweek", {}).get(gameweek, {})
             fixture_notes = []
             for fixture in player_fixtures:
                 is_home = player["team_id"] == fixture["home_team_id"]
@@ -1642,6 +2083,12 @@ class RatesProjectionModel:
                         + fixture_sixty_probability * self.rules.scoring.appearance_60_or_more
                     )
                 if self.config.scoring_event_source == "team_share_expected":
+                    expected_goals_events += team_lambda * float(player["_goal_share"])
+                    expected_assists_events += (
+                        team_lambda
+                        * team_strength["assist_per_goal"]
+                        * float(player["_assist_share"])
+                    )
                     components["goal"] += (
                         team_lambda
                         * float(player["_goal_share"])
@@ -1653,7 +2100,18 @@ class RatesProjectionModel:
                         * float(player["_assist_share"])
                         * self.rules.scoring.assists
                     )
+                elif self.config.scoring_event_source == "coherent_team_allocation":
+                    # Added once below from the fixture-level allocation.  A
+                    # DGW has multiple fixtures, so adding this inside the
+                    # loop would double count the already aggregated share.
+                    pass
                 else:
+                    expected_goals_events += (
+                        rates["goals"] * minute_factor * scoring_factor
+                    )
+                    expected_assists_events += (
+                        rates["assists"] * minute_factor * scoring_factor
+                    )
                     components["goal"] += (
                         rates["goals"]
                         * minute_factor
@@ -1743,6 +2201,34 @@ class RatesProjectionModel:
                     fixture_notes.append(
                         f"team xG {team_lambda:.2f}, goal share {float(player['_goal_share']):.3f}"
                     )
+                elif self.config.scoring_event_source == "coherent_team_allocation":
+                    fixture_notes.append(
+                        f"coherent team xG {team_lambda:.2f}, allocated share "
+                        f"{float(coherent_events.get('goal_share', 0.0)):.3f}"
+                    )
+            if self.config.scoring_event_source == "coherent_team_allocation":
+                expected_goals_events = float(coherent_events.get("goals", 0.0))
+                expected_assists_events = float(coherent_events.get("assists", 0.0))
+                components["goal"] += (
+                    float(coherent_events.get("goals", 0.0))
+                    * self.rules.scoring.goals[position.value]
+                )
+                components["assist"] += (
+                    float(coherent_events.get("assists", 0.0))
+                    * self.rules.scoring.assists
+                )
+                if coherent_events.get("team_expected_goals", 0.0):
+                    latent["goal_share"] = float(coherent_events.get("goals", 0.0)) / float(
+                        coherent_events["team_expected_goals"]
+                    )
+                    latent["assist_share"] = float(coherent_events.get("assists", 0.0)) / max(
+                        float(coherent_events.get("expected_assisted_goals", 0.0)),
+                        1e-9,
+                    )
+                latent["expected_assisted_goals"] = float(
+                    coherent_events.get("expected_assisted_goals", 0.0)
+                )
+                latent["penalty_share"] = float(coherent_events.get("penalty_share", 0.0))
             expected_points = sum(components.values())
             uncertainty = (
                 1.25
@@ -1788,6 +2274,48 @@ class RatesProjectionModel:
                     assumptions=assumptions,
                     override_rationale=None if override is None else override.rationale,
                     latent_expectations={name: round(value, 8) for name, value in latent.items()},
+                    start_probability=round(start_probability, 6),
+                    substitute_appearance_probability=round(
+                        (1.0 - start_probability) * substitute_probability,
+                        6,
+                    ),
+                    no_appearance_probability=round(
+                        max(
+                            0.0,
+                            1.0
+                            - start_probability
+                            - (1.0 - start_probability) * substitute_probability,
+                        ),
+                        6,
+                    ),
+                    expected_minutes_if_start=round(conditional_start_minutes, 3),
+                    expected_minutes_if_substitute=round(conditional_substitute_minutes, 3),
+                    sixty_minute_probability=round(fixture_sixty_probability, 6),
+                    role_unknown=bool(player.get("_role_unknown", False)),
+                    role_evidence_source=str(
+                        player.get("_role_evidence", "historical appearance/minutes evidence")
+                    ),
+                    reconciliation_adjustment=round(
+                        float(player.get("_reconciliation_adjustment", 0.0)),
+                        3,
+                    ),
+                    unresolved_minutes=round(
+                        float(player.get("_unresolved_minutes", 0.0)),
+                        3,
+                    ),
+                    reconciliation_warning=bool(
+                        player.get("_reconciliation_warning", False)
+                    ),
+                    goal_share=round(float(latent.get("goal_share", 0.0)), 8),
+                    assist_share=round(float(latent.get("assist_share", 0.0)), 8),
+                    penalty_share=round(float(latent.get("penalty_share", 0.0)), 8),
+                    team_expected_goals=round(float(latent.get("team_expected_goals", 0.0)), 8),
+                    expected_assisted_goals=round(
+                        float(latent.get("expected_assisted_goals", 0.0)),
+                        8,
+                    ),
+                    expected_goals=round(expected_goals_events, 8),
+                    expected_assists=round(expected_assists_events, 8),
                 )
             )
         return tuple(projections)
@@ -1888,13 +2416,54 @@ class RatesProjectionModel:
                         projection.deduction_points,
                         projection.expected_points,
                         projection.uncertainty,
-                        json.dumps(projection.assumptions),
+                        json.dumps(
+                            _persisted_projection_assumptions(
+                                projection,
+                                rules=self.rules,
+                                config_hash=_config_hash(self.config),
+                            ),
+                            sort_keys=True,
+                        ),
                         projection.override_rationale,
                     )
                     for projection in projections
                 ),
             )
         return run_id
+
+
+def _persisted_projection_assumptions(
+    projection: PlayerGameweekProjection,
+    *,
+    rules: SeasonRules,
+    config_hash: str,
+) -> dict[str, Any]:
+    return {
+        "notes": projection.assumptions,
+        "participation": {
+            "start_probability": projection.start_probability,
+            "substitute_appearance_probability": projection.substitute_appearance_probability,
+            "no_appearance_probability": projection.no_appearance_probability,
+            "expected_minutes_if_start": projection.expected_minutes_if_start,
+            "expected_minutes_if_substitute": projection.expected_minutes_if_substitute,
+            "sixty_minute_probability": projection.sixty_minute_probability,
+            "role_unknown": projection.role_unknown,
+            "role_evidence_source": projection.role_evidence_source,
+            "reconciliation_adjustment": projection.reconciliation_adjustment,
+            "unresolved_minutes": projection.unresolved_minutes,
+            "reconciliation_warning": projection.reconciliation_warning,
+        },
+        "allocation": {
+            "team_expected_goals": projection.team_expected_goals,
+            "expected_assisted_goals": projection.expected_assisted_goals,
+            "goal_share": projection.goal_share,
+            "assist_share": projection.assist_share,
+            "penalty_share": projection.penalty_share,
+            "expected_goals": projection.expected_goals,
+            "expected_assists": projection.expected_assists,
+        },
+        "model_config_hash": config_hash,
+    }
 
 
 def projection_totals(
@@ -1927,6 +2496,84 @@ def projection_totals(
         row["expected_points"] = round(row["expected_points"], 2)
         row["uncertainty"] = round(row["uncertainty"], 2)
     return sorted(totals.values(), key=lambda row: row["expected_points"], reverse=True)
+
+
+def coherence_diagnostics(
+    projections: tuple[PlayerGameweekProjection, ...],
+    rules: SeasonRules,
+) -> list[dict[str, Any]]:
+    """Return team/Gameweek reconciliation diagnostics for reports/tests."""
+    grouped: dict[tuple[str, int], dict[str, float]] = {}
+    for projection in projections:
+        key = (projection.team_short_name, projection.gameweek_number)
+        row = grouped.setdefault(
+            key,
+            {
+                "team_expected_goals": 0.0,
+                "player_expected_goals": 0.0,
+                "expected_assisted_goals": 0.0,
+                "player_expected_assists": 0.0,
+                "max_role_unknown": 0.0,
+            },
+        )
+        row["team_expected_goals"] = max(
+            row["team_expected_goals"], projection.team_expected_goals
+        )
+        row["expected_assisted_goals"] = max(
+            row["expected_assisted_goals"], projection.expected_assisted_goals
+        )
+        row["player_expected_goals"] += projection.expected_goals
+        row["player_expected_assists"] += projection.expected_assists
+        row["max_role_unknown"] = max(row["max_role_unknown"], float(projection.role_unknown))
+    output = []
+    for (team, gameweek), row in sorted(grouped.items()):
+        row = dict(row)
+        row.update(
+            {
+                "team_short_name": team,
+                "gameweek_number": gameweek,
+                "goal_reconciliation_error": row["player_expected_goals"]
+                - row["team_expected_goals"],
+                "assist_reconciliation_error": row["player_expected_assists"]
+                - row["expected_assisted_goals"],
+            }
+        )
+        output.append(row)
+    return output
+
+
+def minutes_diagnostics(
+    projections: tuple[PlayerGameweekProjection, ...],
+) -> list[dict[str, Any]]:
+    """Summarize raw/reconciled minutes and unresolved deficits by team/GW."""
+    grouped: dict[tuple[str, int], dict[str, float]] = {}
+    for projection in projections:
+        key = (projection.team_short_name, projection.gameweek_number)
+        row = grouped.setdefault(
+            key,
+            {
+                "raw_expected_minutes": 0.0,
+                "reconciled_expected_minutes": 0.0,
+                "unresolved_minutes": 0.0,
+                "reconciliation_adjustment": 0.0,
+                "warnings": 0.0,
+            },
+        )
+        row["reconciled_expected_minutes"] += projection.expected_minutes
+        row["reconciliation_adjustment"] += projection.reconciliation_adjustment
+        row["raw_expected_minutes"] += (
+            projection.expected_minutes - projection.reconciliation_adjustment
+        )
+        row["unresolved_minutes"] += projection.unresolved_minutes
+        row["warnings"] += float(projection.reconciliation_warning)
+    return [
+        {
+            "team_short_name": team,
+            "gameweek_number": gameweek,
+            **{name: round(value, 6) for name, value in values.items()},
+        }
+        for (team, gameweek), values in sorted(grouped.items())
+    ]
 
 
 def _availability_multiplier(status: str | None, chance: int | None) -> float:
@@ -1970,6 +2617,42 @@ def _allocate_capped_minutes(
             remaining -= cap
         active -= capped
     return allocations
+
+
+def _bounded_minutes_reconciliation(
+    players: list[dict[str, Any]],
+    *,
+    target: float,
+    max_relative: float,
+    max_absolute: float,
+) -> list[float]:
+    """Apply a bounded, role-preserving adjustment to player minutes.
+
+    This is intentionally a soft consistency correction.  If the target is
+    unreachable within the configured bounds, the residual remains visible
+    to diagnostics instead of being redistributed into fringe players.
+    """
+    raw = [
+        _clamp(float(player.get("_expected_minutes_per_fixture", 0.0)), 0.0, 90.0)
+        for player in players
+    ]
+    if not raw:
+        return []
+    current = sum(raw)
+    delta = target - current
+    if abs(delta) < 1e-9:
+        return raw
+    total_weight = sum(raw) or float(len(raw))
+    result = []
+    for player, value in zip(players, raw, strict=True):
+        weight = value / total_weight if total_weight else 1.0 / len(raw)
+        limit = min(max_absolute, max_relative * max(value, 1.0))
+        if float(player.get("_availability", 1.0)) <= 0.0:
+            limit = 0.0
+        adjusted = value + delta * weight
+        adjusted = _clamp(adjusted, value - limit, value + limit)
+        result.append(_clamp(adjusted, 0.0, 90.0))
+    return result
 
 
 def _poisson_at_least(rate: float, threshold: int) -> float:

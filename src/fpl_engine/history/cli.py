@@ -30,6 +30,7 @@ from ..evaluation import (
     write_json_report,
 )
 from ..learned_challenger import train_and_evaluate_learned_challenger
+from ..news import ingest_structured_news
 from ..playing_time import train_and_evaluate_hurdle_model
 from ..preseason_fit import fit_preseason_priors, profile_preseason_prior
 from ..projections import (
@@ -50,6 +51,7 @@ from ..promotion import (
 )
 from ..prospective import build_prospective_capture_status
 from ..squad_comparison import compare_opening_squads
+from ..team_news_v3 import generate_team_news_research_package
 from ..tuning import tune_projection_model, tune_projection_model_rolling
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
@@ -625,6 +627,31 @@ def main() -> None:
     evidence_parser.add_argument("--rules")
     evidence_parser.add_argument("--output")
 
+    package_parser = subparsers.add_parser(
+        "export-team-news-research-package",
+        help="Export a bounded decision-focused team-news package for a projection run",
+    )
+    package_parser.add_argument("season_code")
+    package_parser.add_argument("--gameweek", type=int, required=True)
+    package_parser.add_argument("--projection-run", type=int, required=True)
+    package_parser.add_argument("--recommendation-run")
+    package_parser.add_argument("--recommendation-json")
+    package_parser.add_argument(
+        "--research-mode", choices=("preseason", "provisional", "final"), required=True
+    )
+    package_parser.add_argument("--research-window-start", required=True)
+    package_parser.add_argument("--research-timestamp")
+    package_parser.add_argument("--alternatives", type=int, default=15)
+    package_parser.add_argument("--output", required=True)
+
+    result_parser = subparsers.add_parser(
+        "import-team-news-research-result",
+        help="Import strict schema-v3 team-news JSON into the human review queue",
+    )
+    result_parser.add_argument("--season-code", required=True)
+    result_parser.add_argument("--gameweek", type=int, required=True)
+    result_parser.add_argument("--input", required=True)
+
     args = parser.parse_args()
     database_path = Path(args.database)
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -637,6 +664,66 @@ def main() -> None:
 
         if args.command == "summary":
             print(json.dumps(database.season_summary(args.season_code), indent=2))
+            return
+
+        if args.command == "export-team-news-research-package":
+            recommendation = None
+            if args.recommendation_json:
+                recommendation = json.loads(
+                    Path(args.recommendation_json).read_text(encoding="utf-8")
+                )
+            package = generate_team_news_research_package(
+                database,
+                season_code=args.season_code,
+                gameweek_number=args.gameweek,
+                projection_run_id=args.projection_run,
+                recommendation_run_id=args.recommendation_run,
+                recommendation=recommendation,
+                research_mode=args.research_mode,
+                research_window_start=args.research_window_start,
+                research_timestamp=args.research_timestamp,
+                alternatives_limit=args.alternatives,
+                output_path=args.output,
+            )
+            print(
+                json.dumps(
+                    {
+                        "input_package_id": package["input_package_id"],
+                        "input_package_hash": package["input_package_hash"],
+                        "output": str(args.output),
+                        "selected_players": len(package["selected_squad"]),
+                        "alternatives": len(package["alternatives"]),
+                    },
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "import-team-news-research-result":
+            from ..workflow import WeeklyWorkflowRepository
+
+            payload = Path(args.input).read_text(encoding="utf-8")
+            evidence_ids = ingest_structured_news(
+                WeeklyWorkflowRepository(database),
+                season_code=args.season_code,
+                gameweek_number=args.gameweek,
+                payload=payload,
+            )
+            print(
+                json.dumps(
+                    {
+                        "schema_version": 3,
+                        "evidence_ids": list(evidence_ids),
+                        "evidence_count": len(evidence_ids),
+                        "coverage_count": database.connection.execute(
+                            "SELECT COUNT(*) FROM team_news_coverage "
+                            "WHERE research_result_id = (SELECT MAX(id) "
+                            "FROM team_news_research_runs)"
+                        ).fetchone()[0],
+                    },
+                    indent=2,
+                )
+            )
             return
 
         if args.command == "backtest-report":
@@ -682,9 +769,7 @@ def main() -> None:
 
         if args.command == "fit-preseason-priors":
             rules_by_season = {
-                season_code: load_season_rules(
-                    Path(f"config/seasons/{season_code}.json")
-                )
+                season_code: load_season_rules(Path(f"config/seasons/{season_code}.json"))
                 for season_code in args.target_seasons
             }
             fit = fit_preseason_priors(
@@ -709,9 +794,7 @@ def main() -> None:
 
         if args.command == "profile-preseason-prior":
             rules_by_season = {
-                season_code: load_season_rules(
-                    Path(f"config/seasons/{season_code}.json")
-                )
+                season_code: load_season_rules(Path(f"config/seasons/{season_code}.json"))
                 for season_code in args.target_seasons
             }
             base_config = (
@@ -740,22 +823,16 @@ def main() -> None:
             return
 
         if args.command == "compare-opening-squads":
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{args.season_code}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{args.season_code}.json"))
             comparison = compare_opening_squads(
                 database,
                 rules,
                 {
                     args.first_label: ProjectionModelConfig(
-                        **json.loads(
-                            Path(args.first_config).read_text(encoding="utf-8")
-                        )
+                        **json.loads(Path(args.first_config).read_text(encoding="utf-8"))
                     ),
                     args.second_label: ProjectionModelConfig(
-                        **json.loads(
-                            Path(args.second_config).read_text(encoding="utf-8")
-                        )
+                        **json.loads(Path(args.second_config).read_text(encoding="utf-8"))
                     ),
                 },
                 season_code=args.season_code,
@@ -781,9 +858,7 @@ def main() -> None:
             ).fetchone()
             if season is None:
                 raise ValueError(f"Backtest run {args.run_id} is unavailable")
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{season['code']}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season['code']}.json"))
             captain = evaluate_owned_captain_regret(
                 database,
                 args.run_id,
@@ -807,9 +882,7 @@ def main() -> None:
             ).fetchone()
             if season is None:
                 raise ValueError(f"Backtest run {args.run_id} is unavailable")
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{season['code']}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season['code']}.json"))
             transfer = evaluate_transfer_regret(
                 database,
                 args.run_id,
@@ -835,9 +908,7 @@ def main() -> None:
             ).fetchone()
             if season is None:
                 raise ValueError(f"Backtest run {args.run_id} is unavailable")
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{season['code']}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season['code']}.json"))
             if args.lookahead:
                 policy = LookaheadChipPolicy(
                     enabled=True,
@@ -883,9 +954,7 @@ def main() -> None:
             ).fetchone()
             if season is None:
                 raise ValueError(f"Backtest run {args.run_id} is unavailable")
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{season['code']}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season['code']}.json"))
             continuity = replay_backtest_transfer_continuity(
                 database,
                 args.run_id,
@@ -924,16 +993,12 @@ def main() -> None:
             return
 
         if args.command == "capture-gameweek-forecasts":
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{args.season_code}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{args.season_code}.json"))
             incumbent_config = (
                 DEFAULT_MODEL_CONFIG
                 if args.incumbent_config is None
                 else ProjectionModelConfig(
-                    **json.loads(
-                        Path(args.incumbent_config).read_text(encoding="utf-8")
-                    )
+                    **json.loads(Path(args.incumbent_config).read_text(encoding="utf-8"))
                 )
             )
             capture = capture_gameweek_forecasts(
@@ -1009,13 +1074,9 @@ def main() -> None:
                 (args.candidate_key,),
             ).fetchone()
             if registration is None:
-                raise ValueError(
-                    f"Candidate {args.candidate_key!r} is not registered"
-                )
+                raise ValueError(f"Candidate {args.candidate_key!r} is not registered")
             if registration["status"] != "declared":
-                raise ValueError(
-                    f"Candidate is already {registration['status']}"
-                )
+                raise ValueError(f"Candidate is already {registration['status']}")
             deadline = database.connection.execute(
                 """
                 SELECT deadline_time FROM gameweeks
@@ -1033,19 +1094,10 @@ def main() -> None:
             )
             generated_at = datetime.now(UTC)
             if generated_at >= deadline_time:
-                raise ValueError(
-                    "Forward candidate runs must be generated before deadline"
-                )
+                raise ValueError("Forward candidate runs must be generated before deadline")
             season_code = str(registration["season_code"])
-            rules = load_season_rules(
-                Path(
-                    args.rules
-                    or f"config/seasons/{season_code}.json"
-                )
-            )
-            config = ProjectionModelConfig(
-                **json.loads(registration["model_config_json"])
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season_code}.json"))
+            config = ProjectionModelConfig(**json.loads(registration["model_config_json"]))
             result = RatesProjectionModel(
                 database,
                 rules,
@@ -1080,9 +1132,7 @@ def main() -> None:
         if args.command == "backtest-forward-candidate":
             declaration = load_forward_candidate(database, args.candidate_key)
             season_code = declaration["season_code"]
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{season_code}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season_code}.json"))
             incumbent_config = ProjectionModelConfig(
                 **json.loads(Path(args.incumbent_config).read_text(encoding="utf-8"))
             )
@@ -1113,9 +1163,7 @@ def main() -> None:
             ).fetchone()
             if season is None:
                 raise ValueError(f"Backtest run {args.challenger_run} is unavailable")
-            rules = load_season_rules(
-                Path(args.rules or f"config/seasons/{season['code']}.json")
-            )
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{season['code']}.json"))
             evidence = build_decision_gate_evidence(
                 database,
                 rules,

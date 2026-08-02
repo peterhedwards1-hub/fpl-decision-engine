@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS news_evidence (
     ),
     expected_minutes_adjustment REAL,
     rationale TEXT,
-    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version IN (1, 2)),
+    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version IN (1, 2, 3)),
     source_name TEXT,
     published_at TEXT,
     source_tier TEXT CHECK (
@@ -310,7 +310,11 @@ CREATE TABLE IF NOT EXISTS news_evidence (
     model_area TEXT CHECK (
         model_area IS NULL
         OR model_area IN (
-            'minutes', 'role', 'availability', 'set_pieces', 'fixture', 'none'
+            'minutes', 'role', 'availability', 'set_pieces', 'fixture', 'none',
+            'expected_minutes', 'appearance_probability', 'starting_probability',
+            'sixty_probability', 'return_date', 'penalties', 'corners',
+            'direct_free_kicks', 'tactical_role', 'attacking_position',
+            'team_attack', 'team_defence', 'fixture_status', 'informational'
         )
     ),
     suggested_adjustment_json TEXT,
@@ -326,7 +330,94 @@ CREATE TABLE IF NOT EXISTS news_evidence (
     decision_maker TEXT,
     original_value REAL,
     proposed_value REAL,
-    accepted_value REAL
+    accepted_value REAL,
+    input_package_id TEXT,
+    input_package_hash TEXT,
+    research_window_start TEXT,
+    target_deadline TEXT,
+    research_mode TEXT CHECK (
+        research_mode IS NULL OR research_mode IN ('preseason', 'provisional', 'final')
+    ),
+    priority TEXT,
+    selected_player_status TEXT,
+    adjustment_support TEXT,
+    temporal_status TEXT,
+    conflict_group_id TEXT,
+    supporting_evidence_json TEXT,
+    conflicting_evidence_json TEXT,
+    unresolved_uncertainty TEXT,
+    resolution_event TEXT,
+    confidence_after_conflict TEXT,
+    research_result_id INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS team_news_input_packages (
+    id INTEGER PRIMARY KEY,
+    package_id TEXT NOT NULL UNIQUE,
+    package_hash TEXT NOT NULL UNIQUE,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    target_deadline TEXT,
+    research_timestamp TEXT NOT NULL,
+    research_window_start TEXT NOT NULL,
+    research_mode TEXT NOT NULL CHECK (
+        research_mode IN ('preseason', 'provisional', 'final')
+    ),
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    recommendation_run_id TEXT,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    prompt_version TEXT NOT NULL,
+    package_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_news_research_runs (
+    id INTEGER PRIMARY KEY,
+    research_run_id TEXT NOT NULL UNIQUE,
+    input_package_id TEXT NOT NULL REFERENCES team_news_input_packages(package_id),
+    input_package_hash TEXT NOT NULL,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    research_mode TEXT NOT NULL CHECK (
+        research_mode IN ('preseason', 'provisional', 'final')
+    ),
+    research_window_start TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    target_deadline TEXT,
+    prompt_version TEXT NOT NULL,
+    schema_version INTEGER NOT NULL CHECK (schema_version = 3),
+    raw_result_json TEXT NOT NULL,
+    import_status TEXT NOT NULL DEFAULT 'imported' CHECK (
+        import_status IN ('imported', 'quarantined')
+    ),
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_news_coverage (
+    id INTEGER PRIMARY KEY,
+    research_result_id INTEGER NOT NULL REFERENCES team_news_research_runs(id) ON DELETE CASCADE,
+    source_player_id TEXT NOT NULL,
+    priority TEXT NOT NULL CHECK (
+        priority IN ('critical', 'starting_xi', 'bench_cover', 'squad', 'alternative', 'broad_scan')
+    ),
+    status TEXT NOT NULL CHECK (
+        status IN ('checked_material_evidence', 'checked_no_material_evidence',
+                   'partially_checked', 'source_unavailable', 'identity_unresolved', 'not_checked')
+    ),
+    areas_checked_json TEXT NOT NULL,
+    latest_source_checked_at TEXT,
+    notes TEXT,
+    UNIQUE (research_result_id, source_player_id)
+);
+
+CREATE TABLE IF NOT EXISTS team_news_discoveries (
+    id INTEGER PRIMARY KEY,
+    research_result_id INTEGER NOT NULL REFERENCES team_news_research_runs(id) ON DELETE CASCADE,
+    discovery_id TEXT NOT NULL,
+    source_player_id TEXT,
+    identity_status TEXT NOT NULL CHECK (identity_status IN ('resolved', 'unresolved')),
+    discovery_json TEXT NOT NULL,
+    UNIQUE (research_result_id, discovery_id)
 );
 
 CREATE TABLE IF NOT EXISTS weekly_decision_runs (
@@ -380,6 +471,9 @@ CREATE TABLE IF NOT EXISTS news_projection_pairs (
         REFERENCES projection_runs(id),
     created_at TEXT NOT NULL,
     evidence_ids_json TEXT NOT NULL,
+    input_package_id TEXT,
+    research_run_id TEXT,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
     CHECK (pre_news_projection_run_id <> post_news_projection_run_id)
 );
 
@@ -1346,6 +1440,144 @@ ON model_candidate_registrations
 BEGIN
     SELECT RAISE(ABORT, 'model candidate declarations are immutable');
 END;
+
+PRAGMA user_version = 15;
+COMMIT;
+"""
+
+MIGRATE_V15_TO_V16_SQL = """
+PRAGMA foreign_keys = ON;
+BEGIN;
+
+ALTER TABLE news_evidence RENAME TO news_evidence_v15;
+
+CREATE TABLE news_evidence (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    player_season_id INTEGER REFERENCES player_seasons(id),
+    evidence_type TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source_url TEXT,
+    evidence_at TEXT NOT NULL,
+    confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')),
+    review_status TEXT NOT NULL CHECK (review_status IN ('pending', 'accepted', 'rejected')),
+    expected_minutes_adjustment REAL,
+    rationale TEXT,
+    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version IN (1, 2, 3)),
+    source_name TEXT,
+    published_at TEXT,
+    source_tier TEXT CHECK (source_tier IS NULL OR source_tier IN ('official', 'strong_reporting', 'predicted_lineup', 'rumour')),
+    model_area TEXT CHECK (model_area IS NULL OR model_area IN ('minutes', 'role', 'availability', 'set_pieces', 'fixture', 'none', 'expected_minutes', 'appearance_probability', 'starting_probability', 'sixty_probability', 'return_date', 'penalties', 'corners', 'direct_free_kicks', 'tactical_role', 'attacking_position', 'team_attack', 'team_defence', 'fixture_status', 'informational')),
+    suggested_adjustment_json TEXT,
+    adjustment_basis TEXT,
+    requires_decision INTEGER NOT NULL DEFAULT 1 CHECK (requires_decision IN (0, 1)),
+    decision_question TEXT,
+    expires_at TEXT,
+    prompt_version TEXT,
+    research_run_id TEXT,
+    reviewed_at TEXT,
+    decision_maker TEXT,
+    original_value REAL,
+    proposed_value REAL,
+    accepted_value REAL,
+    input_package_id TEXT,
+    input_package_hash TEXT,
+    research_window_start TEXT,
+    target_deadline TEXT,
+    research_mode TEXT CHECK (research_mode IS NULL OR research_mode IN ('preseason', 'provisional', 'final')),
+    priority TEXT,
+    selected_player_status TEXT,
+    adjustment_support TEXT,
+    temporal_status TEXT,
+    conflict_group_id TEXT,
+    supporting_evidence_json TEXT,
+    conflicting_evidence_json TEXT,
+    unresolved_uncertainty TEXT,
+    resolution_event TEXT,
+    confidence_after_conflict TEXT,
+    research_result_id INTEGER
+);
+
+INSERT INTO news_evidence (
+    id, season_id, gameweek_id, player_season_id, evidence_type, summary,
+    source_url, evidence_at, confidence, review_status,
+    expected_minutes_adjustment, rationale, schema_version, source_name,
+    published_at, source_tier, model_area, suggested_adjustment_json,
+    adjustment_basis, requires_decision, decision_question, expires_at,
+    prompt_version, research_run_id, reviewed_at, decision_maker,
+    original_value, proposed_value, accepted_value
+)
+SELECT id, season_id, gameweek_id, player_season_id, evidence_type, summary,
+       source_url, evidence_at, confidence, review_status,
+       expected_minutes_adjustment, rationale, schema_version, source_name,
+       published_at, source_tier, model_area, suggested_adjustment_json,
+       adjustment_basis, requires_decision, decision_question, expires_at,
+       prompt_version, research_run_id, reviewed_at, decision_maker,
+       original_value, proposed_value, accepted_value
+FROM news_evidence_v15;
+DROP TABLE news_evidence_v15;
+
+CREATE TABLE team_news_input_packages (
+    id INTEGER PRIMARY KEY,
+    package_id TEXT NOT NULL UNIQUE,
+    package_hash TEXT NOT NULL UNIQUE,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    target_deadline TEXT,
+    research_timestamp TEXT NOT NULL,
+    research_window_start TEXT NOT NULL,
+    research_mode TEXT NOT NULL CHECK (research_mode IN ('preseason', 'provisional', 'final')),
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    recommendation_run_id TEXT,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    prompt_version TEXT NOT NULL,
+    package_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE team_news_research_runs (
+    id INTEGER PRIMARY KEY,
+    research_run_id TEXT NOT NULL UNIQUE,
+    input_package_id TEXT NOT NULL REFERENCES team_news_input_packages(package_id),
+    input_package_hash TEXT NOT NULL,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    research_mode TEXT NOT NULL CHECK (research_mode IN ('preseason', 'provisional', 'final')),
+    research_window_start TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    target_deadline TEXT,
+    prompt_version TEXT NOT NULL,
+    schema_version INTEGER NOT NULL CHECK (schema_version = 3),
+    raw_result_json TEXT NOT NULL,
+    import_status TEXT NOT NULL DEFAULT 'imported' CHECK (import_status IN ('imported', 'quarantined')),
+    created_at TEXT NOT NULL
+);
+CREATE TABLE team_news_coverage (
+    id INTEGER PRIMARY KEY,
+    research_result_id INTEGER NOT NULL REFERENCES team_news_research_runs(id) ON DELETE CASCADE,
+    source_player_id TEXT NOT NULL,
+    priority TEXT NOT NULL CHECK (priority IN ('critical', 'starting_xi', 'bench_cover', 'squad', 'alternative', 'broad_scan')),
+    status TEXT NOT NULL CHECK (status IN ('checked_material_evidence', 'checked_no_material_evidence', 'partially_checked', 'source_unavailable', 'identity_unresolved', 'not_checked')),
+    areas_checked_json TEXT NOT NULL,
+    latest_source_checked_at TEXT,
+    notes TEXT,
+    UNIQUE (research_result_id, source_player_id)
+);
+CREATE TABLE team_news_discoveries (
+    id INTEGER PRIMARY KEY,
+    research_result_id INTEGER NOT NULL REFERENCES team_news_research_runs(id) ON DELETE CASCADE,
+    discovery_id TEXT NOT NULL,
+    source_player_id TEXT,
+    identity_status TEXT NOT NULL CHECK (identity_status IN ('resolved', 'unresolved')),
+    discovery_json TEXT NOT NULL,
+    UNIQUE (research_result_id, discovery_id)
+);
+ALTER TABLE news_projection_pairs ADD COLUMN input_package_id TEXT;
+ALTER TABLE news_projection_pairs ADD COLUMN research_run_id TEXT;
+ALTER TABLE news_projection_pairs ADD COLUMN source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id);
+
+CREATE INDEX idx_team_news_coverage_result ON team_news_coverage(research_result_id, status);
+CREATE INDEX idx_team_news_research_package ON team_news_research_runs(input_package_id, generated_at);
 
 PRAGMA user_version = 15;
 COMMIT;

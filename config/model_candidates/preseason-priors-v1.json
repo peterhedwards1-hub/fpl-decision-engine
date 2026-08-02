@@ -18,6 +18,10 @@
   "minutes_allocation": "team_total",
   "scoring_recent_evidence_weight": 1.0,
   "scoring_event_source": "actual",
+  "coherent_assist_unassisted_goal_fraction": 0.1,
+  "coherent_penalty_goal_fraction": 0.08,
+  "coherent_role_shrinkage_minutes": 900.0,
+  "coherent_transfer_shrinkage": 0.5,
   "team_form_half_life_gameweeks": 8.0,
   "team_assist_per_goal_prior": 0.72,
   "defensive_contribution_model": "threshold_poisson",
@@ -29,5 +33,16 @@
   "cold_start_prior": "position_price",
   "cold_start_price_elasticity": 1.5,
   "cold_start_minimum_factor": 0.35,
-  "cold_start_maximum_factor": 3.0
+  "cold_start_maximum_factor": 3.0,
+  "minutes_reconciliation_mode": "legacy_capped",
+  "minutes_reconciliation_max_relative_adjustment": 0.25,
+  "minutes_reconciliation_max_absolute_adjustment": 12.0,
+  "minutes_reconciliation_warning_deficit": 90.0,
+  "participation_start_prior_probability": 0.45,
+  "participation_start_prior_matches": 6.0,
+  "participation_substitute_prior_probability": 0.18,
+  "participation_substitute_prior_matches": 4.0,
+  "participation_start_minutes_prior": 78.0,
+  "participation_substitute_minutes_prior": 22.0,
+  "participation_role_decay_per_gameweek": 0.03
 }

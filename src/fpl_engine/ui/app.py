@@ -23,7 +23,10 @@ from fpl_engine.manager import (
     ManagerStateRepository,
 )
 from fpl_engine.model_health import build_model_health_report
-from fpl_engine.news import ingest_structured_news, structured_news_schema
+from fpl_engine.news import (
+    ingest_structured_news,
+    structured_news_v3_schema,
+)
 from fpl_engine.news_projection import (
     create_news_projection_pair,
     evaluate_news_projection_pair,
@@ -39,14 +42,13 @@ from fpl_engine.projections import (
     ProjectionOverride,
     RatesProjectionModel,
 )
+from fpl_engine.team_news_v3 import generate_team_news_research_package
 from fpl_engine.transfers import CurrentSquad, recommend_transfers
 from fpl_engine.ui.view import pitch_html
 from fpl_engine.workflow import WeeklyWorkflowRepository, WorkflowError
 
 DATABASE_PATH = Path(os.environ.get("FPL_DATABASE_PATH", "data/fpl.sqlite3"))
-RULES_PATH = Path(
-    os.environ.get("FPL_RULES_PATH", "config/seasons/2026-27.json")
-)
+RULES_PATH = Path(os.environ.get("FPL_RULES_PATH", "config/seasons/2026-27.json"))
 
 
 def main() -> None:
@@ -97,9 +99,7 @@ def main() -> None:
                 index
                 for index, row in enumerate(gameweeks)
                 if row["deadline_time"]
-                and datetime.fromisoformat(
-                    row["deadline_time"].replace("Z", "+00:00")
-                )
+                and datetime.fromisoformat(row["deadline_time"].replace("Z", "+00:00"))
                 > datetime.now(UTC)
             ),
             len(gameweeks) - 1,
@@ -111,9 +111,7 @@ def main() -> None:
             format_func=lambda value: f"Gameweek {value}",
         )
         deadline = next(
-            row["deadline_time"]
-            for row in gameweeks
-            if row["number"] == gameweek_number
+            row["deadline_time"] for row in gameweeks if row["number"] == gameweek_number
         )
         st.caption(f"State applies to GW{gameweek_number} · deadline {deadline}")
 
@@ -206,9 +204,7 @@ def _editor(
 ) -> None:
     player_lookup = {row["source_player_id"]: row for row in available}
     defaults = (
-        []
-        if latest is None
-        else [entry.source_player_id for entry in latest.snapshot.entries]
+        [] if latest is None else [entry.source_player_id for entry in latest.snapshot.entries]
     )
     selected_ids = st.multiselect(
         "Select exactly 15 players",
@@ -229,9 +225,7 @@ def _editor(
     old_entries = (
         {}
         if latest is None
-        else {
-            entry.source_player_id: entry for entry in latest.snapshot.entries
-        }
+        else {entry.source_player_id: entry for entry in latest.snapshot.entries}
     )
     rows = []
     default_starters = set(selected_ids[:11])
@@ -256,13 +250,9 @@ def _editor(
                     else previous.selling_price_tenths / 10
                 ),
                 "Starter": (
-                    source_id in default_starters
-                    if previous is None
-                    else previous.is_starter
+                    source_id in default_starters if previous is None else previous.is_starter
                 ),
-                "Bench order": (
-                    None if previous is None else previous.bench_order
-                ),
+                "Bench order": (None if previous is None else previous.bench_order),
             }
         )
     st.write("Set the XI, substitute goalkeeper as bench 1, then outfield priority 2–4.")
@@ -278,16 +268,12 @@ def _editor(
             "Selling £m": st.column_config.NumberColumn(
                 min_value=3.0, max_value=20.0, step=0.1, format="£%.1f"
             ),
-            "Bench order": st.column_config.NumberColumn(
-                min_value=1, max_value=4, step=1
-            ),
+            "Bench order": st.column_config.NumberColumn(min_value=1, max_value=4, step=1),
         },
         key=f"squad-grid-{season_code}-{gameweek_number}",
     )
     edited_rows = edited.to_dict("records")
-    starter_ids = [
-        str(row["Player ID"]) for row in edited_rows if bool(row["Starter"])
-    ]
+    starter_ids = [str(row["Player ID"]) for row in edited_rows if bool(row["Starter"])]
     role_options = ["", *selected_ids]
     old_snapshot = None if latest is None else latest.snapshot
     captain_index = _option_index(
@@ -296,9 +282,7 @@ def _editor(
     )
     vice_index = _option_index(
         role_options,
-        None
-        if old_snapshot is None
-        else old_snapshot.vice_captain_source_player_id,
+        None if old_snapshot is None else old_snapshot.vice_captain_source_player_id,
     )
 
     left, middle, right = st.columns(3)
@@ -331,9 +315,7 @@ def _editor(
             role_options,
             index=vice_index,
             format_func=lambda value: (
-                "Select vice-captain"
-                if not value
-                else player_lookup[value]["web_name"]
+                "Select vice-captain" if not value else player_lookup[value]["web_name"]
             ),
         )
     with right:
@@ -513,13 +495,11 @@ def _projection_explorer(
                 start_gameweek=gameweek_number,
                 horizon_gameweeks=horizon,
                 overrides=tuple(
-                    ProjectionOverride(**item)
-                    for item in st.session_state[override_key]
+                    ProjectionOverride(**item) for item in st.session_state[override_key]
                 ),
             )
         st.success(
-            f"Projection run {result.projection_run_id} saved "
-            f"with model {result.model_version}."
+            f"Projection run {result.projection_run_id} saved with model {result.model_version}."
         )
 
     latest_run = database.connection.execute(
@@ -673,9 +653,7 @@ def _load_optimisation_candidates(
         # Migrated legacy runs have no persisted probabilities. Keep them
         # viewable while every newly generated run uses the model outputs.
         if appearance_probability == 0 and float(row["expected_minutes"]) > 0:
-            appearance_probability = min(
-                1.0, float(row["expected_minutes"]) / 60.0
-            )
+            appearance_probability = min(1.0, float(row["expected_minutes"]) / 60.0)
         item["values"].append(
             GameweekPlayerValue(
                 gameweek_number=int(row["gameweek_number"]),
@@ -684,9 +662,7 @@ def _load_optimisation_candidates(
                 sixty_probability=float(row["sixty_probability"]),
             )
         )
-        item["uncertainty_total"] = float(
-            item["uncertainty_total"]
-        ) + float(row["uncertainty"])
+        item["uncertainty_total"] = float(item["uncertainty_total"]) + float(row["uncertainty"])
     candidates = []
     for player_id, item in grouped.items():
         values = tuple(item["values"])
@@ -699,9 +675,7 @@ def _load_optimisation_candidates(
                 team_short_name=str(item["team_short_name"]),
                 position=item["position"],
                 price_tenths=int(item["price_tenths"]),
-                expected_points=sum(
-                    value.expected_points for value in values
-                ),
+                expected_points=sum(value.expected_points for value in values),
                 gameweek_expected_points=first.expected_points,
                 appearance_probability=first.appearance_probability,
                 uncertainty=float(item["uncertainty_total"]),
@@ -747,9 +721,7 @@ def _starting_xi_explorer(
     )
     if not st.button("Optimise starting XI"):
         return
-    candidates = _load_optimisation_candidates(
-        database, int(latest_run["id"])
-    )
+    candidates = _load_optimisation_candidates(database, int(latest_run["id"]))
     try:
         result = optimise_starting_xi(
             candidates,
@@ -826,9 +798,7 @@ def _full_squad_explorer(
         return
     if not st.button("Optimise £100m squad"):
         return
-    candidates = _load_optimisation_candidates(
-        database, int(latest_run["id"])
-    )
+    candidates = _load_optimisation_candidates(database, int(latest_run["id"]))
     try:
         recommendation = optimise_opening_squads(
             candidates,
@@ -842,12 +812,8 @@ def _full_squad_explorer(
     result = recommendation.primary
     metrics = st.columns(4)
     metrics[0].metric("GW expected", f"{result.gameweek_expected_points:.1f}")
-    metrics[1].metric(
-        "Bench contribution", f"{result.expected_bench_contribution:.2f}"
-    )
-    metrics[2].metric(
-        "Captain contribution", f"{result.expected_captain_contribution:.2f}"
-    )
+    metrics[1].metric("Bench contribution", f"{result.expected_bench_contribution:.2f}")
+    metrics[2].metric("Captain contribution", f"{result.expected_captain_contribution:.2f}")
     metrics[3].metric("Cost", f"£{result.total_cost_tenths / 10:.1f}m")
     selected_lookup = {
         player.source_player_id: {
@@ -859,8 +825,7 @@ def _full_squad_explorer(
         for player in result.players
     }
     bench_order = {
-        player_id: index
-        for index, player_id in enumerate(result.bench_player_ids, start=1)
+        player_id: index for index, player_id in enumerate(result.bench_player_ids, start=1)
     }
     entries = [
         {
@@ -894,19 +859,11 @@ def _full_squad_explorer(
                 "Cost £m": alternative.total_cost_tenths / 10,
                 "Changed players": 15
                 - len(
-                    {
-                        player.source_player_id
-                        for player in result.players
-                    }
-                    & {
-                        player.source_player_id
-                        for player in alternative.players
-                    }
+                    {player.source_player_id for player in result.players}
+                    & {player.source_player_id for player in alternative.players}
                 ),
             }
-            for index, alternative in enumerate(
-                recommendation.alternatives, start=1
-            )
+            for index, alternative in enumerate(recommendation.alternatives, start=1)
         ),
         hide_index=True,
         use_container_width=True,
@@ -942,17 +899,12 @@ def _transfer_explorer(
         return
     if not st.button("Compare roll and configured multi-transfer routes"):
         return
-    candidates = _load_optimisation_candidates(
-        database, int(latest_run["id"])
-    )
+    candidates = _load_optimisation_candidates(database, int(latest_run["id"]))
     snapshot = latest.snapshot
     current = CurrentSquad(
-        player_ids=frozenset(
-            entry.source_player_id for entry in snapshot.entries
-        ),
+        player_ids=frozenset(entry.source_player_id for entry in snapshot.entries),
         selling_prices_tenths={
-            entry.source_player_id: entry.selling_price_tenths
-            for entry in snapshot.entries
+            entry.source_player_id: entry.selling_price_tenths for entry in snapshot.entries
         },
         bank_tenths=snapshot.bank_tenths,
         free_transfers=snapshot.free_transfers,
@@ -1012,9 +964,7 @@ def _chip_explorer(
         return
     snapshot = latest.snapshot
     available_chips = [
-        chip_name
-        for chip_name, remaining in snapshot.remaining_chips.items()
-        if remaining > 0
+        chip_name for chip_name, remaining in snapshot.remaining_chips.items() if remaining > 0
     ]
     if not available_chips:
         st.info("The saved manager state has no chips remaining.")
@@ -1042,22 +992,13 @@ def _chip_explorer(
         min_value=0.0,
         value=0.0,
         step=0.5,
-        help=(
-            "Optional estimate of the value of saving this chip for a better "
-            "future Gameweek."
-        ),
+        help=("Optional estimate of the value of saving this chip for a better future Gameweek."),
     )
     if not st.button("Value selected chip"):
         return
     try:
         previous_uses = tuple(
-            sorted(
-                {
-                    int(value.strip())
-                    for value in previous_uses_text.split(",")
-                    if value.strip()
-                }
-            )
+            sorted({int(value.strip()) for value in previous_uses_text.split(",") if value.strip()})
         )
     except ValueError:
         st.error("Previous use Gameweeks must be comma-separated integers.")
@@ -1066,12 +1007,9 @@ def _chip_explorer(
         database,
         int(latest_run["id"]),
     )
-    current_ids = frozenset(
-        entry.source_player_id for entry in snapshot.entries
-    )
+    current_ids = frozenset(entry.source_player_id for entry in snapshot.entries)
     budget_tenths = (
-        sum(entry.selling_price_tenths for entry in snapshot.entries)
-        + snapshot.bank_tenths
+        sum(entry.selling_price_tenths for entry in snapshot.entries) + snapshot.bank_tenths
     )
     try:
         recommendation = recommend_chip(
@@ -1094,9 +1032,7 @@ def _chip_explorer(
     st.write(recommendation.explanation)
     if recommendation.captain_id is not None:
         captain = next(
-            player
-            for player in candidates
-            if player.source_player_id == recommendation.captain_id
+            player for player in candidates if player.source_player_id == recommendation.captain_id
         )
         st.caption(f"Captain: {captain.web_name}")
     if recommendation.squad is not None:
@@ -1107,8 +1043,7 @@ def _chip_explorer(
                     "Team": player.team_short_name,
                     "Position": player.position.value,
                     "Starter": (
-                        player.source_player_id
-                        in recommendation.squad.starting_player_ids
+                        player.source_player_id in recommendation.squad.starting_player_ids
                     ),
                 }
                 for player in recommendation.squad.players
@@ -1148,13 +1083,9 @@ def _inferred_chip_gameweeks(
     uses = []
     previous_remaining: int | None = None
     for row in rows:
-        remaining = int(
-            json.loads(row["remaining_chips_json"]).get(chip_name, 0)
-        )
+        remaining = int(json.loads(row["remaining_chips_json"]).get(chip_name, 0))
         if previous_remaining is not None and remaining < previous_remaining:
-            uses.extend(
-                [int(row["number"])] * (previous_remaining - remaining)
-            )
+            uses.extend([int(row["number"])] * (previous_remaining - remaining))
         previous_remaining = remaining
     return tuple(uses)
 
@@ -1170,6 +1101,58 @@ def _weekly_cycle(
     st.subheader("Two-pass weekly cycle")
     workflow = WeeklyWorkflowRepository(database)
     player_lookup = {row["source_player_id"]: row for row in available}
+    latest_projection = database.connection.execute(
+        """
+        SELECT projection_runs.id, projection_runs.generated_at FROM projection_runs
+        JOIN seasons ON seasons.id = projection_runs.season_id
+        WHERE seasons.code = ? AND start_gameweek = ?
+        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC LIMIT 1
+        """,
+        (season_code, gameweek_number),
+    ).fetchone()
+    with st.expander("Export decision-focused v3 research package", expanded=False):
+        st.caption(
+            "The package identifies the selected XI, bench, armbands, projection assumptions, "
+            "bounded alternatives and a compact official player directory."
+        )
+        package_mode = st.selectbox(
+            "Research mode", ("preseason", "provisional", "final"), key="v3-package-mode"
+        )
+        package_window = st.text_input(
+            "Research-window start (timezone-aware ISO-8601)",
+            value=datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+            key="v3-package-window",
+        )
+        package_limit = st.number_input(
+            "Alternatives", min_value=1, max_value=20, value=15, step=1, key="v3-package-limit"
+        )
+        if latest_projection is None:
+            st.info("Generate a projection baseline before exporting a research package.")
+        elif st.button("Generate v3 research package"):
+            try:
+                package = generate_team_news_research_package(
+                    database,
+                    season_code=season_code,
+                    gameweek_number=gameweek_number,
+                    projection_run_id=int(latest_projection["id"]),
+                    research_mode=package_mode,
+                    research_window_start=package_window,
+                    alternatives_limit=int(package_limit),
+                )
+            except (ValueError, WorkflowError) as error:
+                st.error(str(error))
+            else:
+                st.success(
+                    f"Package {package['input_package_id']} generated "
+                    f"({len(package['selected_squad'])} selected players, "
+                    f"{len(package['alternatives'])} alternatives)."
+                )
+                st.download_button(
+                    "Download research package JSON",
+                    data=json.dumps(package, indent=2),
+                    file_name=f"team-news-{season_code}-gw{gameweek_number}-v3.json",
+                    mime="application/json",
+                )
     with st.expander("News evidence and review", expanded=True):
         st.caption(
             "Paste the strict JSON produced by the team-news research prompt. "
@@ -1177,7 +1160,7 @@ def _weekly_cycle(
         )
         structured_payload = st.text_area(
             "Structured team-news JSON",
-            value=json.dumps(structured_news_schema(), indent=2),
+            value=json.dumps(structured_news_v3_schema(), indent=2),
             height=180,
         )
         if st.button("Import structured news"):
@@ -1191,17 +1174,13 @@ def _weekly_cycle(
             except (ValueError, WorkflowError) as error:
                 st.error(str(error))
             else:
-                st.success(
-                    f"Added {len(evidence_ids)} item(s) to the review queue."
-                )
+                st.success(f"Added {len(evidence_ids)} item(s) to the review queue.")
                 st.rerun()
         evidence_player = st.selectbox(
             "Affected player",
             ["", *player_lookup],
             format_func=lambda value: (
-                "General team evidence"
-                if not value
-                else player_lookup[value]["web_name"]
+                "General team evidence" if not value else player_lookup[value]["web_name"]
             ),
             key="evidence-player",
         )
@@ -1220,9 +1199,7 @@ def _weekly_cycle(
         )
         evidence_summary = st.text_input("Evidence summary")
         evidence_source = st.text_input("Source URL (optional)")
-        evidence_confidence = st.selectbox(
-            "Confidence", ("low", "medium", "high"), index=1
-        )
+        evidence_confidence = st.selectbox("Confidence", ("low", "medium", "high"), index=1)
         if st.button("Add evidence"):
             try:
                 workflow.add_news_evidence(
@@ -1244,7 +1221,9 @@ def _weekly_cycle(
             """
             SELECT news_evidence.id, players.web_name, evidence_type, summary,
                    confidence, review_status, expected_minutes_adjustment,
-                   rationale
+                   rationale, schema_version, prompt_version, priority,
+                   selected_player_status, source_tier, published_at, expires_at,
+                   adjustment_support, decision_question
             FROM news_evidence
             JOIN seasons ON seasons.id = news_evidence.season_id
             JOIN gameweeks ON gameweeks.id = news_evidence.gameweek_id
@@ -1256,7 +1235,49 @@ def _weekly_cycle(
             """,
             (season_code, gameweek_number),
         ).fetchall()
+        filters = st.multiselect(
+            "Review filters",
+            (
+                "critical players",
+                "unreviewed evidence",
+                "conflicting evidence",
+                "unsupported adjustments",
+                "expiring evidence",
+            ),
+            key="v3-review-filters",
+        )
+        if filters:
+            filtered_rows = []
+            now = datetime.now(UTC).isoformat()
+            for row in evidence_rows:
+                if "critical players" in filters and row["priority"] != "critical":
+                    continue
+                if "unreviewed evidence" in filters and row["review_status"] != "pending":
+                    continue
+                if "conflicting evidence" in filters:
+                    conflict = database.connection.execute(
+                        "SELECT 1 FROM news_evidence WHERE id = ? "
+                        "AND COALESCE(conflicting_evidence_json, '[]') <> '[]'",
+                        (row["id"],),
+                    ).fetchone()
+                    if conflict is None:
+                        continue
+                if (
+                    "unsupported adjustments" in filters
+                    and row["adjustment_support"] != "unsupported"
+                ):
+                    continue
+                if "expiring evidence" in filters and not row["expires_at"]:
+                    continue
+                if "expiring evidence" in filters and row["expires_at"] <= now:
+                    continue
+                filtered_rows.append(row)
+            evidence_rows = filtered_rows
         if evidence_rows:
+            st.caption(
+                "Schema/prompt versions are retained per item. Coverage is separate from "
+                "evidence: an empty evidence list does not prove a player was checked."
+            )
             st.dataframe(
                 pd.DataFrame([dict(row) for row in evidence_rows]),
                 hide_index=True,
@@ -1271,9 +1292,7 @@ def _weekly_cycle(
                     row["summary"] for row in pending if row["id"] == value
                 ),
             )
-            review_status = st.radio(
-                "Review decision", ("accepted", "rejected"), horizontal=True
-            )
+            review_status = st.radio("Review decision", ("accepted", "rejected"), horizontal=True)
             minutes_adjustment = st.number_input(
                 "Expected-minutes adjustment",
                 min_value=-90.0,
@@ -1289,9 +1308,7 @@ def _weekly_cycle(
                         status=review_status,
                         rationale=review_rationale,
                         expected_minutes_adjustment=(
-                            minutes_adjustment
-                            if review_status == "accepted"
-                            else None
+                            minutes_adjustment if review_status == "accepted" else None
                         ),
                     )
                 except WorkflowError as error:
@@ -1302,12 +1319,15 @@ def _weekly_cycle(
         accepted_adjustments = [
             row
             for row in evidence_rows
-            if row["review_status"] == "accepted"
-            and row["expected_minutes_adjustment"] is not None
+            if row["review_status"] == "accepted" and row["expected_minutes_adjustment"] is not None
         ]
-        if accepted_adjustments and not pending and st.button(
-            "Generate comparable pre-news and final projections",
-            type="primary",
+        if (
+            accepted_adjustments
+            and not pending
+            and st.button(
+                "Generate comparable pre-news and final projections",
+                type="primary",
+            )
         ):
             try:
                 pair = create_news_projection_pair(
@@ -1315,6 +1335,9 @@ def _weekly_cycle(
                     rules,
                     season_code=season_code,
                     gameweek_number=gameweek_number,
+                    pre_news_projection_run_id=(
+                        None if latest_projection is None else int(latest_projection["id"])
+                    ),
                 )
             except WorkflowError as error:
                 st.error(str(error))
@@ -1347,6 +1370,29 @@ def _weekly_cycle(
             st.write("Pre/post-news projection pairs")
             st.dataframe(
                 pd.DataFrame([dict(row) for row in pairs]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        coverage_rows = database.connection.execute(
+            """
+            SELECT coverage.source_player_id, coverage.priority, coverage.status,
+                   coverage.areas_checked_json, coverage.latest_source_checked_at,
+                   coverage.notes, runs.research_run_id
+            FROM team_news_coverage coverage
+            JOIN team_news_research_runs runs ON runs.id = coverage.research_result_id
+            JOIN seasons ON seasons.id = runs.season_id
+            JOIN gameweeks ON gameweeks.id = runs.gameweek_id
+            WHERE seasons.code = ? AND gameweeks.number = ?
+            ORDER BY CASE coverage.priority WHEN 'critical' THEN 0
+                     WHEN 'starting_xi' THEN 1 ELSE 2 END,
+                     coverage.source_player_id
+            """,
+            (season_code, gameweek_number),
+        ).fetchall()
+        if coverage_rows:
+            st.write("v3 coverage (checked status is independent of evidence)")
+            st.dataframe(
+                pd.DataFrame([dict(row) for row in coverage_rows]),
                 hide_index=True,
                 use_container_width=True,
             )
@@ -1418,9 +1464,7 @@ def _weekly_cycle(
                     "expected_points": forecast_points,
                 },
                 decision_triggers=tuple(
-                    line.strip()
-                    for line in trigger_text.splitlines()
-                    if line.strip()
+                    line.strip() for line in trigger_text.splitlines() if line.strip()
                 ),
             )
         except WorkflowError as error:
@@ -1479,9 +1523,7 @@ def _weekly_cycle(
         (final_id,),
     ).fetchone()
     if evaluation_exists is None:
-        realised = st.number_input(
-            "Realised points", min_value=0.0, max_value=250.0, step=1.0
-        )
+        realised = st.number_input("Realised points", min_value=0.0, max_value=250.0, step=1.0)
         notes = st.text_area("Post-Gameweek review notes")
         if st.button("Score the weekly decision"):
             try:
@@ -1582,22 +1624,12 @@ def _data_health(
     else:
         report = load_backtest_report(database, int(latest_backtest["id"]))
         score_columns = st.columns(6)
-        score_columns[0].metric(
-            "Generated", report.generated_prediction_count
-        )
+        score_columns[0].metric("Generated", report.generated_prediction_count)
         score_columns[1].metric("Scored", report.prediction_count)
-        score_columns[2].metric(
-            "Missing outcomes", report.missing_outcome_count
-        )
-        score_columns[3].metric(
-            "Points MAE", f"{report.overall.points_mae:.3f}"
-        )
-        score_columns[4].metric(
-            "Points bias", f"{report.overall.points_bias:+.3f}"
-        )
-        score_columns[5].metric(
-            "Minutes MAE", f"{report.overall.minutes_mae:.2f}"
-        )
+        score_columns[2].metric("Missing outcomes", report.missing_outcome_count)
+        score_columns[3].metric("Points MAE", f"{report.overall.points_mae:.3f}")
+        score_columns[4].metric("Points bias", f"{report.overall.points_bias:+.3f}")
+        score_columns[5].metric("Minutes MAE", f"{report.overall.minutes_mae:.2f}")
         st.caption(
             f"{report.model_version} · {report.evidence_policy} · "
             f"origins GW{report.origin_gameweek_start}–"
@@ -1646,9 +1678,7 @@ def _data_health(
     _refresh_button(database, season_code, season_code.replace("-", "/"))
 
 
-def _refresh_button(
-    database: HistoricalDatabase, season_code: str, season_name: str
-) -> None:
+def _refresh_button(database: HistoricalDatabase, season_code: str, season_name: str) -> None:
     if st.button("Refresh public FPL data"):
         with st.spinner("Collecting and validating the latest public FPL data…"):
             try:

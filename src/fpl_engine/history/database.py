@@ -37,6 +37,7 @@ from .schema import (
     MIGRATE_V12_TO_V13_SQL,
     MIGRATE_V13_TO_V14_SQL,
     MIGRATE_V14_TO_V15_SQL,
+    MIGRATE_V15_TO_V16_SQL,
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
@@ -132,6 +133,18 @@ class HistoricalDatabase:
             current_version = 14
         if current_version == 14:
             self._migrate_v14_to_v15()
+            current_version = 15
+        if current_version == 15:
+            extension = self.connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                "AND name = 'team_news_input_packages'"
+            ).fetchone()
+            if extension is None:
+                self._migrate_v15_to_v16()
+            else:
+                self.connection.executescript(SCHEMA_SQL)
+                self.connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                self.connection.commit()
             return
         if current_version != SCHEMA_VERSION:
             raise RuntimeError(
@@ -348,6 +361,20 @@ class HistoricalDatabase:
         except Exception as error:
             self.connection.rollback()
             raise RuntimeError(f"Version 14 to 15 migration failed safely: {error}") from error
+
+    def _migrate_v15_to_v16(self) -> None:
+        try:
+            self.connection.executescript(MIGRATE_V15_TO_V16_SQL)
+            foreign_key_issues = self.connection.execute("PRAGMA foreign_key_check").fetchall()
+            if foreign_key_issues:
+                raise RuntimeError(
+                    f"Version 15 to 16 migration produced "
+                    f"{len(foreign_key_issues)} foreign-key issue(s)"
+                )
+            self.connection.commit()
+        except Exception as error:
+            self.connection.rollback()
+            raise RuntimeError(f"Version 15 to 16 migration failed safely: {error}") from error
 
     def _validate_v3_timing_rows(self) -> dict[int, str | None]:
         rows = self.connection.execute(

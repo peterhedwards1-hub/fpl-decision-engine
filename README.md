@@ -120,6 +120,23 @@ The app provides team entry, a saved pitch view, projections, optimal XI, openin
 transfer comparison, structured team-news import/review, paired pre/post-news projections
 and model-health views.
 
+For the decision-focused manual team-news workflow, use schema v3 packages:
+
+```bash
+fpl-history --database data/fpl.sqlite3 export-team-news-research-package 2026-27 \
+  --gameweek 1 --projection-run 123 --research-mode provisional \
+  --research-window-start 2026-08-14T18:00:00+00:00 \
+  --alternatives 15 --output data/team-news-gw1.json
+fpl-history --database data/fpl.sqlite3 import-team-news-research-result \
+  --season-code 2026-27 --gameweek 1 --input data/team-news-gw1-result.json
+```
+
+The package gives selected XI, bench and captaincy decisions priority while
+retaining bounded alternatives and a broad scan. Coverage is distinct from
+evidence, conflicts remain explicit, stale results are rejected, and all
+model-affecting suggestions require human review. See
+`docs/team-news-v3.md` and `prompts/team-news-v3.md` for the operator guide.
+
 ## Rules usage
 
 ```python
