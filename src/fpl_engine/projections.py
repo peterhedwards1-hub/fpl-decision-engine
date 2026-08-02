@@ -11,8 +11,17 @@ from typing import Any
 from .config import SeasonRules
 from .domain import Position
 from .history.database import HistoricalDatabase
+from .team_strength import (
+    ContextualAdjustment,
+    TeamStrengthSettings,
+    TeamStrengthState,
+    estimate_team_strength,
+)
 
 MODEL_VERSION = "rates-rules-corrected-v4"
+OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_VERSION = (
+    "opponent-adjusted-team-strength-v1"
+)
 TUNED_V3_MODEL_VERSION = "rates-two-stage-v3"
 BASELINE_V2_MODEL_VERSION = "rates-two-stage-v2"
 LEGACY_MODEL_VERSION = "rates-baseline-v1"
@@ -158,6 +167,15 @@ class ProjectionModelConfig:
     cold_start_price_elasticity: float = 1.5
     cold_start_minimum_factor: float = 0.35
     cold_start_maximum_factor: float = 3.0
+    # Which team-strength estimator produces the attack and defence
+    # multipliers. "raw_goals" is the incumbent: goals for and against shrunk
+    # toward the league average, with no adjustment for who they came against.
+    # "opponent_adjusted" uses fpl_engine.team_strength, which rates every club
+    # relative to the opponents it actually faced, seeds a preseason prior from
+    # the previous season's opponent-adjusted expected goals, and reports its
+    # own derivation. It supersedes team_strength_carry_forward, which is
+    # ignored when it is selected.
+    team_strength_model: str = "raw_goals"
 
     def __post_init__(self) -> None:
         if self.player_rate_prior_minutes <= 0:
@@ -252,6 +270,11 @@ class ProjectionModelConfig:
             raise ValueError(
                 "Cold-start maximum factor cannot be below the minimum"
             )
+        if self.team_strength_model not in {"raw_goals", "opponent_adjusted"}:
+            raise ValueError(
+                "Team strength model must be 'raw_goals' or "
+                "'opponent_adjusted'"
+            )
 
 
 BASELINE_V2_MODEL_CONFIG = ProjectionModelConfig()
@@ -292,6 +315,24 @@ DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG = replace(
 PRESEASON_V5_MODEL_CONFIG = replace(
     CORRECTED_V4_MODEL_CONFIG,
     team_strength_carry_forward=True,
+    cold_start_prior="position_price",
+)
+#: The opponent-adjusted challenger. Three changes from the corrected v4
+#: incumbent, each fixing a named structural defect:
+#:
+#: * `team_strength_model` replaces raw goals with an opponent-adjusted
+#:   Poisson rating and a previous-season expected-goal prior, so clubs are
+#:   separated before a ball is kicked and an easy early schedule does not
+#:   make a mediocre club look elite;
+#: * `scoring_event_source` allocates the team's goal expectation to players
+#:   by share, rather than multiplying a player's already club-influenced
+#:   per-90 rate by their club's strength a second time;
+#: * `cold_start_prior` gives a player with no history a price-scaled prior,
+#:   which matters far more once shares, not raw rates, drive scoring.
+OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_CONFIG = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    team_strength_model="opponent_adjusted",
+    scoring_event_source="team_share_expected",
     cold_start_prior="position_price",
 )
 DEFAULT_MODEL_CONFIG = CORRECTED_V4_MODEL_CONFIG
@@ -367,6 +408,10 @@ class ProjectionResult:
     projections: tuple[PlayerGameweekProjection, ...]
     team_strengths: dict[str, dict[str, float]]
     model_config: ProjectionModelConfig
+    #: Full derivation of the team ratings when the opponent-adjusted model
+    #: produced them: priors, weights, continuity, adjustments and rationale.
+    #: `None` for the incumbent, which has no such record to give.
+    team_strength_state: TeamStrengthState | None = None
 
 
 class RatesProjectionModel:
@@ -379,11 +424,18 @@ class RatesProjectionModel:
         *,
         config: ProjectionModelConfig = DEFAULT_MODEL_CONFIG,
         model_version: str = MODEL_VERSION,
+        team_strength_settings: TeamStrengthSettings | None = None,
+        team_strength_adjustments: tuple[ContextualAdjustment, ...] = (),
     ) -> None:
         self.database = database
         self.rules = rules
         self.config = config
         self.model_version = model_version
+        self.team_strength_settings = (
+            team_strength_settings or TeamStrengthSettings()
+        )
+        self.team_strength_adjustments = team_strength_adjustments
+        self._last_team_strength_state: TeamStrengthState | None = None
 
     def project(
         self,
@@ -439,6 +491,9 @@ class RatesProjectionModel:
             as_of=fixture_as_of,
             maximum_ingestion_run_id=source_ingestion_run_id,
         )
+        # Cleared first so a raw-goals run can never report the derivation of
+        # an opponent-adjusted run that happened to share this engine.
+        self._last_team_strength_state = None
         strengths = self._team_strengths(
             season_code,
             start_gameweek,
@@ -485,6 +540,7 @@ class RatesProjectionModel:
             projections=projections,
             team_strengths=strengths,
             model_config=self.config,
+            team_strength_state=self._last_team_strength_state,
         )
 
     def _resolve_source_ingestion_run_id(
@@ -812,6 +868,14 @@ class RatesProjectionModel:
         as_of: datetime | None = None,
         maximum_ingestion_run_id: int | None = None,
     ) -> dict[str, dict[str, float]]:
+        if self.config.team_strength_model == "opponent_adjusted":
+            return self._opponent_adjusted_team_strengths(
+                season_code,
+                start_gameweek,
+                overrides,
+                as_of=as_of,
+                maximum_ingestion_run_id=maximum_ingestion_run_id,
+            )
         if self.config.scoring_event_source == "team_share_expected":
             return self._expected_goal_team_strengths(
                 season_code,
@@ -1100,6 +1164,76 @@ class RatesProjectionModel:
             previous_league_average,
         )
 
+    def _opponent_adjusted_team_strengths(
+        self,
+        season_code: str,
+        start_gameweek: int,
+        overrides: tuple[TeamStrengthOverride, ...],
+        *,
+        as_of: datetime | None,
+        maximum_ingestion_run_id: int | None,
+    ) -> dict[str, dict[str, float]]:
+        """Adapt the consolidated estimator to the projection strength dict.
+
+        The estimator is the single source of team strength for this
+        configuration: preseason prior, current-season updating and contextual
+        adjustment all happen inside it, so the two rival implementations below
+        are bypassed entirely rather than blended with.
+
+        `TeamStrengthOverride` is preserved and still wins outright. An
+        override is an operator asserting a value; a `ContextualAdjustment` is
+        a bounded, dated, explained nudge to a derived one. Both are recorded.
+        """
+
+        state = estimate_team_strength(
+            self.database,
+            season_code=season_code,
+            gameweek_number=start_gameweek,
+            settings=self.team_strength_settings,
+            adjustments=self.team_strength_adjustments,
+            as_of=as_of,
+            maximum_ingestion_run_id=maximum_ingestion_run_id,
+        )
+        self._last_team_strength_state = state
+        result: dict[str, dict[str, float]] = {
+            team_id: {
+                "attack": _clamp(
+                    team.attack,
+                    self.config.minimum_team_multiplier,
+                    self.config.maximum_team_multiplier,
+                ),
+                "defence": _clamp(
+                    team.defence,
+                    self.config.minimum_team_multiplier,
+                    self.config.maximum_team_multiplier,
+                ),
+                "matches": team.matches_observed,
+                "league_average_goals": state.league_average_goals,
+                "assist_per_goal": state.assist_per_goal,
+                "source_is_expected_goals": (
+                    1.0 if team.evidence_source == "expected_goals" else 0.0
+                ),
+                "uncertainty": team.uncertainty,
+                "prior_weight": team.prior_weight,
+                "current_weight": team.current_weight,
+                "schedule_strength": team.schedule_strength,
+                "is_promoted": 1.0 if team.is_promoted else 0.0,
+                "adjustments_applied": float(len(team.adjustments)),
+            }
+            for team_id, team in state.teams.items()
+        }
+        by_source = {
+            team.source_team_id: team_id for team_id, team in state.teams.items()
+        }
+        for override in overrides:
+            team_id = by_source.get(override.source_team_id)
+            if team_id is None:
+                raise ValueError(f"Unknown team override {override.source_team_id!r}")
+            result[team_id]["attack"] = override.attack_multiplier
+            result[team_id]["defence"] = override.defence_susceptibility
+            result[team_id]["overridden"] = 1.0
+        return result
+
     def _expected_goal_team_strengths(
         self,
         season_code: str,
@@ -1193,6 +1327,13 @@ class RatesProjectionModel:
                 weighted_xa += float(row["xa_for"]) * weight
                 weighted_matches += weight
         league_average = weighted_xg / weighted_matches if weighted_matches else 1.4
+        if league_average <= 0:
+            # Some imported seasons store expected_goals as 0.0 rather than
+            # NULL, so the COALESCE fallback to actual goals never fires and
+            # every prior fixture reads as goalless. Without this the next
+            # division raises. Same fallback as the no-fixtures case above;
+            # this changes no output that previously computed.
+            league_average = 1.4
         assist_per_goal = (
             (
                 weighted_xa
@@ -1250,20 +1391,63 @@ class RatesProjectionModel:
         self,
         players: list[dict[str, Any]],
     ) -> None:
-        """Create coherent player shares without reapplying team strength."""
+        """Create coherent player shares without reapplying team strength.
+
+        A share is a player's slice of their own club's attacking output, so
+        the club's quality is applied exactly once — to the team total — and
+        never again to the player. This is the fix for the double count: the
+        rate path multiplies a per-90 rate that was itself earned at that club
+        by that club's strength a second time.
+
+        Each player's weight is their expected goal (or assist) involvement in
+        one fixture: a shrunk per-90 rate scaled by expected minutes. Four
+        things feed the rate:
+
+        * historical expected goals and assists, falling back to actual events
+          where the expected fields are absent;
+        * recent evidence, weighted by `scoring_recent_evidence_weight`, so a
+          player who has just taken over a role moves faster than their season
+          total suggests;
+        * a position prior, shrinking small samples toward what a typical
+          player in that position does;
+        * the cold-start price factor on the prior term only, so a player with
+          no minutes at this club is not assumed to be a reserve, and the
+          adjustment fades automatically as real minutes accumulate.
+
+        Shares are normalised to sum to one within a club, so the players'
+        goal expectations reconcile exactly to the team's. What that does not
+        model: own goals, and the fact that not every goal is assisted — the
+        latter is handled separately by the league assist-per-goal ratio, and
+        the former is left in the per-player deduction where it already lives.
+        No penalty or set-piece role data is available in this schema, so
+        share is inferred from output alone; a reviewed role override remains
+        the only way to assert one.
+        """
 
         raw: dict[str, list[tuple[dict[str, Any], float, float]]] = {}
         prior_minutes = self.config.player_rate_prior_minutes
+        recent_extra = self.config.scoring_recent_evidence_weight - 1.0
         for player in players:
             position = Position(player["position"])
-            sample_minutes = float(player["minutes"])
+            sample_minutes = float(player["minutes"]) + recent_extra * float(
+                player["recent_minutes"]
+            )
+            price_factor = float(player.get("_cold_start_price_factor", 1.0))
             goal_rate = (
-                float(player["expected_goals"]) * 90.0
-                + POSITION_PRIORS[position]["goals"] * prior_minutes
+                (
+                    float(player["expected_goals"])
+                    + recent_extra * float(player["recent_expected_goals"])
+                )
+                * 90.0
+                + POSITION_PRIORS[position]["goals"] * price_factor * prior_minutes
             ) / (sample_minutes + prior_minutes)
             assist_rate = (
-                float(player["expected_assists"]) * 90.0
-                + POSITION_PRIORS[position]["assists"] * prior_minutes
+                (
+                    float(player["expected_assists"])
+                    + recent_extra * float(player["recent_expected_assists"])
+                )
+                * 90.0
+                + POSITION_PRIORS[position]["assists"] * price_factor * prior_minutes
             ) / (sample_minutes + prior_minutes)
             minute_factor = float(player["_expected_minutes_per_fixture"]) / 90.0
             raw.setdefault(str(player["team_id"]), []).append(
@@ -1826,6 +2010,12 @@ class RatesProjectionModel:
             "team_strengths": strengths,
             "model_config": self.config.__dict__,
         }
+        if self._last_team_strength_state is not None:
+            # Every contextual adjustment travels with the run that used it,
+            # so no adjustment can be applied without leaving a record.
+            assumptions["team_strength_state"] = (
+                self._last_team_strength_state.as_dict()
+            )
         with self.database.transaction():
             cursor = self.database.connection.execute(
                 """

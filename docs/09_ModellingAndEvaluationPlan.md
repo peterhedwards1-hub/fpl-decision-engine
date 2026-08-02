@@ -318,6 +318,15 @@ The correct design, which `08_ModelEvaluation.md` independently reaches:
 Note that xG/xA are absent in 2021/22, so this challenger has two development folds, not
 three.
 
+**Implemented in full by `opponent-adjusted-team-strength-v1`** — see
+`12_TeamStrengthModel.md`. That candidate is the first configuration to do all three
+steps: it rates clubs opponent-adjusted (§6.1a's carry-forward does not), seeds the
+preseason prior from previous-season opponent-adjusted expected goals, and allocates by
+share so the double-count named above cannot occur. `DEFAULT_MODEL_CONFIG` is unchanged
+and the candidate awaits forward 2026/27 evidence. Its historical result is conditional:
+it beats the incumbent on every 2023/24 slice and does not beat it in 2022/23, whose
+prior season carries no expected-goal rows at all.
+
 ### 6.1a Preseason team strength and cold starts — implemented challenger
 
 `_team_strengths` reads only completed fixtures in the target season. Before Gameweek 1

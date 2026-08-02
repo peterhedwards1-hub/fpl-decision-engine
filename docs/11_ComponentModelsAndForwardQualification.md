@@ -20,6 +20,14 @@ Their canonical configs and common gate policy live in
 `config/model_candidates/`. Schema 15 stores the registration time, config SHA-256 and
 policy immutably.
 
+A fourth candidate configuration, `opponent-adjusted-team-strength-v1`, is written and
+historically evaluated but **not yet registered** — the imported database holds
+2021/22–2023/24 only, so there is no 2026/27 origin to register against. Its design,
+results and remaining uncertainties are in `12_TeamStrengthModel.md`. It supersedes
+`team-share-xg-v1` in scope: it uses the same share-based allocation but adds opponent
+adjustment, a preseason prior, squad continuity and auditable contextual adjustments.
+Registering it should replace, not accompany, a further `team-share-xg-v1` run.
+
 The first valid GW1 candidate projection runs were generated from ingestion run 6:
 projection runs 1 (playing time), 2 (share xG) and 3 (defensive contributions), each with
 4,512 player-Gameweek rows across the eight-Gameweek horizon.

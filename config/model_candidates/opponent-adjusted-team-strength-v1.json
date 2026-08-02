@@ -22,5 +22,13 @@
   "team_assist_per_goal_prior": 0.72,
   "defensive_contribution_model": "threshold_poisson",
   "include_penalty_events": true,
-  "team_strength_model": "raw_goals"
+  "team_strength_carry_forward": false,
+  "carry_forward_regression_matches": 12.0,
+  "promoted_team_attack_multiplier": 0.85,
+  "promoted_team_defence_multiplier": 1.2,
+  "cold_start_prior": "position_price",
+  "cold_start_price_elasticity": 1.5,
+  "cold_start_minimum_factor": 0.35,
+  "cold_start_maximum_factor": 3.0,
+  "team_strength_model": "opponent_adjusted"
 }

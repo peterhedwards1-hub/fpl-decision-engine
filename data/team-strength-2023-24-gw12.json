@@ -1,0 +1,1179 @@
+{
+  "assist_per_goal": 0.6543,
+  "comparison_agreement": {
+    "flat_preseason": {
+      "attack_rank_correlation": 0.9248,
+      "largest_disagreement": {
+        "name": "Nott'm Forest",
+        "our_rank": 18,
+        "rationale": [],
+        "their_rank": 13
+      },
+      "teams": 20
+    },
+    "raw_goals_carry_forward": {
+      "attack_rank_correlation": 0.9143,
+      "largest_disagreement": {
+        "name": "Everton",
+        "our_rank": 12,
+        "rationale": [],
+        "their_rank": 18
+      },
+      "teams": 20
+    },
+    "team_share_expected_goals": {
+      "attack_rank_correlation": 0.9624,
+      "largest_disagreement": {
+        "name": "Brighton",
+        "our_rank": 5,
+        "rationale": [],
+        "their_rank": 8
+      },
+      "teams": 20
+    }
+  },
+  "comparison_models": {
+    "flat_preseason": {
+      "scoring_event_source": "actual",
+      "team_strength_carry_forward": false,
+      "team_strength_model": "raw_goals"
+    },
+    "raw_goals_carry_forward": {
+      "scoring_event_source": "actual",
+      "team_strength_carry_forward": true,
+      "team_strength_model": "raw_goals"
+    },
+    "team_share_expected_goals": {
+      "scoring_event_source": "team_share_expected",
+      "team_strength_carry_forward": false,
+      "team_strength_model": "raw_goals"
+    }
+  },
+  "gameweek_number": 12,
+  "league_average_goals": 1.5107,
+  "limitations": [
+    "Ratings are relative multipliers of the league average, not absolute goal expectations; venue is applied to the league average.",
+    "Opponent adjustment is a multiplicative Poisson fixed point, not a fitted model. Its constants are declared, not estimated.",
+    "The preseason prior fell back to actual goals because the previous season's expected-goal rows cover less than 80% of the goals scored. Goals are a noisier measure of how a club played, so the prior is weaker than it would be with complete coverage.",
+    "Squad continuity measures retained share of last season's minutes and output. It cannot tell whether a signing is an improvement, and no transfer fee or reputation is read."
+  ],
+  "season_code": "2023-24",
+  "settings": {
+    "assist_per_goal_prior": 0.72,
+    "assist_prior_matches": 20.0,
+    "away_factor": 0.92,
+    "base_uncertainty": 0.3,
+    "current_half_life_gameweeks": 8.0,
+    "home_factor": 1.08,
+    "maximum_multiplier": 1.55,
+    "minimum_multiplier": 0.6,
+    "prior_half_life_gameweeks": 8.0,
+    "prior_matches_intact_squad": 12.0,
+    "prior_matches_rebuilt_squad": 4.0,
+    "prior_regression_matches": 8.0,
+    "promoted_attack": 0.85,
+    "promoted_defence": 1.18,
+    "promoted_prior_matches": 5.0,
+    "rebuild_prior_regression": 0.5,
+    "rebuild_uncertainty": 0.15,
+    "uncertainty_half_life_matches": 10.0
+  },
+  "teams": [
+    {
+      "adjustments": [],
+      "attack": 1.505142,
+      "attack_rank": 1,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.212323,
+          "attack_rank": 5,
+          "defence": 0.807899
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.325026,
+          "attack_rank": 4,
+          "defence": 0.728579
+        },
+        "team_share_expected_goals": {
+          "attack": 1.253303,
+          "attack_rank": 1,
+          "defence": 0.906522
+        }
+      },
+      "current_attack": 1.637301,
+      "current_defence": 0.74757,
+      "current_weight": 6.7889,
+      "defence": 0.81147,
+      "defence_rank": 4,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.324,
+      "expected_goals_against_home": 1.1278,
+      "expected_goals_for_away": 2.0919,
+      "expected_goals_for_home": 2.4557,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Liverpool",
+      "prior_attack": 1.303865,
+      "prior_defence": 0.908789,
+      "prior_share": 0.3964,
+      "prior_weight": 4.4576,
+      "rationale": [],
+      "schedule_strength": 0.8598,
+      "source_team_id": "11",
+      "squad_continuity": {
+        "continuity_score": 0.9452,
+        "departed_players": 10,
+        "retained_defensive_minutes_share": 1.0,
+        "retained_expected_assists_share": 0.9684618448855172,
+        "retained_expected_goals_share": 0.9301678527626842,
+        "retained_minutes_share": 0.9184872602959243,
+        "retained_players": 26,
+        "source_team_id": "11",
+        "unmatched_share": 0.08151273970407569
+      },
+      "team_id": "51",
+      "uncertainty": 0.1482
+    },
+    {
+      "adjustments": [],
+      "attack": 1.399012,
+      "attack_rank": 2,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.298985,
+          "attack_rank": 2,
+          "defence": 0.836786
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.363683,
+          "attack_rank": 3,
+          "defence": 0.661455
+        },
+        "team_share_expected_goals": {
+          "attack": 1.175382,
+          "attack_rank": 2,
+          "defence": 0.880384
+        }
+      },
+      "current_attack": 1.539237,
+      "current_defence": 0.697256,
+      "current_weight": 6.7889,
+      "defence": 0.694002,
+      "defence_rank": 3,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.1323,
+      "expected_goals_against_home": 0.9646,
+      "expected_goals_for_away": 1.9444,
+      "expected_goals_for_home": 2.2826,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Newcastle",
+      "prior_attack": 1.188784,
+      "prior_defence": 0.689124,
+      "prior_share": 0.4001,
+      "prior_weight": 4.5283,
+      "rationale": [],
+      "schedule_strength": 1.0862,
+      "source_team_id": "15",
+      "squad_continuity": {
+        "continuity_score": 0.9681,
+        "departed_players": 5,
+        "retained_defensive_minutes_share": 1.0,
+        "retained_expected_assists_share": 0.965549411505996,
+        "retained_expected_goals_share": 0.9514357061355261,
+        "retained_minutes_share": 0.963554733923148,
+        "retained_players": 30,
+        "source_team_id": "15",
+        "unmatched_share": 0.036445266076851945
+      },
+      "team_id": "55",
+      "uncertainty": 0.1447
+    },
+    {
+      "adjustments": [],
+      "attack": 1.39852,
+      "attack_rank": 3,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.327872,
+          "attack_rank": 1,
+          "defence": 0.750124
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.5,
+          "attack_rank": 1,
+          "defence": 0.6
+        },
+        "team_share_expected_goals": {
+          "attack": 1.14,
+          "attack_rank": 3,
+          "defence": 0.825603
+        }
+      },
+      "current_attack": 1.291498,
+      "current_defence": 0.595195,
+      "current_weight": 6.7889,
+      "defence": 0.639423,
+      "defence_rank": 2,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.0433,
+      "expected_goals_against_home": 0.8887,
+      "expected_goals_for_away": 1.9437,
+      "expected_goals_for_home": 2.2818,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Man City",
+      "prior_attack": 1.562847,
+      "prior_defence": 0.707332,
+      "prior_share": 0.3944,
+      "prior_weight": 4.4215,
+      "rationale": [],
+      "schedule_strength": 0.9516,
+      "source_team_id": "13",
+      "squad_continuity": {
+        "continuity_score": 0.9335,
+        "departed_players": 8,
+        "retained_defensive_minutes_share": 1.0,
+        "retained_expected_assists_share": 0.9222884095566526,
+        "retained_expected_goals_share": 0.8810053679480931,
+        "retained_minutes_share": 0.9372229639519359,
+        "retained_players": 26,
+        "source_team_id": "13",
+        "unmatched_share": 0.06277703604806406
+      },
+      "team_id": "53",
+      "uncertainty": 0.1499
+    },
+    {
+      "adjustments": [],
+      "attack": 1.302899,
+      "attack_rank": 4,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.183435,
+          "attack_rank": 6,
+          "defence": 0.779011
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.385293,
+          "attack_rank": 2,
+          "defence": 0.67226
+        },
+        "team_share_expected_goals": {
+          "attack": 1.077363,
+          "attack_rank": 5,
+          "defence": 0.792841
+        }
+      },
+      "current_attack": 1.169744,
+      "current_defence": 0.468766,
+      "current_weight": 6.7889,
+      "defence": 0.623667,
+      "defence_rank": 1,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.0176,
+      "expected_goals_against_home": 0.8668,
+      "expected_goals_for_away": 1.8108,
+      "expected_goals_for_home": 2.1258,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Arsenal",
+      "prior_attack": 1.500665,
+      "prior_defence": 0.853733,
+      "prior_share": 0.4024,
+      "prior_weight": 4.5709,
+      "rationale": [],
+      "schedule_strength": 0.9978,
+      "source_team_id": "1",
+      "squad_continuity": {
+        "continuity_score": 0.9819,
+        "departed_players": 8,
+        "retained_defensive_minutes_share": 1.0,
+        "retained_expected_assists_share": 0.9788674050228555,
+        "retained_expected_goals_share": 0.9995671726418482,
+        "retained_minutes_share": 0.9630314232902033,
+        "retained_players": 29,
+        "source_team_id": "1",
+        "unmatched_share": 0.0369685767097967
+      },
+      "team_id": "41",
+      "uncertainty": 0.1427
+    },
+    {
+      "adjustments": [],
+      "attack": 1.191421,
+      "attack_rank": 5,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.212323,
+          "attack_rank": 4,
+          "defence": 1.096773
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.304452,
+          "attack_rank": 5,
+          "defence": 1.058601
+        },
+        "team_share_expected_goals": {
+          "attack": 1.049694,
+          "attack_rank": 8,
+          "defence": 0.993531
+        }
+      },
+      "current_attack": 1.16403,
+      "current_defence": 0.912671,
+      "current_weight": 6.7889,
+      "defence": 0.943593,
+      "defence_rank": 8,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.5395,
+      "expected_goals_against_home": 1.3115,
+      "expected_goals_for_away": 1.6559,
+      "expected_goals_for_home": 1.9439,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Brighton",
+      "prior_attack": 1.239528,
+      "prior_defence": 0.997903,
+      "prior_share": 0.3628,
+      "prior_weight": 3.8654,
+      "rationale": [],
+      "schedule_strength": 1.0432,
+      "source_team_id": "5",
+      "squad_continuity": {
+        "continuity_score": 0.7532,
+        "departed_players": 13,
+        "retained_defensive_minutes_share": 0.7874733372115571,
+        "retained_expected_assists_share": 0.7546237237105139,
+        "retained_expected_goals_share": 0.7289547896659098,
+        "retained_minutes_share": 0.7506789648987958,
+        "retained_players": 27,
+        "source_team_id": "5",
+        "unmatched_share": 0.24932103510120418
+      },
+      "team_id": "45",
+      "uncertainty": 0.177
+    },
+    {
+      "adjustments": [],
+      "attack": 1.159896,
+      "attack_rank": 6,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.270097,
+          "attack_rank": 3,
+          "defence": 0.981223
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.21821,
+          "attack_rank": 7,
+          "defence": 0.895046
+        },
+        "team_share_expected_goals": {
+          "attack": 1.117308,
+          "attack_rank": 4,
+          "defence": 0.930225
+        }
+      },
+      "current_attack": 1.292798,
+      "current_defence": 0.825333,
+      "current_weight": 6.7889,
+      "defence": 0.846847,
+      "defence_rank": 6,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.3817,
+      "expected_goals_against_home": 1.177,
+      "expected_goals_for_away": 1.6121,
+      "expected_goals_for_home": 1.8925,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Aston Villa",
+      "prior_attack": 0.949462,
+      "prior_defence": 0.880912,
+      "prior_share": 0.3871,
+      "prior_weight": 4.2876,
+      "rationale": [],
+      "schedule_strength": 0.8813,
+      "source_team_id": "2",
+      "squad_continuity": {
+        "continuity_score": 0.8901,
+        "departed_players": 11,
+        "retained_defensive_minutes_share": 0.877371668024677,
+        "retained_expected_assists_share": 0.9408137631439943,
+        "retained_expected_goals_share": 0.8514206308518388,
+        "retained_minutes_share": 0.901604335175249,
+        "retained_players": 31,
+        "source_team_id": "2",
+        "unmatched_share": 0.09839566482475104
+      },
+      "team_id": "42",
+      "uncertainty": 0.1564
+    },
+    {
+      "adjustments": [],
+      "attack": 1.103337,
+      "attack_rank": 7,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.183435,
+          "attack_rank": 7,
+          "defence": 0.894561
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.261849,
+          "attack_rank": 6,
+          "defence": 0.924969
+        },
+        "team_share_expected_goals": {
+          "attack": 1.029711,
+          "attack_rank": 9,
+          "defence": 0.995044
+        }
+      },
+      "current_attack": 1.013614,
+      "current_defence": 1.074817,
+      "current_weight": 6.7889,
+      "defence": 1.102467,
+      "defence_rank": 15,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.7988,
+      "expected_goals_against_home": 1.5323,
+      "expected_goals_for_away": 1.5335,
+      "expected_goals_for_home": 1.8002,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Spurs",
+      "prior_attack": 1.242744,
+      "prior_defence": 1.145428,
+      "prior_share": 0.3916,
+      "prior_weight": 4.3693,
+      "rationale": [],
+      "schedule_strength": 0.9503,
+      "source_team_id": "18",
+      "squad_continuity": {
+        "continuity_score": 0.9166,
+        "departed_players": 12,
+        "retained_defensive_minutes_share": 0.86810645938899,
+        "retained_expected_assists_share": 0.9404983829028845,
+        "retained_expected_goals_share": 0.9358770934191933,
+        "retained_minutes_share": 0.9197908050270833,
+        "retained_players": 27,
+        "source_team_id": "18",
+        "unmatched_share": 0.08020919497291668
+      },
+      "team_id": "58",
+      "uncertainty": 0.1525
+    },
+    {
+      "adjustments": [],
+      "attack": 1.09128,
+      "attack_rank": 8,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.067885,
+          "attack_rank": 8,
+          "defence": 0.923448
+        },
+        "raw_goals_carry_forward": {
+          "attack": 1.064004,
+          "attack_rank": 8,
+          "defence": 0.837271
+        },
+        "team_share_expected_goals": {
+          "attack": 1.060551,
+          "attack_rank": 6,
+          "defence": 0.981977
+        }
+      },
+      "current_attack": 1.117488,
+      "current_defence": 1.023235,
+      "current_weight": 6.7889,
+      "defence": 0.965516,
+      "defence_rank": 9,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.5753,
+      "expected_goals_against_home": 1.3419,
+      "expected_goals_for_away": 1.5167,
+      "expected_goals_for_home": 1.7805,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Brentford",
+      "prior_attack": 1.052366,
+      "prior_defence": 0.879814,
+      "prior_share": 0.4024,
+      "prior_weight": 4.5722,
+      "rationale": [],
+      "schedule_strength": 0.8739,
+      "source_team_id": "4",
+      "squad_continuity": {
+        "continuity_score": 0.9824,
+        "departed_players": 6,
+        "retained_defensive_minutes_share": 0.9605916707603297,
+        "retained_expected_assists_share": 0.9999985413909491,
+        "retained_expected_goals_share": 0.9917793579678574,
+        "retained_minutes_share": 0.9807358787587716,
+        "retained_players": 31,
+        "source_team_id": "4",
+        "unmatched_share": 0.01926412124122845
+      },
+      "team_id": "44",
+      "uncertainty": 0.1426
+    },
+    {
+      "adjustments": [],
+      "attack": 1.022201,
+      "attack_rank": 9,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.010111,
+          "attack_rank": 10,
+          "defence": 0.865673
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.869069,
+          "attack_rank": 10,
+          "defence": 0.786354
+        },
+        "team_share_expected_goals": {
+          "attack": 1.053585,
+          "attack_rank": 7,
+          "defence": 0.91668
+        }
+      },
+      "current_attack": 1.135425,
+      "current_defence": 0.812714,
+      "current_weight": 6.7889,
+      "defence": 0.843214,
+      "defence_rank": 5,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.3758,
+      "expected_goals_against_home": 1.1719,
+      "expected_goals_for_away": 1.4207,
+      "expected_goals_for_home": 1.6678,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Chelsea",
+      "prior_attack": 0.798253,
+      "prior_defence": 0.903541,
+      "prior_share": 0.3358,
+      "prior_weight": 3.4323,
+      "rationale": [],
+      "schedule_strength": 0.9443,
+      "source_team_id": "7",
+      "squad_continuity": {
+        "continuity_score": 0.6128,
+        "departed_players": 19,
+        "retained_defensive_minutes_share": 0.7695210449927431,
+        "retained_expected_assists_share": 0.6514423320754292,
+        "retained_expected_goals_share": 0.5003156078607399,
+        "retained_minutes_share": 0.5902352396149688,
+        "retained_players": 27,
+        "source_team_id": "7",
+        "unmatched_share": 0.4097647603850312
+      },
+      "team_id": "47",
+      "uncertainty": 0.198
+    },
+    {
+      "adjustments": [],
+      "attack": 0.98234,
+      "attack_rank": 10,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 1.038998,
+          "attack_rank": 9,
+          "defence": 1.096773
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.925389,
+          "attack_rank": 9,
+          "defence": 1.072317
+        },
+        "team_share_expected_goals": {
+          "attack": 1.006834,
+          "attack_rank": 11,
+          "defence": 1.074801
+        }
+      },
+      "current_attack": 1.074235,
+      "current_defence": 1.051714,
+      "current_weight": 6.7889,
+      "defence": 1.033598,
+      "defence_rank": 11,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.6864,
+      "expected_goals_against_home": 1.4366,
+      "expected_goals_for_away": 1.3653,
+      "expected_goals_for_home": 1.6028,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "West Ham",
+      "prior_attack": 0.830748,
+      "prior_defence": 1.003714,
+      "prior_share": 0.3774,
+      "prior_weight": 4.1154,
+      "rationale": [],
+      "schedule_strength": 1.0704,
+      "source_team_id": "19",
+      "squad_continuity": {
+        "continuity_score": 0.8343,
+        "departed_players": 9,
+        "retained_defensive_minutes_share": 0.7911772119989917,
+        "retained_expected_assists_share": 0.8752490914465563,
+        "retained_expected_goals_share": 0.8941669589259388,
+        "retained_minutes_share": 0.8029745516300851,
+        "retained_players": 23,
+        "source_team_id": "19",
+        "unmatched_share": 0.19702544836991487
+      },
+      "team_id": "59",
+      "uncertainty": 0.1648
+    },
+    {
+      "adjustments": [],
+      "attack": 0.946192,
+      "attack_rank": 11,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.865673,
+          "attack_rank": 12,
+          "defence": 0.981223
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.861792,
+          "attack_rank": 11,
+          "defence": 0.874472
+        },
+        "team_share_expected_goals": {
+          "attack": 0.955037,
+          "attack_rank": 12,
+          "defence": 1.053439
+        }
+      },
+      "current_attack": 0.884123,
+      "current_defence": 1.306832,
+      "current_weight": 6.7889,
+      "defence": 1.130349,
+      "defence_rank": 16,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.8442,
+      "expected_goals_against_home": 1.571,
+      "expected_goals_for_away": 1.3151,
+      "expected_goals_for_home": 1.5438,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Man Utd",
+      "prior_attack": 1.04673,
+      "prior_defence": 0.844481,
+      "prior_share": 0.3817,
+      "prior_weight": 4.1912,
+      "rationale": [],
+      "schedule_strength": 1.0361,
+      "source_team_id": "14",
+      "squad_continuity": {
+        "continuity_score": 0.8588,
+        "departed_players": 11,
+        "retained_defensive_minutes_share": 0.79991809512666,
+        "retained_expected_assists_share": 0.8993271184332801,
+        "retained_expected_goals_share": 0.9305232274586832,
+        "retained_minutes_share": 0.8282754290498117,
+        "retained_players": 28,
+        "source_team_id": "14",
+        "unmatched_share": 0.17172457095018834
+      },
+      "team_id": "54",
+      "uncertainty": 0.1611
+    },
+    {
+      "adjustments": [],
+      "attack": 0.872906,
+      "attack_rank": 12,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.836786,
+          "attack_rank": 14,
+          "defence": 0.952336
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.668313,
+          "attack_rank": 18,
+          "defence": 0.941596
+        },
+        "team_share_expected_goals": {
+          "attack": 1.011829,
+          "attack_rank": 10,
+          "defence": 0.92975
+        }
+      },
+      "current_attack": 0.978411,
+      "current_defence": 0.783714,
+      "current_weight": 6.7889,
+      "defence": 0.878431,
+      "defence_rank": 7,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.4332,
+      "expected_goals_against_home": 1.2209,
+      "expected_goals_for_away": 1.2132,
+      "expected_goals_for_home": 1.4242,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Everton",
+      "prior_attack": 0.708036,
+      "prior_defence": 1.026441,
+      "prior_share": 0.3902,
+      "prior_weight": 4.3444,
+      "rationale": [],
+      "schedule_strength": 0.9592,
+      "source_team_id": "9",
+      "squad_continuity": {
+        "continuity_score": 0.9085,
+        "departed_players": 16,
+        "retained_defensive_minutes_share": 0.9538130341183378,
+        "retained_expected_assists_share": 0.931110735465086,
+        "retained_expected_goals_share": 0.8508587142634774,
+        "retained_minutes_share": 0.9134185115402732,
+        "retained_players": 23,
+        "source_team_id": "9",
+        "unmatched_share": 0.0865814884597268
+      },
+      "team_id": "49",
+      "uncertainty": 0.1537
+    },
+    {
+      "adjustments": [],
+      "attack": 0.82496,
+      "attack_rank": 13,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.807899,
+          "attack_rank": 16,
+          "defence": 1.12566
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.704594,
+          "attack_rank": 15,
+          "defence": 1.193535
+        },
+        "team_share_expected_goals": {
+          "attack": 0.910192,
+          "attack_rank": 14,
+          "defence": 1.203181
+        }
+      },
+      "current_attack": 0.81808,
+      "current_defence": 1.472957,
+      "current_weight": 7.0169,
+      "defence": 1.409819,
+      "defence_rank": 19,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 2.3002,
+      "expected_goals_against_home": 1.9594,
+      "expected_goals_for_away": 1.1466,
+      "expected_goals_for_home": 1.346,
+      "is_promoted": true,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Luton",
+      "prior_attack": 0.85,
+      "prior_defence": 1.18,
+      "prior_share": 0.2155,
+      "prior_weight": 1.9278,
+      "rationale": [
+        "Promoted club: attack and defence use declared priors, not measurements, and carry reduced weight and wider uncertainty."
+      ],
+      "schedule_strength": 0.8712,
+      "source_team_id": "12",
+      "squad_continuity": null,
+      "team_id": "52",
+      "uncertainty": 0.29
+    },
+    {
+      "adjustments": [],
+      "attack": 0.80959,
+      "attack_rank": 14,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.923448,
+          "attack_rank": 11,
+          "defence": 1.067885
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.734401,
+          "attack_rank": 13,
+          "defence": 1.064004
+        },
+        "team_share_expected_goals": {
+          "attack": 0.947564,
+          "attack_rank": 13,
+          "defence": 1.030962
+        }
+      },
+      "current_attack": 0.852743,
+      "current_defence": 1.047035,
+      "current_weight": 6.7889,
+      "defence": 1.042021,
+      "defence_rank": 12,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.7001,
+      "expected_goals_against_home": 1.4483,
+      "expected_goals_for_away": 1.1252,
+      "expected_goals_for_home": 1.3209,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Wolves",
+      "prior_attack": 0.721864,
+      "prior_defence": 1.03183,
+      "prior_share": 0.3297,
+      "prior_weight": 3.3394,
+      "rationale": [],
+      "schedule_strength": 1.0762,
+      "source_team_id": "20",
+      "squad_continuity": {
+        "continuity_score": 0.5827,
+        "departed_players": 14,
+        "retained_defensive_minutes_share": 0.7518299246501615,
+        "retained_expected_assists_share": 0.4094926083658508,
+        "retained_expected_goals_share": 0.5286570657133877,
+        "retained_minutes_share": 0.5968164749781546,
+        "retained_players": 27,
+        "source_team_id": "20",
+        "unmatched_share": 0.4031835250218454
+      },
+      "team_id": "60",
+      "uncertainty": 0.2026
+    },
+    {
+      "adjustments": [],
+      "attack": 0.807537,
+      "attack_rank": 15,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.779011,
+          "attack_rank": 18,
+          "defence": 1.010111
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.754555,
+          "attack_rank": 12,
+          "defence": 0.971939
+        },
+        "team_share_expected_goals": {
+          "attack": 0.887393,
+          "attack_rank": 17,
+          "defence": 1.027775
+        }
+      },
+      "current_attack": 0.671529,
+      "current_defence": 1.094447,
+      "current_weight": 6.7889,
+      "defence": 1.050521,
+      "defence_rank": 13,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.714,
+      "expected_goals_against_home": 1.4601,
+      "expected_goals_for_away": 1.1224,
+      "expected_goals_for_home": 1.3176,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Fulham",
+      "prior_attack": 1.012687,
+      "prior_defence": 0.984264,
+      "prior_share": 0.3987,
+      "prior_weight": 4.5008,
+      "rationale": [],
+      "schedule_strength": 1.0786,
+      "source_team_id": "10",
+      "squad_continuity": {
+        "continuity_score": 0.9592,
+        "departed_players": 13,
+        "retained_defensive_minutes_share": 0.9893402076221,
+        "retained_expected_assists_share": 0.9409752578024041,
+        "retained_expected_goals_share": 0.9499114772328223,
+        "retained_minutes_share": 0.9568017094510699,
+        "retained_players": 26,
+        "source_team_id": "10",
+        "unmatched_share": 0.043198290548930096
+      },
+      "team_id": "50",
+      "uncertainty": 0.1461
+    },
+    {
+      "adjustments": [],
+      "attack": 0.788544,
+      "attack_rank": 16,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.779011,
+          "attack_rank": 17,
+          "defence": 1.298985
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.631112,
+          "attack_rank": 20,
+          "defence": 1.384257
+        },
+        "team_share_expected_goals": {
+          "attack": 0.885482,
+          "attack_rank": 18,
+          "defence": 1.183062
+        }
+      },
+      "current_attack": 0.802755,
+      "current_defence": 1.382306,
+      "current_weight": 6.7889,
+      "defence": 1.321876,
+      "defence_rank": 18,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 2.1567,
+      "expected_goals_against_home": 1.8372,
+      "expected_goals_for_away": 1.096,
+      "expected_goals_for_home": 1.2866,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Bournemouth",
+      "prior_attack": 0.765529,
+      "prior_defence": 1.224004,
+      "prior_share": 0.3817,
+      "prior_weight": 4.1917,
+      "rationale": [],
+      "schedule_strength": 1.0824,
+      "source_team_id": "3",
+      "squad_continuity": {
+        "continuity_score": 0.859,
+        "departed_players": 11,
+        "retained_defensive_minutes_share": 0.8631709587340987,
+        "retained_expected_assists_share": 0.8003796083153515,
+        "retained_expected_goals_share": 0.9080611634921066,
+        "retained_minutes_share": 0.8482472070882174,
+        "retained_players": 29,
+        "source_team_id": "3",
+        "unmatched_share": 0.15175279291178256
+      },
+      "team_id": "43",
+      "uncertainty": 0.1611
+    },
+    {
+      "adjustments": [],
+      "attack": 0.75651,
+      "attack_rank": 17,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.807899,
+          "attack_rank": 15,
+          "defence": 0.894561
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.680573,
+          "attack_rank": 16,
+          "defence": 0.828957
+        },
+        "team_share_expected_goals": {
+          "attack": 0.899687,
+          "attack_rank": 15,
+          "defence": 1.004688
+        }
+      },
+      "current_attack": 0.735356,
+      "current_defence": 1.059987,
+      "current_weight": 6.7889,
+      "defence": 1.002919,
+      "defence_rank": 10,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.6363,
+      "expected_goals_against_home": 1.3939,
+      "expected_goals_for_away": 1.0514,
+      "expected_goals_for_home": 1.2343,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Crystal Palace",
+      "prior_attack": 0.789089,
+      "prior_defence": 0.915026,
+      "prior_share": 0.3937,
+      "prior_weight": 4.408,
+      "rationale": [],
+      "schedule_strength": 1.0093,
+      "source_team_id": "8",
+      "squad_continuity": {
+        "continuity_score": 0.9291,
+        "departed_players": 10,
+        "retained_defensive_minutes_share": 1.0,
+        "retained_expected_assists_share": 0.9017374510209056,
+        "retained_expected_goals_share": 0.8986542423133941,
+        "retained_minutes_share": 0.9229495739021875,
+        "retained_players": 28,
+        "source_team_id": "8",
+        "unmatched_share": 0.07705042609781254
+      },
+      "team_id": "48",
+      "uncertainty": 0.1506
+    },
+    {
+      "adjustments": [],
+      "attack": 0.737185,
+      "attack_rank": 18,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.865673,
+          "attack_rank": 13,
+          "defence": 0.952336
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.724632,
+          "attack_rank": 14,
+          "defence": 1.017034
+        },
+        "team_share_expected_goals": {
+          "attack": 0.888317,
+          "attack_rank": 16,
+          "defence": 1.026404
+        }
+      },
+      "current_attack": 0.709001,
+      "current_defence": 1.003182,
+      "current_weight": 6.7889,
+      "defence": 1.068187,
+      "defence_rank": 14,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.7428,
+      "expected_goals_against_home": 1.4846,
+      "expected_goals_for_away": 1.0246,
+      "expected_goals_for_home": 1.2028,
+      "is_promoted": false,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Nott'm Forest",
+      "prior_attack": 0.784676,
+      "prior_defence": 1.177724,
+      "prior_share": 0.3724,
+      "prior_weight": 4.0289,
+      "rationale": [],
+      "schedule_strength": 1.0966,
+      "source_team_id": "16",
+      "squad_continuity": {
+        "continuity_score": 0.8062,
+        "departed_players": 15,
+        "retained_defensive_minutes_share": 0.6973921878527884,
+        "retained_expected_assists_share": 0.837993943810295,
+        "retained_expected_goals_share": 0.9083652274602029,
+        "retained_minutes_share": 0.7848420413122722,
+        "retained_players": 30,
+        "source_team_id": "16",
+        "unmatched_share": 0.2151579586877278
+      },
+      "team_id": "56",
+      "uncertainty": 0.169
+    },
+    {
+      "adjustments": [],
+      "attack": 0.65501,
+      "attack_rank": 19,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.750124,
+          "attack_rank": 20,
+          "defence": 1.298985
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.646819,
+          "attack_rank": 19,
+          "defence": 1.366859
+        },
+        "team_share_expected_goals": {
+          "attack": 0.854174,
+          "attack_rank": 19,
+          "defence": 1.04771
+        }
+      },
+      "current_attack": 0.60144,
+      "current_defence": 1.118721,
+      "current_weight": 7.0169,
+      "defence": 1.131928,
+      "defence_rank": 17,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 1.8468,
+      "expected_goals_against_home": 1.5732,
+      "expected_goals_for_away": 0.9104,
+      "expected_goals_for_home": 1.0687,
+      "is_promoted": true,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Burnley",
+      "prior_attack": 0.85,
+      "prior_defence": 1.18,
+      "prior_share": 0.2155,
+      "prior_weight": 1.9278,
+      "rationale": [
+        "Promoted club: attack and defence use declared priors, not measurements, and carry reduced weight and wider uncertainty."
+      ],
+      "schedule_strength": 1.0468,
+      "source_team_id": "6",
+      "squad_continuity": null,
+      "team_id": "46",
+      "uncertainty": 0.29
+    },
+    {
+      "adjustments": [],
+      "attack": 0.6,
+      "attack_rank": 20,
+      "comparison": {
+        "flat_preseason": {
+          "attack": 0.779011,
+          "attack_rank": 19,
+          "defence": 1.385647
+        },
+        "raw_goals_carry_forward": {
+          "attack": 0.675707,
+          "attack_rank": 17,
+          "defence": 1.453521
+        },
+        "team_share_expected_goals": {
+          "attack": 0.799634,
+          "attack_rank": 20,
+          "defence": 1.192186
+        }
+      },
+      "current_attack": 0.511192,
+      "current_defence": 1.521548,
+      "current_weight": 6.7889,
+      "defence": 1.446012,
+      "defence_rank": 20,
+      "evidence_source": "expected_goals",
+      "expected_goals_against_away": 2.3593,
+      "expected_goals_against_home": 2.0097,
+      "expected_goals_for_away": 0.8339,
+      "expected_goals_for_home": 0.9789,
+      "is_promoted": true,
+      "league_average_goals": 1.5107,
+      "matches_observed": 11.0,
+      "name": "Sheffield Utd",
+      "prior_attack": 0.85,
+      "prior_defence": 1.18,
+      "prior_share": 0.2212,
+      "prior_weight": 1.9278,
+      "rationale": [
+        "Promoted club: attack and defence use declared priors, not measurements, and carry reduced weight and wider uncertainty."
+      ],
+      "schedule_strength": 1.0851,
+      "source_team_id": "17",
+      "squad_continuity": null,
+      "team_id": "57",
+      "uncertainty": 0.29
+    }
+  ]
+}

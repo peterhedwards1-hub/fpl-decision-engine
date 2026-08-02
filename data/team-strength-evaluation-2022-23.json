@@ -1,0 +1,651 @@
+{
+  "generated_at": "2026-08-01T17:56:55.041432+00:00",
+  "limitations": [
+    "Team-goal accuracy is measured against realised goals, which are a noisy draw from the expectation being scored. A better model shows a smaller RMSE only in aggregate; single fixtures prove nothing.",
+    "Clean-sheet calibration assumes goals conceded are Poisson and independent of goals scored, which is the same assumption the projection makes. It tests the rating, not that assumption.",
+    "Player-points accuracy, squad regret and captain regret are not computed here. Run the projection backtest with the candidate configuration for those; keeping them apart is what lets a gain in team totals be told apart from a change in allocation.",
+    "Historical seasons are design evidence only. Forward 2026/27 captures are the qualification."
+  ],
+  "models": {
+    "flat_preseason": {
+      "breakdowns": {
+        "horizon": {
+          "1": {
+            "bias": -0.0771,
+            "mae": 0.9648,
+            "mean_actual": 1.4263,
+            "mean_expected": 1.3493,
+            "observations": 760,
+            "rmse": 1.254
+          }
+        },
+        "phase": {
+          "early": {
+            "bias": -0.0091,
+            "mae": 1.0146,
+            "mean_actual": 1.3962,
+            "mean_expected": 1.3871,
+            "observations": 212,
+            "rmse": 1.33
+          },
+          "late": {
+            "bias": -0.2389,
+            "mae": 0.9642,
+            "mean_actual": 1.5612,
+            "mean_expected": 1.3222,
+            "observations": 278,
+            "rmse": 1.3067
+          },
+          "middle": {
+            "bias": 0.0363,
+            "mae": 0.9263,
+            "mean_actual": 1.3111,
+            "mean_expected": 1.3474,
+            "observations": 270,
+            "rmse": 1.1312
+          }
+        },
+        "promotion": {
+          "established": {
+            "bias": -0.0979,
+            "mae": 0.99,
+            "mean_actual": 1.4768,
+            "mean_expected": 1.3789,
+            "observations": 646,
+            "rmse": 1.2866
+          },
+          "promoted": {
+            "bias": 0.0411,
+            "mae": 0.8219,
+            "mean_actual": 1.1404,
+            "mean_expected": 1.1814,
+            "observations": 114,
+            "rmse": 1.0506
+          }
+        },
+        "schedule": {
+          "easy": {
+            "bias": -0.0996,
+            "mae": 1.0094,
+            "mean_actual": 1.5263,
+            "mean_expected": 1.4267,
+            "observations": 380,
+            "rmse": 1.3146
+          },
+          "hard": {
+            "bias": -0.0545,
+            "mae": 0.9202,
+            "mean_actual": 1.3263,
+            "mean_expected": 1.2718,
+            "observations": 380,
+            "rmse": 1.1904
+          }
+        },
+        "turnover": {
+          "small": {
+            "bias": -0.0979,
+            "mae": 0.99,
+            "mean_actual": 1.4768,
+            "mean_expected": 1.3789,
+            "observations": 646,
+            "rmse": 1.2866
+          },
+          "unknown": {
+            "bias": 0.0411,
+            "mae": 0.8219,
+            "mean_actual": 1.1404,
+            "mean_expected": 1.1814,
+            "observations": 114,
+            "rmse": 1.0506
+          }
+        },
+        "venue": {
+          "away": {
+            "bias": -0.0145,
+            "mae": 0.9176,
+            "mean_actual": 1.2184,
+            "mean_expected": 1.2039,
+            "observations": 380,
+            "rmse": 1.1515
+          },
+          "home": {
+            "bias": -0.1396,
+            "mae": 1.012,
+            "mean_actual": 1.6342,
+            "mean_expected": 1.4946,
+            "observations": 380,
+            "rmse": 1.3488
+          }
+        }
+      },
+      "clean_sheet_calibration": {
+        "brier_score": 0.1924,
+        "buckets": [
+          {
+            "band": "0.0-0.2",
+            "observations": 166,
+            "observed": 0.1566,
+            "predicted": 0.154
+          },
+          {
+            "band": "0.2-0.4",
+            "observations": 504,
+            "observed": 0.2778,
+            "predicted": 0.2876
+          },
+          {
+            "band": "0.4-0.6",
+            "observations": 90,
+            "observed": 0.4556,
+            "predicted": 0.4477
+          }
+        ],
+        "observations": 760
+      },
+      "overall": {
+        "bias": -0.0771,
+        "mae": 0.9648,
+        "mean_actual": 1.4263,
+        "mean_expected": 1.3493,
+        "observations": 760,
+        "rmse": 1.254
+      }
+    },
+    "opponent_adjusted": {
+      "breakdowns": {
+        "horizon": {
+          "1": {
+            "bias": -0.0258,
+            "mae": 0.9715,
+            "mean_actual": 1.4263,
+            "mean_expected": 1.4005,
+            "observations": 760,
+            "rmse": 1.262
+          }
+        },
+        "phase": {
+          "early": {
+            "bias": 0.0383,
+            "mae": 1.0031,
+            "mean_actual": 1.3962,
+            "mean_expected": 1.4345,
+            "observations": 212,
+            "rmse": 1.2959
+          },
+          "late": {
+            "bias": -0.1765,
+            "mae": 0.9716,
+            "mean_actual": 1.5612,
+            "mean_expected": 1.3846,
+            "observations": 278,
+            "rmse": 1.3255
+          },
+          "middle": {
+            "bias": 0.079,
+            "mae": 0.9467,
+            "mean_actual": 1.3111,
+            "mean_expected": 1.3902,
+            "observations": 270,
+            "rmse": 1.1643
+          }
+        },
+        "promotion": {
+          "established": {
+            "bias": -0.0239,
+            "mae": 0.9973,
+            "mean_actual": 1.4768,
+            "mean_expected": 1.4529,
+            "observations": 646,
+            "rmse": 1.2971
+          },
+          "promoted": {
+            "bias": -0.0365,
+            "mae": 0.8254,
+            "mean_actual": 1.1404,
+            "mean_expected": 1.1039,
+            "observations": 114,
+            "rmse": 1.0411
+          }
+        },
+        "schedule": {
+          "easy": {
+            "bias": -0.0364,
+            "mae": 1.0055,
+            "mean_actual": 1.5263,
+            "mean_expected": 1.4899,
+            "observations": 380,
+            "rmse": 1.3082
+          },
+          "hard": {
+            "bias": -0.0152,
+            "mae": 0.9376,
+            "mean_actual": 1.3263,
+            "mean_expected": 1.3111,
+            "observations": 380,
+            "rmse": 1.214
+          }
+        },
+        "turnover": {
+          "small": {
+            "bias": -0.0239,
+            "mae": 0.9973,
+            "mean_actual": 1.4768,
+            "mean_expected": 1.4529,
+            "observations": 646,
+            "rmse": 1.2971
+          },
+          "unknown": {
+            "bias": -0.0365,
+            "mae": 0.8254,
+            "mean_actual": 1.1404,
+            "mean_expected": 1.1039,
+            "observations": 114,
+            "rmse": 1.0411
+          }
+        },
+        "venue": {
+          "away": {
+            "bias": 0.0753,
+            "mae": 0.9355,
+            "mean_actual": 1.2184,
+            "mean_expected": 1.2937,
+            "observations": 380,
+            "rmse": 1.1728
+          },
+          "home": {
+            "bias": -0.1269,
+            "mae": 1.0076,
+            "mean_actual": 1.6342,
+            "mean_expected": 1.5073,
+            "observations": 380,
+            "rmse": 1.3454
+          }
+        }
+      },
+      "clean_sheet_calibration": {
+        "brier_score": 0.1943,
+        "buckets": [
+          {
+            "band": "0.0-0.2",
+            "observations": 224,
+            "observed": 0.1429,
+            "predicted": 0.1323
+          },
+          {
+            "band": "0.2-0.4",
+            "observations": 389,
+            "observed": 0.2905,
+            "predicted": 0.2933
+          },
+          {
+            "band": "0.4-0.6",
+            "observations": 144,
+            "observed": 0.4306,
+            "predicted": 0.4707
+          },
+          {
+            "band": "0.6-0.8",
+            "observations": 3,
+            "observed": 0.0,
+            "predicted": 0.6104
+          }
+        ],
+        "observations": 760
+      },
+      "overall": {
+        "bias": -0.0258,
+        "mae": 0.9715,
+        "mean_actual": 1.4263,
+        "mean_expected": 1.4005,
+        "observations": 760,
+        "rmse": 1.262
+      }
+    },
+    "raw_goals_carry_forward": {
+      "breakdowns": {
+        "horizon": {
+          "1": {
+            "bias": -0.0915,
+            "mae": 0.9515,
+            "mean_actual": 1.4263,
+            "mean_expected": 1.3348,
+            "observations": 760,
+            "rmse": 1.2394
+          }
+        },
+        "phase": {
+          "early": {
+            "bias": -0.067,
+            "mae": 0.9645,
+            "mean_actual": 1.3962,
+            "mean_expected": 1.3293,
+            "observations": 212,
+            "rmse": 1.2645
+          },
+          "late": {
+            "bias": -0.2301,
+            "mae": 0.956,
+            "mean_actual": 1.5612,
+            "mean_expected": 1.331,
+            "observations": 278,
+            "rmse": 1.3026
+          },
+          "middle": {
+            "bias": 0.0319,
+            "mae": 0.9366,
+            "mean_actual": 1.3111,
+            "mean_expected": 1.343,
+            "observations": 270,
+            "rmse": 1.1494
+          }
+        },
+        "promotion": {
+          "established": {
+            "bias": -0.0944,
+            "mae": 0.9772,
+            "mean_actual": 1.4768,
+            "mean_expected": 1.3824,
+            "observations": 646,
+            "rmse": 1.2729
+          },
+          "promoted": {
+            "bias": -0.0754,
+            "mae": 0.8056,
+            "mean_actual": 1.1404,
+            "mean_expected": 1.065,
+            "observations": 114,
+            "rmse": 1.0293
+          }
+        },
+        "schedule": {
+          "easy": {
+            "bias": -0.0864,
+            "mae": 0.9942,
+            "mean_actual": 1.5263,
+            "mean_expected": 1.4399,
+            "observations": 380,
+            "rmse": 1.2863
+          },
+          "hard": {
+            "bias": -0.0966,
+            "mae": 0.9087,
+            "mean_actual": 1.3263,
+            "mean_expected": 1.2297,
+            "observations": 380,
+            "rmse": 1.1906
+          }
+        },
+        "turnover": {
+          "small": {
+            "bias": -0.0944,
+            "mae": 0.9772,
+            "mean_actual": 1.4768,
+            "mean_expected": 1.3824,
+            "observations": 646,
+            "rmse": 1.2729
+          },
+          "unknown": {
+            "bias": -0.0754,
+            "mae": 0.8056,
+            "mean_actual": 1.1404,
+            "mean_expected": 1.065,
+            "observations": 114,
+            "rmse": 1.0293
+          }
+        },
+        "venue": {
+          "away": {
+            "bias": -0.0267,
+            "mae": 0.9111,
+            "mean_actual": 1.2184,
+            "mean_expected": 1.1917,
+            "observations": 380,
+            "rmse": 1.1502
+          },
+          "home": {
+            "bias": -0.1563,
+            "mae": 0.9918,
+            "mean_actual": 1.6342,
+            "mean_expected": 1.4779,
+            "observations": 380,
+            "rmse": 1.3226
+          }
+        }
+      },
+      "clean_sheet_calibration": {
+        "brier_score": 0.1918,
+        "buckets": [
+          {
+            "band": "0.0-0.2",
+            "observations": 196,
+            "observed": 0.1531,
+            "predicted": 0.144
+          },
+          {
+            "band": "0.2-0.4",
+            "observations": 412,
+            "observed": 0.2791,
+            "predicted": 0.2963
+          },
+          {
+            "band": "0.4-0.6",
+            "observations": 151,
+            "observed": 0.404,
+            "predicted": 0.4649
+          },
+          {
+            "band": "0.6-0.8",
+            "observations": 1,
+            "observed": 1.0,
+            "predicted": 0.6068
+          }
+        ],
+        "observations": 760
+      },
+      "overall": {
+        "bias": -0.0915,
+        "mae": 0.9515,
+        "mean_actual": 1.4263,
+        "mean_expected": 1.3348,
+        "observations": 760,
+        "rmse": 1.2394
+      }
+    },
+    "team_share_expected_goals": {
+      "breakdowns": {
+        "horizon": {
+          "1": {
+            "bias": -0.5894,
+            "mae": 1.0508,
+            "mean_actual": 1.4263,
+            "mean_expected": 0.8369,
+            "observations": 760,
+            "rmse": 1.4335
+          }
+        },
+        "phase": {
+          "early": {
+            "bias": -0.5649,
+            "mae": 1.0512,
+            "mean_actual": 1.3962,
+            "mean_expected": 0.8313,
+            "observations": 212,
+            "rmse": 1.4961
+          },
+          "late": {
+            "bias": -0.4419,
+            "mae": 1.0148,
+            "mean_actual": 1.5612,
+            "mean_expected": 1.1193,
+            "observations": 278,
+            "rmse": 1.3906
+          },
+          "middle": {
+            "bias": -0.7605,
+            "mae": 1.0876,
+            "mean_actual": 1.3111,
+            "mean_expected": 0.5506,
+            "observations": 270,
+            "rmse": 1.4267
+          }
+        },
+        "promotion": {
+          "established": {
+            "bias": -0.6265,
+            "mae": 1.0778,
+            "mean_actual": 1.4768,
+            "mean_expected": 0.8503,
+            "observations": 646,
+            "rmse": 1.4761
+          },
+          "promoted": {
+            "bias": -0.379,
+            "mae": 0.8977,
+            "mean_actual": 1.1404,
+            "mean_expected": 0.7613,
+            "observations": 114,
+            "rmse": 1.1627
+          }
+        },
+        "schedule": {
+          "easy": {
+            "bias": -0.6906,
+            "mae": 1.1252,
+            "mean_actual": 1.5263,
+            "mean_expected": 0.8357,
+            "observations": 380,
+            "rmse": 1.5492
+          },
+          "hard": {
+            "bias": -0.4882,
+            "mae": 0.9764,
+            "mean_actual": 1.3263,
+            "mean_expected": 0.8382,
+            "observations": 380,
+            "rmse": 1.3076
+          }
+        },
+        "turnover": {
+          "small": {
+            "bias": -0.6265,
+            "mae": 1.0778,
+            "mean_actual": 1.4768,
+            "mean_expected": 0.8503,
+            "observations": 646,
+            "rmse": 1.4761
+          },
+          "unknown": {
+            "bias": -0.379,
+            "mae": 0.8977,
+            "mean_actual": 1.1404,
+            "mean_expected": 0.7613,
+            "observations": 114,
+            "rmse": 1.1627
+          }
+        },
+        "venue": {
+          "away": {
+            "bias": -0.4734,
+            "mae": 0.9661,
+            "mean_actual": 1.2184,
+            "mean_expected": 0.745,
+            "observations": 380,
+            "rmse": 1.2794
+          },
+          "home": {
+            "bias": -0.7054,
+            "mae": 1.1355,
+            "mean_actual": 1.6342,
+            "mean_expected": 0.9288,
+            "observations": 380,
+            "rmse": 1.5726
+          }
+        }
+      },
+      "clean_sheet_calibration": {
+        "brier_score": 0.242,
+        "buckets": [
+          {
+            "band": "0.0-0.2",
+            "observations": 18,
+            "observed": 0.1111,
+            "predicted": 0.1775
+          },
+          {
+            "band": "0.2-0.4",
+            "observations": 270,
+            "observed": 0.2259,
+            "predicted": 0.3159
+          },
+          {
+            "band": "0.4-0.6",
+            "observations": 343,
+            "observed": 0.2886,
+            "predicted": 0.4979
+          },
+          {
+            "band": "0.6-0.8",
+            "observations": 106,
+            "observed": 0.3774,
+            "predicted": 0.6585
+          },
+          {
+            "band": "0.8-1.0",
+            "observations": 23,
+            "observed": 0.2174,
+            "predicted": 0.8599
+          }
+        ],
+        "observations": 760
+      },
+      "overall": {
+        "bias": -0.5894,
+        "mae": 1.0508,
+        "mean_actual": 1.4263,
+        "mean_expected": 0.8369,
+        "observations": 760,
+        "rmse": 1.4335
+      }
+    }
+  },
+  "origins": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38
+  ],
+  "season_code": "2022-23"
+}

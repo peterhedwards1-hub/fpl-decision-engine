@@ -29,5 +29,6 @@
   "cold_start_prior": "position_price",
   "cold_start_price_elasticity": 1.5,
   "cold_start_minimum_factor": 0.35,
-  "cold_start_maximum_factor": 3.0
+  "cold_start_maximum_factor": 3.0,
+  "team_strength_model": "raw_goals"
 }

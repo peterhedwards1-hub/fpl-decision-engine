@@ -21,5 +21,6 @@
   "team_form_half_life_gameweeks": 8.0,
   "team_assist_per_goal_prior": 0.72,
   "defensive_contribution_model": "threshold_poisson",
-  "include_penalty_events": true
+  "include_penalty_events": true,
+  "team_strength_model": "raw_goals"
 }

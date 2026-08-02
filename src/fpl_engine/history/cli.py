@@ -50,6 +50,11 @@ from ..promotion import (
 )
 from ..prospective import build_prospective_capture_status
 from ..squad_comparison import compare_opening_squads
+from ..team_strength import ContextualAdjustment
+from ..team_strength_report import (
+    build_team_strength_report,
+    evaluate_team_strength_models,
+)
 from ..tuning import tune_projection_model, tune_projection_model_rolling
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
@@ -624,6 +629,31 @@ def main() -> None:
     )
     evidence_parser.add_argument("--rules")
     evidence_parser.add_argument("--output")
+    strength_parser = subparsers.add_parser(
+        "team-strength-report",
+        help="Explain every club's opponent-adjusted rating at one origin",
+    )
+    strength_parser.add_argument("season_code")
+    strength_parser.add_argument("--gameweek", type=int, default=1)
+    strength_parser.add_argument(
+        "--adjustments",
+        help=(
+            "JSON file holding a list of reviewed contextual adjustments. "
+            "Each needs a source_team_id, category and rationale; nothing is "
+            "applied without one."
+        ),
+    )
+    strength_parser.add_argument("--rules")
+    strength_parser.add_argument("--output")
+    strength_evaluation_parser = subparsers.add_parser(
+        "evaluate-team-strength",
+        help="Score team-goal accuracy and clean-sheet calibration by origin",
+    )
+    strength_evaluation_parser.add_argument("season_code")
+    strength_evaluation_parser.add_argument("--origin-start", type=int, default=1)
+    strength_evaluation_parser.add_argument("--origin-end", type=int, default=38)
+    strength_evaluation_parser.add_argument("--rules")
+    strength_evaluation_parser.add_argument("--output")
 
     args = parser.parse_args()
     database_path = Path(args.database)
@@ -737,6 +767,46 @@ def main() -> None:
             if args.output:
                 write_json_report(profile, args.output)
             print(json.dumps(profile, indent=2))
+            return
+
+        if args.command == "team-strength-report":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            adjustments: tuple[ContextualAdjustment, ...] = ()
+            if args.adjustments:
+                adjustments = tuple(
+                    ContextualAdjustment(**entry)
+                    for entry in json.loads(
+                        Path(args.adjustments).read_text(encoding="utf-8")
+                    )
+                )
+            report = build_team_strength_report(
+                database,
+                rules,
+                season_code=args.season_code,
+                gameweek_number=args.gameweek,
+                adjustments=adjustments,
+            )
+            if args.output:
+                write_json_report(report, args.output)
+            print(json.dumps(report, indent=2))
+            return
+
+        if args.command == "evaluate-team-strength":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            evaluation = evaluate_team_strength_models(
+                database,
+                rules,
+                season_code=args.season_code,
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+            )
+            if args.output:
+                write_json_report(evaluation, args.output)
+            print(json.dumps(evaluation, indent=2))
             return
 
         if args.command == "compare-opening-squads":
