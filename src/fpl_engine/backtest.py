@@ -19,6 +19,7 @@ from .projections import (
     ProjectionModelConfig,
     RatesProjectionModel,
 )
+from .team_strength import ContextualAdjustment, TeamStrengthSettings
 
 EvidencePolicy = Literal["performance_only", "pre_deadline_only"]
 
@@ -108,11 +109,17 @@ class ProjectionBacktester:
         *,
         config: ProjectionModelConfig = DEFAULT_MODEL_CONFIG,
         model_version: str = MODEL_VERSION,
+        team_strength_settings: TeamStrengthSettings | None = None,
+        team_strength_adjustments: tuple[ContextualAdjustment, ...] = (),
     ) -> None:
         self.database = database
         self.rules = rules
         self.config = config
         self.model_version = model_version
+        # Carried so a candidate declaration that pins these can be replayed
+        # exactly. A backtest built without them is not the declared model.
+        self.team_strength_settings = team_strength_settings
+        self.team_strength_adjustments = team_strength_adjustments
 
     def run(
         self,
@@ -250,6 +257,8 @@ class ProjectionBacktester:
             self.rules,
             config=self.config,
             model_version=self.model_version,
+            team_strength_settings=self.team_strength_settings,
+            team_strength_adjustments=self.team_strength_adjustments,
         )
         generated_prediction_count = 0
         prediction_count = 0

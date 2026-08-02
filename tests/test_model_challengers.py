@@ -10,6 +10,7 @@ from fpl_engine.projections import (
     RatesProjectionModel,
     _bounded_minutes_reconciliation,
     _config_hash,
+    _reconcile_participation_to_minutes,
 )
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
@@ -28,12 +29,18 @@ def _player(source_id: str, *, minutes: float = 900.0, starts: float = 10.0) -> 
         "matches": 10,
         "starts": starts,
         "zero_minute_records": 0,
+        "substitute_appearances": 0,
+        "starting_minutes": minutes,
+        "substitute_minutes": 0,
         "appearances": 10 if minutes else 0,
         "sixty_appearances": 10 if minutes >= 600 else 0,
         "minutes": minutes,
         "recent_matches": 0,
         "recent_starts": 0,
         "recent_zero_minute_records": 0,
+        "recent_substitute_appearances": 0,
+        "recent_starting_minutes": 0,
+        "recent_substitute_minutes": 0,
         "recent_appearances": 0,
         "recent_sixty_appearances": 0,
         "recent_minutes": 0,
@@ -166,3 +173,44 @@ def test_participation_probabilities_are_consistent_and_unknown_is_not_certain()
     assert 0 <= sub <= 1
     assert appearance == pytest.approx(start + (1 - start) * sub)
     assert player["_sixty_probability"] <= appearance
+
+
+def test_dnp_records_do_not_increase_substitute_probability() -> None:
+    model = RatesProjectionModel(
+        database=None,  # type: ignore[arg-type]
+        rules=RULES,
+        config=ProjectionModelConfig(minutes_model="participation_v1", enforce_team_minutes=False),
+    )
+    unused = _player("1", minutes=0, starts=0)
+    unused["matches"] = 10
+    unused["zero_minute_records"] = 10
+    unused["appearances"] = 0
+    substitute = _player("2", minutes=300, starts=0)
+    substitute["matches"] = 10
+    substitute["appearances"] = 10
+    substitute["substitute_appearances"] = 10
+    substitute["substitute_minutes"] = 300
+    substitute["starting_minutes"] = 0
+    model._prepare_minutes(
+        [unused, substitute], season_code="unused", start_gameweek=1, use_availability=True
+    )
+    assert unused["_substitute_probability"] < substitute["_substitute_probability"]
+    assert substitute["_conditional_substitute_minutes"] > unused["_conditional_substitute_minutes"]
+
+
+def test_participation_identity_survives_reconciliation() -> None:
+    state = {
+        "_availability": 1.0,
+        "_start_probability": 0.45,
+        "_substitute_probability": 0.30,
+        "_conditional_start_minutes": 82.0,
+        "_conditional_substitute_minutes": 18.0,
+    }
+    actual = _reconcile_participation_to_minutes(state, 45.0)
+    assert actual == pytest.approx(
+        state["_start_probability"] * state["_conditional_start_minutes"]
+        + (1 - state["_start_probability"])
+        * state["_substitute_probability"]
+        * state["_conditional_substitute_minutes"]
+    )
+    assert state["_sixty_probability"] <= state["_appearance_probability"]

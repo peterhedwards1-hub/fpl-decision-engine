@@ -1,0 +1,326 @@
+{
+  "cross_valuation": {
+    "incumbent_squad_under_incumbent": 364.668,
+    "incumbent_squad_under_opponent-adjusted": 347.484,
+    "opponent-adjusted_squad_under_incumbent": 360.686,
+    "opponent-adjusted_squad_under_opponent-adjusted": 353.308
+  },
+  "gameweek": 1,
+  "horizon_gameweeks": 8,
+  "limitations": [
+    "Expected points are on each configuration's own scale, so only the self-minus-other differences may be read as a gap.",
+    "The comparison is a selection difference, not evidence that either configuration forecasts better.",
+    "Prices are those recorded at the compared Gameweek."
+  ],
+  "only_in_incumbent": [
+    "178",
+    "183",
+    "282",
+    "290",
+    "472",
+    "563"
+  ],
+  "only_in_opponent-adjusted": [
+    "103",
+    "19",
+    "281",
+    "283",
+    "490",
+    "533"
+  ],
+  "season_code": "2023-24",
+  "self_minus_other": {
+    "incumbent": 3.982,
+    "opponent-adjusted": 5.824
+  },
+  "sensitivity": {
+    "core_player_ids": [
+      "103",
+      "108",
+      "117",
+      "131",
+      "143",
+      "19",
+      "228",
+      "281",
+      "283",
+      "308",
+      "355",
+      "490",
+      "526",
+      "533",
+      "569"
+    ],
+    "note": "No sensitivity parameters were requested.",
+    "parameters": [],
+    "swing_player_ids": [],
+    "variants": []
+  },
+  "shared_player_count": 9,
+  "squads": {
+    "incumbent": {
+      "captain_id": "308",
+      "gameweek": 1,
+      "horizon_expected_points": 364.668,
+      "horizon_gameweeks": 8,
+      "label": "incumbent",
+      "players": [
+        {
+          "position": "DEF",
+          "price_tenths": 80,
+          "role": "starter",
+          "source_player_id": "290",
+          "team_short_name": "LIV",
+          "web_name": "Alexander-Arnold"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 50,
+          "role": "starter",
+          "source_player_id": "131",
+          "team_short_name": "BHA",
+          "web_name": "Estupi\u00f1an"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 45,
+          "role": "starter",
+          "source_player_id": "563",
+          "team_short_name": "WOL",
+          "web_name": "Kilman"
+        },
+        {
+          "position": "FWD",
+          "price_tenths": 140,
+          "role": "starter",
+          "source_player_id": "355",
+          "team_short_name": "MCI",
+          "web_name": "Haaland"
+        },
+        {
+          "position": "FWD",
+          "price_tenths": 80,
+          "role": "starter",
+          "source_player_id": "117",
+          "team_short_name": "BRE",
+          "web_name": "Toney"
+        },
+        {
+          "position": "GK",
+          "price_tenths": 50,
+          "role": "starter",
+          "source_player_id": "569",
+          "team_short_name": "WOL",
+          "web_name": "Jos\u00e9 S\u00e1"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 70,
+          "role": "starter",
+          "source_player_id": "526",
+          "team_short_name": "WHU",
+          "web_name": "Bowen"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 65,
+          "role": "starter",
+          "source_player_id": "108",
+          "team_short_name": "BRE",
+          "web_name": "Mbeumo"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 65,
+          "role": "starter",
+          "source_player_id": "143",
+          "team_short_name": "BHA",
+          "web_name": "Mitoma"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 50,
+          "role": "starter",
+          "source_player_id": "282",
+          "team_short_name": "FUL",
+          "web_name": "Reed"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 125,
+          "role": "starter",
+          "source_player_id": "308",
+          "team_short_name": "LIV",
+          "web_name": "Salah"
+        },
+        {
+          "position": "GK",
+          "price_tenths": 40,
+          "role": "bench0",
+          "source_player_id": "472",
+          "team_short_name": "SHU",
+          "web_name": "Amissah"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 40,
+          "role": "bench1",
+          "source_player_id": "178",
+          "team_short_name": "BUR",
+          "web_name": "Taylor"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 45,
+          "role": "bench2",
+          "source_player_id": "228",
+          "team_short_name": "CRY",
+          "web_name": "Gu\u00e9hi"
+        },
+        {
+          "position": "FWD",
+          "price_tenths": 55,
+          "role": "bench3",
+          "source_player_id": "183",
+          "team_short_name": "BUR",
+          "web_name": "Weghorst"
+        }
+      ],
+      "season_code": "2023-24",
+      "total_cost_tenths": 1000,
+      "vice_captain_id": "355"
+    },
+    "opponent-adjusted": {
+      "captain_id": "355",
+      "gameweek": 1,
+      "horizon_expected_points": 353.308,
+      "horizon_gameweeks": 8,
+      "label": "opponent-adjusted",
+      "players": [
+        {
+          "position": "DEF",
+          "price_tenths": 50,
+          "role": "starter",
+          "source_player_id": "131",
+          "team_short_name": "BHA",
+          "web_name": "Estupi\u00f1an"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 45,
+          "role": "starter",
+          "source_player_id": "228",
+          "team_short_name": "CRY",
+          "web_name": "Gu\u00e9hi"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 45,
+          "role": "starter",
+          "source_player_id": "281",
+          "team_short_name": "FUL",
+          "web_name": "Ream"
+        },
+        {
+          "position": "FWD",
+          "price_tenths": 140,
+          "role": "starter",
+          "source_player_id": "355",
+          "team_short_name": "MCI",
+          "web_name": "Haaland"
+        },
+        {
+          "position": "FWD",
+          "price_tenths": 80,
+          "role": "starter",
+          "source_player_id": "117",
+          "team_short_name": "BRE",
+          "web_name": "Toney"
+        },
+        {
+          "position": "GK",
+          "price_tenths": 45,
+          "role": "starter",
+          "source_player_id": "533",
+          "team_short_name": "WHU",
+          "web_name": "Fabianski"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 70,
+          "role": "starter",
+          "source_player_id": "526",
+          "team_short_name": "WHU",
+          "web_name": "Bowen"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 65,
+          "role": "starter",
+          "source_player_id": "108",
+          "team_short_name": "BRE",
+          "web_name": "Mbeumo"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 65,
+          "role": "starter",
+          "source_player_id": "143",
+          "team_short_name": "BHA",
+          "web_name": "Mitoma"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 85,
+          "role": "starter",
+          "source_player_id": "19",
+          "team_short_name": "ARS",
+          "web_name": "Saka"
+        },
+        {
+          "position": "MID",
+          "price_tenths": 125,
+          "role": "starter",
+          "source_player_id": "308",
+          "team_short_name": "LIV",
+          "web_name": "Salah"
+        },
+        {
+          "position": "GK",
+          "price_tenths": 50,
+          "role": "bench0",
+          "source_player_id": "569",
+          "team_short_name": "WOL",
+          "web_name": "Jos\u00e9 S\u00e1"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 45,
+          "role": "bench1",
+          "source_player_id": "103",
+          "team_short_name": "BRE",
+          "web_name": "Henry"
+        },
+        {
+          "position": "DEF",
+          "price_tenths": 45,
+          "role": "bench2",
+          "source_player_id": "283",
+          "team_short_name": "FUL",
+          "web_name": "Robinson"
+        },
+        {
+          "position": "FWD",
+          "price_tenths": 45,
+          "role": "bench3",
+          "source_player_id": "490",
+          "team_short_name": "SHU",
+          "web_name": "Osula"
+        }
+      ],
+      "season_code": "2023-24",
+      "total_cost_tenths": 1000,
+      "vice_captain_id": "308"
+    }
+  }
+}

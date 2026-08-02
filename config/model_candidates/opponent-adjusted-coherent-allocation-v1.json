@@ -1,0 +1,6 @@
+{
+  "team_strength_model": "opponent_adjusted",
+  "scoring_event_source": "coherent_team_allocation",
+  "team_strength_carry_forward": true,
+  "cold_start_prior": "position_price"
+}

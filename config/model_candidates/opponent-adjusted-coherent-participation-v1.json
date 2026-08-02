@@ -1,0 +1,9 @@
+{
+  "team_strength_model": "opponent_adjusted",
+  "minutes_model": "participation_v1",
+  "minutes_allocation": "position_aware",
+  "minutes_reconciliation_mode": "bounded_role_preserving",
+  "scoring_event_source": "coherent_team_allocation",
+  "team_strength_carry_forward": true,
+  "cold_start_prior": "position_price"
+}

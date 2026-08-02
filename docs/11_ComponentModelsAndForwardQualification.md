@@ -20,6 +20,47 @@ Their canonical configs and common gate policy live in
 `config/model_candidates/`. Schema 15 stores the registration time, config SHA-256 and
 policy immutably.
 
+A fourth candidate configuration, `opponent-adjusted-team-strength-v1`, is written and
+historically evaluated but **not registered, and not currently recommended for
+registration**. Its design, results and remaining uncertainties are in
+`12_TeamStrengthModel.md`.
+
+Its controlled four-variant evaluation found the pattern this gate exists to catch:
+the candidate has the best player-points MAE of the four and the worst owned-captain
+regret, transfer regret and continuous policy points. The team-strength component
+itself is sound and improves team goals in both available seasons; the share-based
+allocator it is paired with introduces a top-15 bias of +0.74 against the incumbent's
++0.23, and opponent adjustment only repairs a third of that. Fix the allocator and
+re-run before spending a capture slot.
+
+The same evaluation established where forecast error actually lives: 92% of squared
+player-points error sits with players whose minutes were mis-called, and a minutes
+oracle removes 17% of RMSE, against a 1% spread across all four team-strength and
+allocation variants. **`playing-time-hurdle-logistic-v1` is the higher-value
+candidate** and has still never been run end-to-end into points.
+
+### What a declaration now contains
+
+`ProjectionModelConfig` alone stopped being a complete model specification when team
+strength grew its own constants and a contextual-adjustment manifest. Both were
+previously supplied at runtime from code defaults, so a registered candidate's
+SHA-256 could stay identical while an edit to a default changed every forecast it
+produced — preregistration in name only.
+
+`ModelDeclaration` (`src/fpl_engine/declaration.py`) is now the hashed unit and
+carries the projection config, the team-strength settings and the adjustment
+manifest together. `register_forward_candidate`, `capture_gameweek_forecasts`,
+`run_forward_candidate_pair` and `ProjectionBacktester` all carry all three through,
+so a capture is the declared model rather than a truncation of it.
+
+Contextual adjustments now require `reviewed_at` (timezone-aware) and `reviewed_by`,
+and `ModelDeclaration.adjustments_before(cutoff)` makes "this judgement predates the
+deadline it is scored against" checkable rather than assumed.
+
+**The three registered candidates keep their digests.** A declaration carrying
+nothing beyond the projection config serialises to the bare config dictionary, which
+is exactly what was hashed before, and a test pins that.
+
 The first valid GW1 candidate projection runs were generated from ingestion run 6:
 projection runs 1 (playing time), 2 (share xG) and 3 (defensive contributions), each with
 4,512 player-Gameweek rows across the eight-Gameweek horizon.
