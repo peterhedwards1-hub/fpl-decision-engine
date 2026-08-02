@@ -437,6 +437,33 @@ differ in both team strength and allocation. §8b is what separates them.
 6. **The candidate inherits v3's tuned away multiplier of 0.851**, which is
    materially below a neutral venue split and shows up as uniformly negative bias.
    That was not introduced here and has not been re-examined.
+7. **The decision result rests on one season and one transfer policy.** §8b's
+   ordering is consistent across three measures but the margins are small, and the
+   regret replays are sensitive to the fixed policy they assume.
+
+### What the whole exercise established about where the error is
+
+Splitting 2023/24 squared points error by how wrong the minutes forecast was, over
+28,084 predictions:
+
+| Minutes error | Share of rows | Share of squared error | RMSE |
+|---|---:|---:|---:|
+| within 15 minutes | 47% | **8%** | 0.89 |
+| off by 15–45 | 38% | 48% | 2.38 |
+| off by 45 or more | 15% | 44% | 3.55 |
+
+**92% of the error sits on the 53% of players whose minutes were mis-called.** When
+the model knows a player will play, it predicts their points very accurately. A
+minutes oracle — rescaling each projection by actual over expected minutes — removes
+**17.2% of overall RMSE and 15.0% within the top 5%**. Every variant in §8b sits
+within 0.011 RMSE of every other.
+
+That is the finding this work produced, and it is not the one it set out to test:
+team strength and player allocation are close to exhausted as sources of forecast
+error, and playing time is not. The already-built, already-measured
+`playing-time-hurdle-logistic-v1` candidate (appearance Brier 0.124 → 0.099,
+expected-minutes RMSE 28.0 → 24.0, minutes bias −10.3 → −0.53) has never been run
+end-to-end into points, and on this evidence is where the next real gain is.
 
 ---
 
@@ -506,6 +533,50 @@ MAE and bias, top-player calibration at every rank cut, legal-squad regret,
 owned-captain regret and transfer regret, over identical origins through the same
 backtester and evaluators the promotion gate uses.
 
+### Results: 2023/24, origins 2–38
+
+`data/allocation-variants-2023-24.json`, 28,084 scored predictions per variant.
+
+| Variant | MAE | Bias | Top-15 MAE | Top-15 bias | Squad regret | Captain regret | Transfer regret | Policy points |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A incumbent | 1.1364 | −0.005 | 3.333 | **+0.231** | **98.54** | 5.811 | 25.42 | 2065 |
+| B opp-adj + rate | 1.1325 | −0.002 | 3.386 | +0.258 | 98.76 | 5.676 | **24.25** | 2084 |
+| C existing + share | 1.1279 | +0.024 | **3.246** | +0.740 | 101.22 | **5.432** | 25.08 | **2095** |
+| D candidate | **1.1244** | +0.020 | 3.304 | +0.498 | 100.92 | 6.000 | 25.89 | 2027 |
+
+**The candidate has the best MAE and the worst decisions.** D leads on aggregate
+accuracy and is last or joint-last on captain regret, transfer regret and continuous
+policy points. This is precisely the failure the project has already documented
+twice — an accuracy gain that does not survive contact with the decision layer — and
+precisely why the gate says *do not promote on MAE alone*.
+
+The isolating contrast, D against C, moves only the team-strength model:
+
+| Measure | D − C | Reading |
+|---|---:|---|
+| Player-points MAE | −0.0035 | slightly better |
+| Top-15 bias | −0.2422 | **materially better** |
+| Legal-squad regret | −0.2973 | slightly better |
+| Owned-captain regret | +0.5676 | **worse** |
+| Transfer regret | +0.8056 | **worse** |
+| Continuous policy points | −68 | **worse** (−3.3%) |
+
+So opponent adjustment does what it was built to do — it repairs about a third of
+the top-player bias the share allocator introduces — and still leaves the combined
+model making worse weekly decisions than the incumbent.
+
+**Variant B, the structurally unsound one, is not the disaster the reasoning
+predicted.** It is mildly better than A on MAE, transfer regret and policy points.
+That does not make the double-count acceptable: B's top-15 MAE is the worst of the
+four and its top-15 bias is worse than A's, which is where a double-count would show
+up. But the measured cost is smaller than the argument implies, and reporting that
+is the point of having run it.
+
+Two cautions before reading too much into any of this. One season and 37 origins is a
+small sample, and the regret replays run a single fixed transfer policy — a 3%
+difference in policy points is not far outside what a different policy might produce.
+The direction is nonetheless consistent across three independent decision measures.
+
 ## 9. Forward qualification requirement
 
 Historical seasons are **design evidence only**. `DEFAULT_MODEL_CONFIG` is unchanged
@@ -519,9 +590,31 @@ pre-deadline snapshot, and the predeclared forecast, distribution and
 decision gates. The imported database currently holds 2021/22–2023/24 only, so no
 2026/27 origin exists to register against yet.
 
-Given §7, the specific thing forward capture has to settle is whether the advantage
-survives when the expected-goal feed is complete — which it is for 2026/27 — and
-whether it shows up in decisions rather than only in team totals.
+### Recommendation: do not register this candidate yet
+
+The spec says to register as a forward challenger *only if the implementation and
+historical diagnostics are sound*. The implementation is sound. The diagnostics are
+not — §8b shows the candidate has the best aggregate accuracy and the worst weekly
+decisions of the four variants, which is the exact pattern the promotion gate exists
+to catch. Registering it now would spend a scarce 2026/27 capture slot on a
+configuration whose own design evidence says it makes decisions worse.
+
+What the evidence actually supports doing first, in order:
+
+1. **Fix the top-player bias the share allocator introduces** (+0.231 → +0.740 at
+   top-15 when share allocation is switched on). Opponent adjustment repairs a third
+   of it; the other two thirds are the allocator's problem. Until that is fixed, the
+   coherent route carries a known defect into every decision.
+2. **Re-run the variants on 2022/23** to see whether the decision ordering is stable
+   or a single-season artefact. One season and one transfer policy is thin evidence
+   for a conclusion this consequential.
+3. **Then register `C`-with-fixed-allocation and `D`-with-fixed-allocation as a
+   pair**, so forward capture measures opponent adjustment against a control that is
+   not itself broken.
+
+The team-strength model should be kept. It is better on team goals in both seasons,
+it converges, it is auditable, and it demonstrably repairs part of the allocator's
+bias. It is the allocator, not the rating, that is currently costing decisions.
 
 ---
 
@@ -530,8 +623,7 @@ whether it shows up in decisions rather than only in team totals.
 ```powershell
 # Explain every club's rating at one origin, with the three rival models.
 fpl-history --database data/fpl.sqlite3 team-strength-report 2023-24 `
-  --gameweek 1 --rules config/seasons/2025-26.json `
-  --output data/team-strength-2023-24-gw1.json
+  --gameweek 1 --output data/team-strength-2023-24-gw1.json
 
 # With reviewed contextual adjustments.
 fpl-history --database data/fpl.sqlite3 team-strength-report 2023-24 `
