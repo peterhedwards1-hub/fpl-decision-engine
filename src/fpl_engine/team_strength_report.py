@@ -14,7 +14,6 @@ Historical seasons are design evidence. Nothing here qualifies anything: the
 from __future__ import annotations
 
 import math
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,6 +21,7 @@ from .config import SeasonRules
 from .history.database import HistoricalDatabase
 from .projections import (
     CORRECTED_V4_MODEL_CONFIG,
+    OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_CONFIG,
     PRESEASON_V5_MODEL_CONFIG,
     TEAM_SHARE_XG_V5_MODEL_CONFIG,
     ProjectionModelConfig,
@@ -200,6 +200,13 @@ def _ranks(values: dict[str, float]) -> dict[str, int]:
 # --------------------------------------------------------------------------
 
 
+#: The challenger, alongside the three rivals, all scored the same way.
+EVALUATED_MODELS: dict[str, ProjectionModelConfig] = {
+    "opponent_adjusted": OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_CONFIG,
+    **COMPARISON_MODELS,
+}
+
+
 def evaluate_team_strength_models(
     database: HistoricalDatabase,
     rules: SeasonRules,
@@ -208,21 +215,27 @@ def evaluate_team_strength_models(
     origin_gameweek_start: int = 1,
     origin_gameweek_end: int = 38,
     settings: TeamStrengthSettings | None = None,
+    models: dict[str, ProjectionModelConfig] | None = None,
 ) -> dict[str, Any]:
     """Score the rating against what the fixtures actually produced.
 
-    For every origin the model is asked one question with a checkable answer:
+    Every model — the challenger included — is asked through
+    `RatesProjectionModel.fixture_expected_goals`, the same public component
+    the live forecast uses. That matters more than it sounds: recreating the
+    fixture expectation here with a parallel copy of the venue constants would
+    mean scoring a model nothing ever runs, and the away factor alone differs
+    by eight per cent between the two constant sets.
+
+    For every origin the model answers one question with a checkable answer:
     how many goals will the home side score, and the away side? Each fixture
-    in that Gameweek contributes two predictions and two outcomes, so team-goal
-    RMSE and bias are measured directly rather than inferred from player
-    points. Clean-sheet calibration comes free: the probability of conceding
-    none is `exp(-lambda)` under the same Poisson the projection uses, so a
-    reliability table over the fixtures tests the defensive side of the rating
+    contributes two predictions and two outcomes. Clean-sheet calibration comes
+    free — the probability of conceding none is `exp(-lambda)` under the same
+    Poisson the projection uses — so the defensive side of the rating is tested
     without touching the player model at all.
 
-    This isolates the question the spec insists on separating — whether gains
-    come from better team totals or merely from a different player allocation.
-    Nothing here reads a player projection.
+    That is what isolates the question the spec insists on separating: whether
+    a gain comes from better team totals or merely from a different player
+    allocation. Nothing here reads a player projection.
     """
 
     fixtures = _fixture_outcomes(database, season_code)
@@ -238,25 +251,20 @@ def evaluate_team_strength_models(
     if not origins:
         raise ValueError("No completed Gameweeks fall inside the origin range")
     last_origin = max(origins)
+    evaluated = models or EVALUATED_MODELS
 
-    predictions: dict[str, list[dict[str, Any]]] = {
-        "opponent_adjusted": [],
-        **{name: [] for name in COMPARISON_MODELS},
-    }
-    context: dict[str, dict[str, Any]] = {}
+    predictions: dict[str, list[dict[str, Any]]] = {name: [] for name in evaluated}
+    context: dict[int, dict[str, Any]] = {}
     for origin in origins:
-        played = [
-            fixture
-            for fixture in fixtures
-            if fixture["gameweek_number"] == origin
-        ]
         state = estimate_team_strength(
             database,
             season_code=season_code,
             gameweek_number=origin,
             settings=settings,
         )
-        context[str(origin)] = {
+        # Slice labels come from one estimator for every model, so a club is
+        # in the same bucket whichever model is being scored.
+        context[origin] = {
             team_id: {
                 "is_promoted": team.is_promoted,
                 "schedule_strength": team.schedule_strength,
@@ -268,58 +276,22 @@ def evaluate_team_strength_models(
             }
             for team_id, team in state.teams.items()
         }
-        predictions["opponent_adjusted"].extend(
-            _fixture_predictions(
-                played,
-                {
-                    team_id: (team.attack, team.defence)
-                    for team_id, team in state.teams.items()
-                },
-                state.league_average_goals,
-                settings or TeamStrengthSettings(),
-                origin=origin,
-                last_origin=last_origin,
-                context=context[str(origin)],
-            )
-        )
-        for name, config in COMPARISON_MODELS.items():
-            rival = _rival_strengths(
+        for name, config in evaluated.items():
+            model = RatesProjectionModel(
                 database,
                 rules,
                 config=config,
-                season_code=season_code,
-                gameweek_number=origin,
-                as_of=None,
-                maximum_ingestion_run_id=None,
-            )
-            league_average = next(
-                (
-                    float(entry["league_average_goals"])
-                    for entry in rival.values()
-                ),
-                1.4,
+                team_strength_settings=settings,
             )
             predictions[name].extend(
                 _fixture_predictions(
-                    played,
-                    {
-                        team_id: (
-                            float(entry["attack"]),
-                            float(entry["defence"]),
-                        )
-                        for team_id, entry in rival.items()
-                    },
-                    league_average,
-                    # Rivals are scored under their own venue constants, which
-                    # is the fair comparison: those are part of the model.
-                    replace(
-                        settings or TeamStrengthSettings(),
-                        home_factor=config.home_attack_multiplier,
-                        away_factor=config.away_attack_multiplier,
+                    model.fixture_expected_goals(
+                        season_code=season_code,
+                        gameweek_number=origin,
                     ),
                     origin=origin,
                     last_origin=last_origin,
-                    context=context[str(origin)],
+                    context=context[origin],
                 )
             )
     return {
@@ -329,7 +301,20 @@ def evaluate_team_strength_models(
         "models": {
             name: _score(rows) for name, rows in predictions.items() if rows
         },
+        "model_configurations": {
+            name: {
+                "team_strength_model": config.team_strength_model,
+                "team_strength_carry_forward": config.team_strength_carry_forward,
+                "scoring_event_source": config.scoring_event_source,
+                "home_attack_multiplier": config.home_attack_multiplier,
+                "away_attack_multiplier": config.away_attack_multiplier,
+            }
+            for name, config in evaluated.items()
+        },
         "limitations": (
+            "Every model is scored through the same public projection "
+            "component the live forecast uses, so these expectations are the "
+            "ones a projection at that origin would have applied.",
             "Team-goal accuracy is measured against realised goals, which are "
             "a noisy draw from the expectation being scored. A better model "
             "shows a smaller RMSE only in aggregate; single fixtures prove "
@@ -338,9 +323,9 @@ def evaluate_team_strength_models(
             "independent of goals scored, which is the same assumption the "
             "projection makes. It tests the rating, not that assumption.",
             "Player-points accuracy, squad regret and captain regret are not "
-            "computed here. Run the projection backtest with the candidate "
-            "configuration for those; keeping them apart is what lets a gain "
-            "in team totals be told apart from a change in allocation.",
+            "computed here. Run evaluate-allocation-variants for those; "
+            "keeping them apart is what lets a gain in team totals be told "
+            "apart from a change in allocation.",
             "Historical seasons are design evidence only. Forward 2026/27 "
             "captures are the qualification.",
         ),
@@ -372,34 +357,29 @@ def _fixture_outcomes(
 
 
 def _fixture_predictions(
-    played: list[dict[str, Any]],
-    ratings: dict[str, tuple[float, float]],
-    league_average: float,
-    settings: TeamStrengthSettings,
+    fixtures: list[dict[str, Any]],
     *,
     origin: int,
     last_origin: int,
     context: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    """Turn one model's fixture expectations into scored, labelled rows."""
+
     rows = []
-    for fixture in played:
-        home = str(fixture["home_team_id"])
-        away = str(fixture["away_team_id"])
-        if home not in ratings or away not in ratings:
+    for fixture in fixtures:
+        if fixture["home_score"] is None or fixture["away_score"] is None:
             continue
-        home_attack, home_defence = ratings[home]
-        away_attack, away_defence = ratings[away]
         for team, venue, expected, actual in (
             (
-                home,
+                str(fixture["home_team_id"]),
                 "home",
-                league_average * home_attack * away_defence * settings.home_factor,
+                float(fixture["home_expected_goals"]),
                 float(fixture["home_score"]),
             ),
             (
-                away,
+                str(fixture["away_team_id"]),
                 "away",
-                league_average * away_attack * home_defence * settings.away_factor,
+                float(fixture["away_expected_goals"]),
                 float(fixture["away_score"]),
             ),
         ):

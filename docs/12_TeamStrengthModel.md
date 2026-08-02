@@ -69,11 +69,41 @@ Attack and defence are multipliers of the league average, renormalised to mean 1
 Venue is applied to the league average, never to the club rating, so venue effects
 can never be mistaken for team quality.
 
-The system is solved by five fixed-point sweeps rather than a fitted optimiser. In
-each sweep a club's attack is its goals scored divided by what an average attack
-would have been expected to score against the defences it actually faced. That
-division is the opponent adjustment, and it is the whole point: the same two goals
-move the rating further when they came against a strong defence.
+The system is solved by iterating a fixed point to a tolerance of 1e-6, capped at
+200 sweeps. In each sweep a club's attack is its goals scored divided by what an
+average attack would have been expected to score against the defences it actually
+faced. That division is the opponent adjustment, and it is the whole point: the
+same two goals move the rating further when they came against a strong defence.
+
+**The solve is ridged, and it has to be.** Each club carries
+`solver_prior_matches = 3.0` pseudo-matches of exactly average performance,
+appearing identically in numerator and denominator. Without it the fixed point does
+not converge on an early-season schedule: after one Gameweek the fixture graph is
+ten disconnected pairs, and within an isolated pair attack can be scaled up and
+defence down without limit, so the iteration diverges. On 2023/24 an unridged solve
+was still moving by 1.23 goals after 200 sweeps at GW2 and by 0.04 at GW4. A fixed
+sweep count hid that by returning whatever the last sweep produced — which is
+exactly the origin every preseason decision depends on. With the ridge every origin
+from GW2 to GW38 converges in 9–14 sweeps.
+
+Whether convergence was reached is reported per solve, along with the iteration
+count, the largest remaining rating movement and any clubs pressed against the
+multiplier bounds. A non-converged solve raises a limitation saying the ratings are
+weakly determined rather than passing them off as settled.
+
+### One source of truth for shared constants
+
+`ProjectionModelConfig` owns every constant the two objects share — the home and
+away factors, the multiplier bounds, the assist-per-goal prior and the form
+half-life — and `TeamStrengthSettings.for_projection_config` copies them across
+whenever a projection engine is built. `TeamStrengthSettings` owns only what is
+genuinely the estimator's: prior weights, decay of the prior, promoted-club
+priors, uncertainty, continuity regression and the solver ridge.
+
+This is not tidiness. The declared default away factor is 0.92 and the candidate's
+tuned value is 0.851, eight per cent apart; two copies would mean the historical
+evaluation scoring a model the live forecast never runs. A test asserts the raw
+defaults genuinely disagree, so the check is not vacuous.
 
 **Every constant is declared, not fitted.** `TeamStrengthSettings` holds fourteen
 of them. There is no six-dimensional parameter search here and there should not be
@@ -93,6 +123,17 @@ The fallback is explicit and reported. Expected goals are used only when the row
 cover at least `MINIMUM_EXPECTED_GOAL_COVERAGE` (80%) of the goals actually scored.
 Below that, rows are missing rather than the league having underperformed, and the
 clubs whose rows are absent would be rated as having created nothing.
+
+The decision is league-wide and all-or-nothing on purpose: mixing rated and unrated
+clubs in one solve is worse than falling back entirely, because the opponent
+adjustment would propagate one club's missing rows to everyone who played them.
+Coverage is still **measured per club and per venue side**, since a feed can clear
+the league threshold while omitting a single club — and that club would then be
+rated as creating nothing while the league-level check stays silent. The report
+carries the league ratio, the home and away ratios, the fixture count with no
+expected rows at all, the per-club ratio, and a named list of clubs below the
+threshold. A club-level shortfall inside an otherwise usable feed, or a home/away
+gap above ten points, each raise their own limitation.
 
 Separately — and this matters more than it sounds — the *level* always comes from
 goals actually scored, even when the *shape* comes from expected goals. Ratings are
@@ -251,20 +292,28 @@ probability; their points differ only through their 60-minute probabilities.
 
 Full reports: `data/team-strength-evaluation-2022-23.json`,
 `data/team-strength-evaluation-2023-24.json`. Both were produced by
-`fpl-history evaluate-team-strength`, which scores the *rating* directly — expected
-goals against goals actually scored, for both sides of every fixture, at every
-origin — and never reads a player projection. That is what separates a gain in team
-totals from a change in player allocation.
+`fpl-history evaluate-team-strength`, which drives every model — the challenger
+included — through `RatesProjectionModel.fixture_expected_goals`, the same public
+component the live forecast uses. It scores the *rating* directly: expected goals
+against goals actually scored, for both sides of every fixture, at every origin,
+never reading a player projection. That is what separates a gain in team totals from
+a change in player allocation.
+
+> **These figures supersede an earlier set.** The first version of this evaluation
+> recreated the fixture expectation inside the evaluator with its own copy of the
+> venue constants — 0.92 away where the candidate actually runs 0.851. It was
+> therefore scoring a model nothing ran. Every number below is the corrected one,
+> and the corrected 2022/23 result is *better* for the challenger, not worse.
 
 Team-goal accuracy, 760 team-fixtures per season:
 
 | Season | Model | RMSE | MAE | Bias | Clean-sheet Brier |
 |---|---|---:|---:|---:|---:|
-| 2023/24 | **opponent-adjusted** | **1.2143** | **0.9634** | **−0.0468** | **0.1543** |
+| 2023/24 | **opponent-adjusted** | **1.2250** | **0.9636** | **−0.1181** | **0.1542** |
 | 2023/24 | flat preseason (incumbent) | 1.2588 | 0.9876 | −0.1390 | 0.1585 |
 | 2023/24 | raw-goals carry-forward | 1.2501 | 0.9640 | −0.2450 | 0.1611 |
 | 2023/24 | existing team-share xG | 1.2781 | 1.0013 | −0.1858 | 0.1585 |
-| 2022/23 | opponent-adjusted | 1.2620 | 0.9715 | **−0.0258** | 0.1943 |
+| 2022/23 | opponent-adjusted | 1.2462 | 0.9584 | **−0.0743** | **0.1918** |
 | 2022/23 | flat preseason (incumbent) | 1.2540 | 0.9648 | −0.0771 | 0.1924 |
 | 2022/23 | raw-goals carry-forward | **1.2394** | **0.9515** | −0.0915 | **0.1918** |
 | 2022/23 | existing team-share xG | 1.4335 | 1.0508 | −0.5894 | 0.2420 |
@@ -273,29 +322,41 @@ Team-goal accuracy, 760 team-fixtures per season:
 
 | Slice | n | New RMSE | New bias | Incumbent RMSE | Incumbent bias |
 |---|---:|---:|---:|---:|---:|
-| Early season | 240 | 1.1571 | −0.0428 | 1.2618 | −0.1023 |
-| Middle season | 260 | 1.2528 | −0.0912 | 1.2842 | −0.1803 |
-| Late season | 260 | 1.2266 | −0.0061 | 1.2301 | −0.1316 |
-| Promoted clubs | 114 | 0.9660 | −0.0428 | 0.9955 | +0.0757 |
-| Established clubs | 646 | 1.2530 | −0.0475 | 1.2998 | −0.1769 |
-| Easy schedule | 374 | 1.2520 | −0.0331 | 1.3034 | −0.1836 |
-| Hard schedule | 386 | 1.1766 | −0.0601 | 1.2141 | −0.0957 |
-| Large turnover | 76 | 1.2876 | −0.2484 | 1.3114 | −0.1895 |
-| Small turnover | 570 | 1.2483 | −0.0207 | 1.2982 | −0.1752 |
-| Home | 380 | 1.2317 | −0.0865 | 1.2945 | −0.1335 |
-| Away | 380 | 1.1966 | −0.0072 | 1.2221 | −0.1444 |
+| Early season | 240 | 1.1799 | −0.1043 | 1.2618 | −0.1023 |
+| Middle season | 260 | 1.2550 | −0.1661 | 1.2842 | −0.1803 |
+| Late season | 260 | 1.2356 | −0.0828 | 1.2301 | −0.1316 |
+| Promoted clubs | 114 | 0.9676 | +0.0173 | 0.9955 | +0.0757 |
+| Established clubs | 646 | 1.2651 | −0.1420 | 1.2998 | −0.1769 |
+| Easy schedule | 373 | 1.2740 | −0.1399 | 1.3050 | −0.1850 |
+| Hard schedule | 387 | 1.1759 | −0.0971 | 1.2126 | −0.0946 |
+| Large turnover | 76 | 1.2887 | −0.2865 | 1.3114 | −0.1895 |
+| Small turnover | 570 | 1.2619 | −0.1227 | 1.2982 | −0.1752 |
+| Home | 380 | 1.2453 | −0.1105 | 1.2945 | −0.1335 |
+| Away | 380 | 1.2045 | −0.1256 | 1.2221 | −0.1444 |
 
-**Read this honestly.** In 2023/24 the challenger wins every cell, and the largest
-gain is early season — the case it was built for. In 2022/23 it does *not*: it is
-marginally worse on RMSE and Brier and clearly better only on bias, and the
-raw-goals carry-forward beats both.
+**Read this honestly.** The challenger now beats the incumbent on RMSE, MAE, bias
+and Brier in *both* seasons, and wins every 2023/24 breakdown cell except late
+season, where it is 0.005 worse on RMSE while being materially better on bias. The
+largest gain is early season — the case it was built for.
 
-The difference between the two seasons is expected-goal evidence. 2022/23's prior is
-2021/22, which has no expected-goal rows at all, so both the prior and the
-current-season ratings fall back to goals — and the opponent adjustment on a goals
-series buys much less than it does on an expected-goals series. **The challenger's
-advantage is conditional on the feed, and the one season where the feed is absent is
-the one season it does not win.** That is a limitation, not a rounding error.
+But it still loses to **raw-goals carry-forward** in 2022/23 (1.2394 against 1.2462),
+while beating it comfortably in 2023/24 (1.2501 against 1.2250). The difference
+between the seasons is expected-goal evidence: 2022/23's prior is 2021/22, which has
+no expected-goal rows at all, so both the prior and the current-season ratings fall
+back to goals — and opponent adjustment on a goals series buys much less than on an
+expected-goals series. **The challenger's advantage over the simpler carry-forward is
+conditional on the feed.** That is a limitation, not a rounding error, and it is the
+specific thing forward capture has to settle.
+
+Two slices deserve their own note. **Large turnover** is the one cell where the
+challenger's bias is clearly worse (−0.2865 against −0.1895): pulling a rebuilt
+club's prior toward the mean makes the model expect fewer goals from clubs that had
+in fact strengthened. With n=76 — Chelsea and Wolves — this is suggestive, not
+conclusive, and it is the honest cost of refusing to infer transfer direction.
+**Bias is now uniformly negative** across the challenger's slices, because the
+candidate's tuned away multiplier of 0.851 is materially below a neutral split; that
+is inherited from the v3 tuning, not introduced here, and it is visible in the
+incumbent's numbers too.
 
 The existing team-share xG path's −0.5894 bias in 2022/23 is a data defect, not a
 model result: that import stores `expected_goals` as `0.0` rather than `NULL`, so
@@ -334,44 +395,116 @@ horizon, incumbent (`preseason-priors-v1-incumbent`) against the challenger:
 - Incumbent only: Taylor (Burnley, DEF), Weghorst (Burnley, FWD), Reed (Fulham, MID),
   Alexander-Arnold (Liverpool, DEF), Amissah (Sheffield Utd, GK), Kilman (Wolves, DEF).
 - Challenger only: Henry (Brentford, DEF), Saka (Arsenal, MID), Ream (Fulham, DEF),
-  Osula (Sheffield Utd, FWD), Mings (Aston Villa, DEF), Fabianski (West Ham, GK).
+  Robinson (Fulham, DEF), Osula (Sheffield Utd, FWD), Fabianski (West Ham, GK).
 
 Cross-valuation over the horizon:
 
 | | under incumbent | under challenger |
 |---|---:|---:|
-| Incumbent squad | 364.67 | 348.55 |
-| Challenger squad | 360.45 | 354.98 |
+| Incumbent squad | 364.67 | 347.48 |
+| Challenger squad | 360.69 | 353.31 |
 
-Each model prefers its own squad — by 4.2 points for the incumbent and 6.4 for the
+Each model prefers its own squad — by 4.0 points for the incumbent and 5.8 for the
 challenger — which is what cross-valuation is supposed to show and is not evidence
 either way. What it does establish is that the difference is material: six of
 fifteen places change, and the challenger drops two Burnley players the incumbent's
 flat preseason prior could not distinguish from anyone else's.
 
+**This comparison cannot attribute the change**, because the two configurations
+differ in both team strength and allocation. §8b is what separates them.
+
 ---
 
 ## 8. Remaining uncertainties
 
-1. **Two seasons is not enough evidence.** The 2022/23 and 2023/24 results point in
-   different directions and neither is a large sample. Nothing here is a
-   qualification.
+1. **Two seasons is not enough evidence.** Neither is a large sample, and the
+   challenger beats the simpler raw-goals carry-forward in one of them and loses in
+   the other. Nothing here is a qualification.
 2. **The advantage may be an expected-goals advantage rather than an
    opponent-adjustment advantage.** These two are confounded across the available
-   seasons and cannot be separated with the data present.
-3. **Fourteen declared constants are unvalidated individually.** They were chosen to
+   seasons and cannot be separated with the data present. The season where the
+   expected-goal feed is absent is the season the challenger does not win.
+3. **Sixteen declared constants are unvalidated individually.** They were chosen to
    be interpretable, not fitted. Sensitivity has not been profiled parameter by
-   parameter as `profile-preseason-prior` does for Stage 3a.
+   parameter as `profile-preseason-prior` does for Stage 3a. The one that most
+   deserves it is `solver_prior_matches`, because it is doing real work early in the
+   season rather than merely regularising a well-posed problem.
 4. **Squad continuity was measurable for one season transition only** in the imported
-   data, and the large-turnover cell has 76 observations.
+   data, and the large-turnover cell has 76 observations — where the challenger's
+   bias is its worst.
 5. **Contextual adjustments have never been exercised on real information.** The
-   mechanism is tested; the judgement it depends on is not.
-6. **Player-points accuracy, squad regret, captain regret and transfer regret are not
-   measured here.** They require a full backtest under the candidate configuration
-   and are deliberately kept separate so a team-total gain is not confused with an
-   allocation change.
+   mechanism is tested and hashed; the judgement it depends on is not.
+6. **The candidate inherits v3's tuned away multiplier of 0.851**, which is
+   materially below a neutral venue split and shows up as uniformly negative bias.
+   That was not introduced here and has not been re-examined.
 
 ---
+
+## 8a. The declaration is the whole model
+
+A candidate declaration has to pin down everything that decides the forecast,
+before the outcome. `ProjectionModelConfig` alone stopped doing that the moment
+team strength grew its own constants and an adjustment manifest: both were
+previously supplied at runtime from code defaults, so a candidate's hash could stay
+identical while a later edit to a default changed every forecast it produced.
+Persisting the derivation afterwards records what happened; it does not make a
+preregistration immutable. Only hashing the inputs does.
+
+`ModelDeclaration` (`src/fpl_engine/declaration.py`) is the hashed unit:
+
+```json
+{
+  "declaration_version": 2,
+  "model_config": { ... },
+  "team_strength_settings": { ... },
+  "contextual_adjustments": [ ... ]
+}
+```
+
+- Every `TeamStrengthSettings` field is inside the digest. A test asserts that
+  changing any of four representative constants moves it.
+- The adjustment manifest is inside the digest, including `reviewed_at` and
+  `reviewed_by`, which are now **required** — an adjustment carries a judgement no
+  data supports, so a later reader must be able to find out who made it and when.
+  `reviewed_at` must be timezone-aware, so the order against a deadline is
+  unambiguous, and `adjustments_before(cutoff)` makes "this judgement predates the
+  outcome" checkable rather than assumed.
+- Manifest order does not affect the digest; every audit field does.
+- **Legacy declarations keep their identity.** A declaration carrying nothing beyond
+  the projection config serialises to the bare config dictionary, so the three
+  candidates already registered against 2026/27 hash exactly as before.
+
+`register_forward_candidate`, `capture_gameweek_forecasts`,
+`run_forward_candidate_pair`, `ProjectionBacktester` and the CLI's candidate loader
+all carry the settings and the manifest through, so a capture or a backtest built
+from a declaration is the declared model rather than a truncation of it.
+
+## 8b. Separating team strength from allocation
+
+The candidate changes two things at once — how much a club is expected to score,
+and how that expectation reaches individual players — so a squad comparison against
+the incumbent cannot attribute the difference. `evaluate-allocation-variants` runs a
+two-by-two design:
+
+| Variant | Team strength | Allocation | |
+|---|---|---|---|
+| A | existing | player rate | the production incumbent |
+| B | opponent-adjusted | player rate | **structurally unsound** |
+| C | existing | team share | the control for D |
+| D | opponent-adjusted | team share | the candidate |
+
+**B is unsound and is measured anyway.** The rate path multiplies a player's
+historical per-90 rate — which already embeds the strength of the club they earned
+it at — by that club's strength multiplier, so a better team rating makes the
+double-count larger, not smaller. It is included because "we could not run it" and
+"we ran it and it is worse" are different claims and only the second is evidence.
+
+**D against C is the contrast that matters**: it holds allocation fixed at the
+coherent share route and moves only the team-strength model, which is the marginal
+contribution of opponent adjustment. Each variant is scored on player-points RMSE,
+MAE and bias, top-player calibration at every rank cut, legal-squad regret,
+owned-captain regret and transfer regret, over identical origins through the same
+backtester and evaluators the promotion gate uses.
 
 ## 9. Forward qualification requirement
 
@@ -409,6 +542,11 @@ fpl-history --database data/fpl.sqlite3 evaluate-team-strength 2023-24 `
   --origin-start 1 --origin-end 38 `
   --output data/team-strength-evaluation-2023-24.json
 
+# Separate the team-strength change from the allocation change.
+fpl-history --database data/fpl.sqlite3 evaluate-allocation-variants 2023-24 `
+  --origin-start 2 --origin-end 38 --horizon 1 `
+  --output data/allocation-variants-2023-24.json
+
 # Compare the opening squads the two configurations pick.
 fpl-history --database data/fpl.sqlite3 compare-opening-squads 2023-24 `
   --first-label incumbent `
@@ -417,7 +555,12 @@ fpl-history --database data/fpl.sqlite3 compare-opening-squads 2023-24 `
   --second-config config/model_candidates/opponent-adjusted-team-strength-v1.json
 ```
 
-The adjustments file is a JSON list of `ContextualAdjustment` fields:
+Every command defaults `--rules` to `config/seasons/<season>.json`. Passing another
+season's rules is rejected by the regret evaluators, and silently changes the
+scoring rules everywhere else — so leave it alone unless you mean it.
+
+The adjustments file is a JSON list of `ContextualAdjustment` fields. Every field
+below except `effective_to_gameweek` is required; construction fails without them.
 
 ```json
 [
@@ -429,7 +572,13 @@ The adjustments file is a JSON list of `ContextualAdjustment` fields:
     "effective_to_gameweek": 18,
     "rationale": "First-choice striker out until December; club statement 3 Sep.",
     "source": "club statement",
-    "confidence": "high"
+    "confidence": "high",
+    "reviewed_at": "2026-09-03T14:20:00+00:00",
+    "reviewed_by": "p.edwards"
   }
 ]
 ```
+
+To register a candidate whose adjustments are part of its preregistration, put the
+same list inside the declaration's `contextual_adjustments` array rather than
+passing it at the command line — only what is in the declaration is hashed.

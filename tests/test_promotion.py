@@ -638,7 +638,7 @@ def test_candidate_run_pair_rejects_mismatched_season_rules(tmp_path) -> None:
 
 def test_declared_configuration_drift_fails_before_a_run_is_spent() -> None:
     unknown_field = {**asdict(PRESEASON_V5_MODEL_CONFIG), "invented_option": 1}
-    with pytest.raises(ValueError, match="does not match ProjectionModelConfig"):
+    with pytest.raises(ValueError, match="does not rebuild"):
         declared_challenger_config(
             {"candidate_key": "drifted", "model_config": unknown_field}
         )

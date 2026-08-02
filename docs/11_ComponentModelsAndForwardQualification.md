@@ -28,6 +28,28 @@ results and remaining uncertainties are in `12_TeamStrengthModel.md`. It superse
 adjustment, a preseason prior, squad continuity and auditable contextual adjustments.
 Registering it should replace, not accompany, a further `team-share-xg-v1` run.
 
+### What a declaration now contains
+
+`ProjectionModelConfig` alone stopped being a complete model specification when team
+strength grew its own constants and a contextual-adjustment manifest. Both were
+previously supplied at runtime from code defaults, so a registered candidate's
+SHA-256 could stay identical while an edit to a default changed every forecast it
+produced — preregistration in name only.
+
+`ModelDeclaration` (`src/fpl_engine/declaration.py`) is now the hashed unit and
+carries the projection config, the team-strength settings and the adjustment
+manifest together. `register_forward_candidate`, `capture_gameweek_forecasts`,
+`run_forward_candidate_pair` and `ProjectionBacktester` all carry all three through,
+so a capture is the declared model rather than a truncation of it.
+
+Contextual adjustments now require `reviewed_at` (timezone-aware) and `reviewed_by`,
+and `ModelDeclaration.adjustments_before(cutoff)` makes "this judgement predates the
+deadline it is scored against" checkable rather than assumed.
+
+**The three registered candidates keep their digests.** A declaration carrying
+nothing beyond the projection config serialises to the bare config dictionary, which
+is exactly what was hashed before, and a test pins that.
+
 The first valid GW1 candidate projection runs were generated from ingestion run 6:
 projection runs 1 (playing time), 2 (share xG) and 3 (defensive contributions), each with
 4,512 player-Gameweek rows across the eight-Gameweek horizon.

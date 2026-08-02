@@ -1,9 +1,9 @@
 {
   "cross_valuation": {
-    "incumbent_squad_under_incumbent": 364.67,
-    "incumbent_squad_under_opponent-adjusted": 348.548,
-    "opponent-adjusted_squad_under_incumbent": 360.447,
-    "opponent-adjusted_squad_under_opponent-adjusted": 354.976
+    "incumbent_squad_under_incumbent": 364.668,
+    "incumbent_squad_under_opponent-adjusted": 347.484,
+    "opponent-adjusted_squad_under_incumbent": 360.686,
+    "opponent-adjusted_squad_under_opponent-adjusted": 353.308
   },
   "gameweek": 1,
   "horizon_gameweeks": 8,
@@ -24,14 +24,14 @@
     "103",
     "19",
     "281",
+    "283",
     "490",
-    "51",
     "533"
   ],
   "season_code": "2023-24",
   "self_minus_other": {
-    "incumbent": 4.223,
-    "opponent-adjusted": 6.428
+    "incumbent": 3.982,
+    "opponent-adjusted": 5.824
   },
   "sensitivity": {
     "core_player_ids": [
@@ -43,10 +43,10 @@
       "19",
       "228",
       "281",
+      "283",
       "308",
       "355",
       "490",
-      "51",
       "526",
       "533",
       "569"
@@ -61,7 +61,7 @@
     "incumbent": {
       "captain_id": "308",
       "gameweek": 1,
-      "horizon_expected_points": 364.67,
+      "horizon_expected_points": 364.668,
       "horizon_gameweeks": 8,
       "label": "incumbent",
       "players": [
@@ -193,7 +193,7 @@
     "opponent-adjusted": {
       "captain_id": "355",
       "gameweek": 1,
-      "horizon_expected_points": 354.976,
+      "horizon_expected_points": 353.308,
       "horizon_gameweeks": 8,
       "label": "opponent-adjusted",
       "players": [
@@ -305,9 +305,9 @@
           "position": "DEF",
           "price_tenths": 45,
           "role": "bench2",
-          "source_player_id": "51",
-          "team_short_name": "AVL",
-          "web_name": "Mings"
+          "source_player_id": "283",
+          "team_short_name": "FUL",
+          "web_name": "Robinson"
         },
         {
           "position": "FWD",

@@ -431,9 +431,12 @@ class RatesProjectionModel:
         self.rules = rules
         self.config = config
         self.model_version = model_version
+        # The projection config owns every constant the two share, so a
+        # declared team-strength setting can never disagree with the venue
+        # multipliers and bounds the rest of the projection uses.
         self.team_strength_settings = (
             team_strength_settings or TeamStrengthSettings()
-        )
+        ).for_projection_config(config)
         self.team_strength_adjustments = team_strength_adjustments
         self._last_team_strength_state: TeamStrengthState | None = None
 
@@ -1164,6 +1167,106 @@ class RatesProjectionModel:
             previous_league_average,
         )
 
+    def fixture_lambdas(
+        self,
+        strengths: dict[str, dict[str, float]],
+        *,
+        team_id: str,
+        opponent_id: str,
+        is_home: bool,
+    ) -> tuple[float, float, float]:
+        """Expected goals for and against in one fixture.
+
+        The single place a team rating becomes a goal expectation. Every
+        consumer goes through it — the player projection, the squad simulator
+        and the historical evaluation — so a model cannot be scored under
+        venue constants the live forecast does not use. Returns the scoring
+        factor, the team's expected goals and the opponent's.
+        """
+
+        team = strengths[team_id]
+        opponent = strengths[opponent_id]
+        league_average = float(team["league_average_goals"])
+        attack_venue = (
+            self.config.home_attack_multiplier
+            if is_home
+            else self.config.away_attack_multiplier
+        )
+        defence_venue = (
+            self.config.away_attack_multiplier
+            if is_home
+            else self.config.home_attack_multiplier
+        )
+        scoring_factor = (
+            float(team["attack"]) * float(opponent["defence"]) * attack_venue
+        )
+        return (
+            scoring_factor,
+            league_average * scoring_factor,
+            league_average
+            * float(opponent["attack"])
+            * float(team["defence"])
+            * defence_venue,
+        )
+
+    def fixture_expected_goals(
+        self,
+        *,
+        season_code: str,
+        gameweek_number: int,
+        team_overrides: tuple[TeamStrengthOverride, ...] = (),
+        as_of: datetime | None = None,
+        maximum_ingestion_run_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Every fixture in a Gameweek, with the goals this model expects.
+
+        The public entry point the historical evaluation uses, so what is
+        scored is what a projection at that origin would actually have used.
+        """
+
+        strengths = self._team_strengths(
+            season_code,
+            gameweek_number,
+            team_overrides,
+            as_of=as_of,
+            maximum_ingestion_run_id=maximum_ingestion_run_id,
+        )
+        rows = self.database.connection.execute(
+            """
+            SELECT fixtures.id AS fixture_id,
+                   fixtures.home_team_id, fixtures.away_team_id,
+                   fixtures.home_score, fixtures.away_score
+            FROM fixtures
+            JOIN seasons ON seasons.id = fixtures.season_id
+            JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+            WHERE seasons.code = ? AND gameweeks.number = ?
+            ORDER BY fixtures.id
+            """,
+            (season_code, gameweek_number),
+        ).fetchall()
+        fixtures = []
+        for row in rows:
+            home = str(row["home_team_id"])
+            away = str(row["away_team_id"])
+            if home not in strengths or away not in strengths:
+                continue
+            _, home_lambda, away_lambda = self.fixture_lambdas(
+                strengths, team_id=home, opponent_id=away, is_home=True
+            )
+            fixtures.append(
+                {
+                    "fixture_id": int(row["fixture_id"]),
+                    "gameweek_number": gameweek_number,
+                    "home_team_id": home,
+                    "away_team_id": away,
+                    "home_expected_goals": home_lambda,
+                    "away_expected_goals": away_lambda,
+                    "home_score": row["home_score"],
+                    "away_score": row["away_score"],
+                }
+            )
+        return fixtures
+
     def _opponent_adjusted_team_strengths(
         self,
         season_code: str,
@@ -1197,16 +1300,11 @@ class RatesProjectionModel:
         self._last_team_strength_state = state
         result: dict[str, dict[str, float]] = {
             team_id: {
-                "attack": _clamp(
-                    team.attack,
-                    self.config.minimum_team_multiplier,
-                    self.config.maximum_team_multiplier,
-                ),
-                "defence": _clamp(
-                    team.defence,
-                    self.config.minimum_team_multiplier,
-                    self.config.maximum_team_multiplier,
-                ),
+                # Already clamped inside the estimator, against the same bounds
+                # this config declares. Clamping again here would be harmless
+                # but would hide a divergence rather than surface one.
+                "attack": team.attack,
+                "defence": team.defence,
                 "matches": team.matches_observed,
                 "league_average_goals": state.league_average_goals,
                 "assist_per_goal": state.assist_per_goal,
@@ -1792,25 +1890,11 @@ class RatesProjectionModel:
                 is_home = player["team_id"] == fixture["home_team_id"]
                 opponent_id = str(fixture["away_team_id"] if is_home else fixture["home_team_id"])
                 team_strength = strengths[str(player["team_id"])]
-                opponent_strength = strengths[opponent_id]
-                venue_attack = (
-                    self.config.home_attack_multiplier
-                    if is_home
-                    else self.config.away_attack_multiplier
-                )
-                scoring_factor = (
-                    team_strength["attack"] * opponent_strength["defence"] * venue_attack
-                )
-                team_lambda = team_strength["league_average_goals"] * scoring_factor
-                opponent_lambda = (
-                    team_strength["league_average_goals"]
-                    * opponent_strength["attack"]
-                    * team_strength["defence"]
-                    * (
-                        self.config.away_attack_multiplier
-                        if is_home
-                        else self.config.home_attack_multiplier
-                    )
+                scoring_factor, team_lambda, opponent_lambda = self.fixture_lambdas(
+                    strengths,
+                    team_id=str(player["team_id"]),
+                    opponent_id=opponent_id,
+                    is_home=is_home,
                 )
                 latent["team_expected_goals"] += team_lambda
                 latent["opponent_expected_goals"] += opponent_lambda

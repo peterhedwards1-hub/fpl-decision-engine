@@ -9,11 +9,13 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..allocation_variants import evaluate_allocation_variants
 from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..capture import capture_gameweek_forecasts
 from ..chip_state import LookaheadChipPolicy, ScoringChipPolicy
 from ..config import load_season_rules
+from ..declaration import ModelDeclaration
 from ..diagnostics import (
     SUPPORTED_BASELINES,
     build_stage_one_diagnostics,
@@ -60,6 +62,20 @@ from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
 from .records import IngestionSource, SeasonRecord
 from .vaastav import VaastavAdapter, VaastavClient
+
+
+def _load_declaration(path: str) -> ModelDeclaration:
+    """Read a candidate file in either the declaration or the legacy shape."""
+
+    return ModelDeclaration.from_dict(
+        json.loads(Path(path).read_text(encoding="utf-8"))
+    )
+
+
+def _load_config(path: str) -> ProjectionModelConfig:
+    """The projection config from a candidate file, for callers needing only it."""
+
+    return _load_declaration(path).model_config
 
 
 def main() -> None:
@@ -654,6 +670,25 @@ def main() -> None:
     strength_evaluation_parser.add_argument("--origin-end", type=int, default=38)
     strength_evaluation_parser.add_argument("--rules")
     strength_evaluation_parser.add_argument("--output")
+    variants_parser = subparsers.add_parser(
+        "evaluate-allocation-variants",
+        help=(
+            "Separate the team-strength change from the allocation change "
+            "across four controlled variants"
+        ),
+    )
+    variants_parser.add_argument("season_code")
+    variants_parser.add_argument("--origin-start", type=int, default=2)
+    variants_parser.add_argument("--origin-end", type=int, default=38)
+    variants_parser.add_argument("--horizon", type=int, default=1)
+    variants_parser.add_argument("--max-transfers-per-week", type=int, default=1)
+    variants_parser.add_argument(
+        "--skip-transfer-regret",
+        action="store_true",
+        help="Transfer regret solves a MILP per Gameweek and dominates runtime",
+    )
+    variants_parser.add_argument("--rules")
+    variants_parser.add_argument("--output")
 
     args = parser.parse_args()
     database_path = Path(args.database)
@@ -747,9 +782,7 @@ def main() -> None:
             base_config = (
                 PRESEASON_V5_MODEL_CONFIG
                 if args.base_config is None
-                else ProjectionModelConfig(
-                    **json.loads(Path(args.base_config).read_text(encoding="utf-8"))
-                )
+                else _load_config(args.base_config)
             )
             profile = profile_preseason_prior(
                 database,
@@ -809,6 +842,25 @@ def main() -> None:
             print(json.dumps(evaluation, indent=2))
             return
 
+        if args.command == "evaluate-allocation-variants":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            variants = evaluate_allocation_variants(
+                database,
+                rules,
+                season_code=args.season_code,
+                origin_gameweek_start=args.origin_start,
+                origin_gameweek_end=args.origin_end,
+                horizon_gameweeks=args.horizon,
+                max_transfers_per_week=args.max_transfers_per_week,
+                include_transfer_regret=not args.skip_transfer_regret,
+            )
+            if args.output:
+                write_json_report(variants, args.output)
+            print(json.dumps(variants, indent=2))
+            return
+
         if args.command == "compare-opening-squads":
             rules = load_season_rules(
                 Path(args.rules or f"config/seasons/{args.season_code}.json")
@@ -817,16 +869,8 @@ def main() -> None:
                 database,
                 rules,
                 {
-                    args.first_label: ProjectionModelConfig(
-                        **json.loads(
-                            Path(args.first_config).read_text(encoding="utf-8")
-                        )
-                    ),
-                    args.second_label: ProjectionModelConfig(
-                        **json.loads(
-                            Path(args.second_config).read_text(encoding="utf-8")
-                        )
-                    ),
+                    args.first_label: _load_config(args.first_config),
+                    args.second_label: _load_config(args.second_config),
                 },
                 season_code=args.season_code,
                 gameweek=args.gameweek,
@@ -1000,11 +1044,7 @@ def main() -> None:
             incumbent_config = (
                 DEFAULT_MODEL_CONFIG
                 if args.incumbent_config is None
-                else ProjectionModelConfig(
-                    **json.loads(
-                        Path(args.incumbent_config).read_text(encoding="utf-8")
-                    )
-                )
+                else _load_config(args.incumbent_config)
             )
             capture = capture_gameweek_forecasts(
                 database,
@@ -1113,14 +1153,16 @@ def main() -> None:
                     or f"config/seasons/{season_code}.json"
                 )
             )
-            config = ProjectionModelConfig(
-                **json.loads(registration["model_config_json"])
+            declared = ModelDeclaration.from_dict(
+                json.loads(registration["model_config_json"])
             )
             result = RatesProjectionModel(
                 database,
                 rules,
-                config=config,
+                config=declared.model_config,
                 model_version=str(registration["model_version"]),
+                team_strength_settings=declared.team_strength_settings,
+                team_strength_adjustments=declared.contextual_adjustments,
             ).project(
                 season_code=season_code,
                 start_gameweek=args.start_gameweek,
@@ -1153,9 +1195,7 @@ def main() -> None:
             rules = load_season_rules(
                 Path(args.rules or f"config/seasons/{season_code}.json")
             )
-            incumbent_config = ProjectionModelConfig(
-                **json.loads(Path(args.incumbent_config).read_text(encoding="utf-8"))
-            )
+            incumbent_config = _load_config(args.incumbent_config)
             pair = run_forward_candidate_pair(
                 database,
                 rules,

@@ -36,6 +36,8 @@ from fpl_engine.projections import (
     RatesProjectionModel,
 )
 from fpl_engine.team_strength import (
+    MAXIMUM_RATING_SWEEPS,
+    RATING_TOLERANCE,
     ContextualAdjustment,
     TeamStrengthSettings,
     estimate_team_strength,
@@ -654,6 +656,131 @@ def test_continuity_survives_the_source_renumbering_its_players(
         assert team.squad_continuity.retained_minutes_share == pytest.approx(1.0)
 
 
+def test_the_solver_converges_on_a_sparse_opening_schedule(tmp_path) -> None:
+    """One Gameweek is four disconnected pairs, and that is the hard case.
+
+    Within an isolated pair, attack can be scaled up and defence down without
+    limit — the ratings are not identified — so an unridged fixed point
+    diverges. A fixed sweep count hides that by returning whatever the last
+    sweep produced. Every origin must converge, and say that it did.
+    """
+
+    goals = _strong_weak_goals({1, 2, 3, 4}, {5, 6, 7, 8})
+    database = HistoricalDatabase(tmp_path / "fpl.sqlite3")
+    database.__enter__()
+    try:
+        database.initialise()
+        database.ingest_bundle(_source(), _league("2026-27", goals=goals))
+        states = {
+            origin: estimate_team_strength(
+                database, season_code="2026-27", gameweek_number=origin
+            )
+            for origin in (2, 3, 4, 8)
+        }
+    finally:
+        database.__exit__(None, None, None)
+
+    for origin, state in states.items():
+        current = [
+            entry for entry in state.solver if entry.label == "current_season"
+        ]
+        assert current, f"origin {origin} reported no current-season solve"
+        for entry in current:
+            assert entry.converged, (
+                f"origin {origin} did not converge: moved "
+                f"{entry.maximum_change} after {entry.iterations} sweeps"
+            )
+            assert entry.iterations < MAXIMUM_RATING_SWEEPS
+            assert entry.maximum_change <= RATING_TOLERANCE
+        assert not any(
+            "did not converge" in line for line in state.limitations
+        )
+
+
+def test_non_convergence_is_reported_rather_than_absorbed(tmp_path) -> None:
+    goals = _strong_weak_goals({1, 2, 3, 4}, {5, 6, 7, 8})
+    database = HistoricalDatabase(tmp_path / "fpl.sqlite3")
+    database.__enter__()
+    try:
+        database.initialise()
+        database.ingest_bundle(_source(), _league("2026-27", goals=goals))
+        # Remove the ridge that makes the map a contraction, and the sparse
+        # opening schedule stops being identifiable.
+        unridged = estimate_team_strength(
+            database,
+            season_code="2026-27",
+            gameweek_number=3,
+            settings=TeamStrengthSettings(solver_prior_matches=0.0),
+        )
+        ridged = estimate_team_strength(
+            database, season_code="2026-27", gameweek_number=3
+        )
+    finally:
+        database.__exit__(None, None, None)
+
+    diverged = next(
+        entry for entry in unridged.solver if entry.label == "current_season"
+    )
+    assert not diverged.converged
+    assert diverged.iterations == MAXIMUM_RATING_SWEEPS
+    assert diverged.maximum_change > RATING_TOLERANCE
+    assert any("did not converge" in line for line in unridged.limitations)
+    assert any("weakly determined" in line for line in unridged.limitations)
+    # The ridge is what fixes it, and the fixed case says nothing.
+    settled = next(
+        entry for entry in ridged.solver if entry.label == "current_season"
+    )
+    assert settled.converged
+    assert not any("did not converge" in line for line in ridged.limitations)
+
+
+def test_coverage_is_reported_by_club_and_by_venue_side(tmp_path) -> None:
+    """A feed can clear the league bar while omitting one club entirely."""
+
+    goals = _strong_weak_goals({1, 2, 3, 4}, {5, 6, 7, 8})
+    database = HistoricalDatabase(tmp_path / "fpl.sqlite3")
+    database.__enter__()
+    try:
+        database.initialise()
+        database.ingest_bundle(_source(), _league("2026-27", goals=goals))
+        # Thin club 1's expected goals only. One club in eight cannot pull the
+        # league below the threshold on its own, which is exactly the case the
+        # league-level check cannot see.
+        database.connection.execute(
+            """
+            UPDATE player_fixture_stats SET expected_goals = expected_goals * 0.4
+            WHERE player_season_id IN (
+                SELECT ps.id FROM player_seasons ps
+                JOIN teams t ON t.id = ps.team_id
+                JOIN seasons s ON s.id = ps.season_id
+                WHERE s.code = '2026-27' AND t.name = 'Club 1'
+            )
+            """
+        )
+        database.connection.commit()
+        state = estimate_team_strength(
+            database, season_code="2026-27", gameweek_number=8
+        )
+    finally:
+        database.__exit__(None, None, None)
+
+    coverage = state.coverage["current_season"]
+    # The league is still above the bar, so the model still rates on xG...
+    assert coverage.usable
+    assert coverage.league_ratio >= 0.80
+    # ...but the club with no rows is named rather than silently rated as
+    # having created nothing.
+    thin = {
+        state.teams[team_id].name
+        for team_id in coverage.thin_teams
+        if team_id in state.teams
+    }
+    assert "Club 1" in thin
+    assert any("thinner feed" in line for line in state.limitations)
+    assert coverage.by_team
+    assert coverage.home_ratio >= 0.0 and coverage.away_ratio >= 0.0
+
+
 def test_an_unlinkable_squad_reports_ignorance_not_a_league_wide_rebuild(
     tmp_path,
 ) -> None:
@@ -783,6 +910,8 @@ def _adjustment(**kwargs) -> ContextualAdjustment:
         "rationale": "First-choice striker out until December, reviewed 1 Aug.",
         "source": "club statement",
         "confidence": "high",
+        "reviewed_at": "2026-08-01T09:00:00+00:00",
+        "reviewed_by": "p.edwards",
     }
     return ContextualAdjustment(**{**defaults, **kwargs})
 
@@ -849,7 +978,7 @@ def test_every_adjustment_is_persisted_and_reported(tmp_path) -> None:
     )
 
 
-def test_an_adjustment_without_a_rationale_is_refused() -> None:
+def test_an_adjustment_must_be_explained_attributed_and_bounded() -> None:
     with pytest.raises(ValueError, match="needs a rationale"):
         ContextualAdjustment(
             source_team_id="1", category="manager_change", attack_multiplier=1.1
@@ -858,6 +987,18 @@ def test_an_adjustment_without_a_rationale_is_refused() -> None:
         _adjustment(attack_multiplier=2.5)
     with pytest.raises(ValueError, match="cannot expire before it begins"):
         _adjustment(effective_from_gameweek=8, effective_to_gameweek=3)
+    # An adjustment carries a judgement no data supports, so a later reader has
+    # to be able to find out who made it and when.
+    with pytest.raises(ValueError, match="reviewer or process identity"):
+        _adjustment(reviewed_by="")
+    with pytest.raises(ValueError, match="review timestamp"):
+        _adjustment(reviewed_at="")
+    with pytest.raises(ValueError, match="unparseable review timestamp"):
+        _adjustment(reviewed_at="last Tuesday")
+    # Without a timezone the order against a deadline is ambiguous, which is
+    # exactly the thing preregistration has to be able to prove.
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _adjustment(reviewed_at="2026-08-01T09:00:00")
 
 
 # --------------------------------------------------------------------------
@@ -1065,6 +1206,112 @@ def test_clean_sheets_and_concessions_use_one_opponent_goal_expectation(
 # --------------------------------------------------------------------------
 # 15. Existing configurations keep working.
 # --------------------------------------------------------------------------
+
+
+def test_shared_constants_have_exactly_one_source_of_truth() -> None:
+    """The projection config owns every constant the two objects share.
+
+    A second copy inside TeamStrengthSettings would let the historical
+    evaluation score a model the live forecast never runs. The away factor is
+    where that bites: the declared default is 0.92 and the candidate's tuned
+    value is 0.851, eight per cent apart.
+    """
+
+    declared = TeamStrengthSettings()
+    config = OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_CONFIG
+    # The raw defaults genuinely disagree, so this is not a vacuous check.
+    assert declared.away_factor != config.away_attack_multiplier
+
+    model = RatesProjectionModel(None, RULES, config=config)
+    for name, source in TeamStrengthSettings.SHARED_WITH_PROJECTION_CONFIG:
+        assert getattr(model.team_strength_settings, name) == getattr(
+            config, source
+        ), f"{name} does not follow {source}"
+
+    # Supplying settings explicitly must not reintroduce the divergence.
+    override = RatesProjectionModel(
+        None,
+        RULES,
+        config=config,
+        team_strength_settings=TeamStrengthSettings(
+            home_factor=1.5, away_factor=0.5, prior_matches_intact_squad=20.0
+        ),
+    )
+    assert override.team_strength_settings.home_factor == (
+        config.home_attack_multiplier
+    )
+    assert override.team_strength_settings.away_factor == (
+        config.away_attack_multiplier
+    )
+    # Settings that are genuinely the estimator's own still come through.
+    assert override.team_strength_settings.prior_matches_intact_squad == 20.0
+
+
+def test_the_evaluated_fixture_lambda_is_the_projected_one(tmp_path) -> None:
+    """What the evaluation scores must be what a projection would have used.
+
+    Recreating the fixture expectation inside the evaluator with a parallel
+    copy of the venue constants would produce a team-goal RMSE for a model
+    that never runs. This pins the two together at the value, not the method.
+    """
+
+    database = _two_season_database(tmp_path)
+    try:
+        database.ingest_bundle(
+            _source("second"),
+            _league(
+                "2026-27",
+                goals=_strong_weak_goals({1, 2, 3, 4}, {5, 6, 7, 8}),
+            ),
+        )
+        for config in (
+            OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_CONFIG,
+            CORRECTED_V4_MODEL_CONFIG,
+        ):
+            model = RatesProjectionModel(database, RULES, config=config)
+            evaluated = model.fixture_expected_goals(
+                season_code="2026-27", gameweek_number=4
+            )
+            assert evaluated
+            projected = model.project(
+                season_code="2026-27",
+                start_gameweek=4,
+                horizon_gameweeks=1,
+                generated_at=datetime(2026, 9, 1, tzinfo=UTC),
+                persist=False,
+            )
+            # A player's latent team expectation sums their fixtures in the
+            # Gameweek; every club here plays exactly once.
+            by_team: dict[str, float] = {}
+            for entry in projected.projections:
+                assert entry.latent_expectations is not None
+                by_team.setdefault(
+                    entry.team_short_name,
+                    entry.latent_expectations["team_expected_goals"],
+                )
+            short_names = {
+                str(row["id"]): str(row["short_name"])
+                for row in database.connection.execute(
+                    """
+                    SELECT teams.id, teams.short_name
+                    FROM teams JOIN seasons ON seasons.id = teams.season_id
+                    WHERE seasons.code = '2026-27'
+                    """
+                )
+            }
+            for fixture in evaluated:
+                for team_id, expected in (
+                    (fixture["home_team_id"], fixture["home_expected_goals"]),
+                    (fixture["away_team_id"], fixture["away_expected_goals"]),
+                ):
+                    # The projection rounds its latent record to eight
+                    # decimals; that is the only permitted difference. A venue
+                    # constant out of step would show up around 0.2 goals.
+                    assert by_team[short_names[team_id]] == pytest.approx(
+                        expected, abs=5e-9
+                    ), f"{config.team_strength_model} disagrees for {team_id}"
+    finally:
+        database.__exit__(None, None, None)
 
 
 def test_existing_configurations_and_reproduction_are_unaffected(

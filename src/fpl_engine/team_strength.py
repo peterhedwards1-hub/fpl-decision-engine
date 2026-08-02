@@ -38,16 +38,20 @@ approximate model is worth more than an opaque unidentifiable one.
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from .history.database import HistoricalDatabase
 
-#: Fixed-point sweeps used to solve the attack/defence ratings. The system is
-#: small and well behaved; five sweeps move the ratings by less than a
-#: thousandth of a goal on a full season.
-RATING_SWEEPS = 5
+#: The fixed point is iterated until the largest rating moves by less than this,
+#: or until the sweep cap is hit. A fixed sweep count would be wrong in the case
+#: that matters most: a full season converges in a handful of sweeps, but the
+#: sparse, barely-connected schedule of the opening Gameweeks is the hard case
+#: and the one every preseason decision depends on. Whether convergence was
+#: actually reached is reported rather than assumed.
+RATING_TOLERANCE = 1e-6
+MAXIMUM_RATING_SWEEPS = 200
 
 #: Bounds on any single contextual adjustment. A reviewed note may move a club
 #: meaningfully but must never be able to invent a different team.
@@ -74,6 +78,13 @@ class ContextualAdjustment:
     rationale: str = ""
     source: str = ""
     confidence: str = "medium"
+    #: When the adjustment was reviewed, and by whom or by what process. Both
+    #: are required. An adjustment carries a judgement that no data supports,
+    #: so a later reader has to be able to find out who made it and when — and
+    #: a candidate declaration has to be able to prove the judgement predates
+    #: the outcome it is scored against.
+    reviewed_at: str = ""
+    reviewed_by: str = ""
 
     def __post_init__(self) -> None:
         if not self.category.strip():
@@ -82,6 +93,27 @@ class ContextualAdjustment:
             raise ValueError(
                 f"Adjustment {self.category!r} needs a rationale; an "
                 "unexplained adjustment cannot be reviewed"
+            )
+        if not self.reviewed_by.strip():
+            raise ValueError(
+                f"Adjustment {self.category!r} needs a reviewer or process "
+                "identity; an anonymous adjustment cannot be audited"
+            )
+        if not self.reviewed_at.strip():
+            raise ValueError(
+                f"Adjustment {self.category!r} needs a review timestamp"
+            )
+        try:
+            stamp = datetime.fromisoformat(self.reviewed_at)
+        except ValueError as error:
+            raise ValueError(
+                f"Adjustment {self.category!r} has an unparseable review "
+                f"timestamp {self.reviewed_at!r}"
+            ) from error
+        if stamp.tzinfo is None:
+            raise ValueError(
+                f"Adjustment {self.category!r} needs a timezone-aware review "
+                "timestamp, so the order against a deadline is unambiguous"
             )
         for name, value in (
             ("attack", self.attack_multiplier),
@@ -279,14 +311,116 @@ class TeamStrengthSettings:
     uncertainty_half_life_matches: float = 10.0
     #: Extra uncertainty a fully rebuilt squad carries.
     rebuild_uncertainty: float = 0.15
+    #: Pseudo-matches of exactly average performance every club carries inside
+    #: the solve itself. Without this the fixed point does not converge on an
+    #: early-season schedule: after one Gameweek the fixture graph is ten
+    #: disconnected pairs, and within an isolated pair attack can be scaled up
+    #: and defence down without limit, so the iteration diverges. Ridging the
+    #: update makes the map a contraction on any schedule and stops a single
+    #: result from determining a rating. It fades as real matches accumulate.
+    solver_prior_matches: float = 3.0
     #: League-wide share of goals that carry an assist. Used only to split a
     #: team's goal expectation into goal and assist events; it is a league
     #: constant shrunk toward this prior, never a per-club rating.
     assist_per_goal_prior: float = 0.72
     assist_prior_matches: float = 20.0
 
+    #: Constants this class shares with `ProjectionModelConfig`. The projection
+    #: config owns them; `for_projection_config` copies them across so the two
+    #: cannot drift. They are fields here because the estimator needs them and
+    #: must not import the projection config.
+    SHARED_WITH_PROJECTION_CONFIG: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("home_factor", "home_attack_multiplier"),
+        ("away_factor", "away_attack_multiplier"),
+        ("minimum_multiplier", "minimum_team_multiplier"),
+        ("maximum_multiplier", "maximum_team_multiplier"),
+        ("assist_per_goal_prior", "team_assist_per_goal_prior"),
+        ("current_half_life_gameweeks", "team_form_half_life_gameweeks"),
+    )
+
+    def for_projection_config(self, config: Any) -> TeamStrengthSettings:
+        """Return these settings with the shared constants taken from `config`.
+
+        There must be exactly one home factor, one away factor, one pair of
+        multiplier bounds, one assist ratio and one form half-life in the
+        system. A second copy here would let the historical evaluation score a
+        model the live projection never runs — and the away factor is where
+        that bites, because 0.92 and 0.851 are eight per cent apart.
+        """
+
+        return replace(
+            self,
+            **{
+                name: getattr(config, source)
+                for name, source in self.SHARED_WITH_PROJECTION_CONFIG
+            },
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class SolverDiagnostics:
+    """Whether the fixed point actually settled, and how hard it was.
+
+    Reported because an unconverged rating is not a slightly wrong rating — an
+    early-season schedule where two halves of the division have not yet played
+    each other is only weakly identified, and the honest response is to say so
+    rather than to return whatever the fifth sweep happened to produce.
+    """
+
+    label: str
+    iterations: int
+    maximum_change: float
+    converged: bool
+    teams_at_bounds: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "iterations": self.iterations,
+            "maximum_change": round(self.maximum_change, 9),
+            "converged": self.converged,
+            "teams_at_bounds": list(self.teams_at_bounds),
+        }
+
+
+@dataclass(frozen=True)
+class ExpectedGoalCoverage:
+    """How complete the expected-goal feed is, league-wide and club by club.
+
+    A feed can be adequate in total while systematically omitting one club or
+    one side of certain fixtures, which would rate that club as having created
+    nothing. The league-level check decides whether to rate on expected goals
+    at all; this exposes where the gaps are so a reader can see why.
+    """
+
+    usable: bool
+    league_ratio: float
+    fixtures: int
+    fixtures_without_expected_rows: int
+    home_ratio: float
+    away_ratio: float
+    by_team: dict[str, float] = field(default_factory=dict)
+    thin_teams: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "usable": self.usable,
+            "league_ratio": round(self.league_ratio, 4),
+            "fixtures": self.fixtures,
+            "fixtures_without_expected_rows": (
+                self.fixtures_without_expected_rows
+            ),
+            "home_ratio": round(self.home_ratio, 4),
+            "away_ratio": round(self.away_ratio, 4),
+            "by_team": {
+                team_id: round(value, 4)
+                for team_id, value in sorted(self.by_team.items())
+            },
+            "thin_teams": list(self.thin_teams),
+        }
 
 
 @dataclass(frozen=True)
@@ -299,6 +433,8 @@ class TeamStrengthState:
     teams: dict[str, TeamStrength]
     settings: TeamStrengthSettings
     assist_per_goal: float = 0.72
+    solver: tuple[SolverDiagnostics, ...] = ()
+    coverage: dict[str, ExpectedGoalCoverage] = field(default_factory=dict)
     limitations: tuple[str, ...] = field(default_factory=tuple)
 
     def by_source_id(self) -> dict[str, TeamStrength]:
@@ -323,6 +459,11 @@ class TeamStrengthState:
             "league_average_goals": round(self.league_average_goals, 4),
             "assist_per_goal": round(self.assist_per_goal, 4),
             "settings": self.settings.as_dict(),
+            "solver": [entry.as_dict() for entry in self.solver],
+            "expected_goal_coverage": {
+                name: entry.as_dict()
+                for name, entry in sorted(self.coverage.items())
+            },
             "teams": [
                 {
                     **team.as_dict(),
@@ -371,6 +512,8 @@ def estimate_team_strength(
         prior_league_average,
         prior_source,
         previous_results,
+        prior_diagnostics,
+        prior_coverage,
     ) = _preseason_prior(
         database,
         season_code=season_code,
@@ -383,6 +526,8 @@ def estimate_team_strength(
         current_league_average,
         current_source,
         observed_results,
+        current_diagnostics,
+        current_coverage,
     ) = _current_season_ratings(
         database,
         season_code=season_code,
@@ -510,7 +655,37 @@ def estimate_team_strength(
         teams=result,
         settings=options,
         assist_per_goal=assist_per_goal,
-        limitations=_limitations(prior_source, current_source, bool(continuity)),
+        solver=tuple(
+            entry
+            for entry in (prior_diagnostics, current_diagnostics)
+            if entry is not None
+        ),
+        coverage={
+            name: entry
+            for name, entry in (
+                ("preseason_prior", prior_coverage),
+                ("current_season", current_coverage),
+            )
+            if entry is not None
+        },
+        limitations=_limitations(
+            prior_source,
+            current_source,
+            bool(continuity),
+            solver=tuple(
+                entry
+                for entry in (prior_diagnostics, current_diagnostics)
+                if entry is not None
+            ),
+            coverage={
+                name: entry
+                for name, entry in (
+                    ("preseason_prior", prior_coverage),
+                    ("current_season", current_coverage),
+                )
+                if entry is not None
+            },
+        ),
     )
 
 
@@ -670,7 +845,8 @@ def _solve_ratings(
     use_expected_goals: bool,
     half_life: float | None,
     reference_gameweek: int | None,
-) -> tuple[dict[str, dict[str, float]], float]:
+    label: str,
+) -> tuple[dict[str, dict[str, float]], float, SolverDiagnostics]:
     """Fixed-point solve of multiplicative attack and defence ratings.
 
     A club's attack is divided by the defences it actually faced, so identical
@@ -715,16 +891,26 @@ def _solve_ratings(
             float(result["home_score"]) + float(result["away_score"])
         ) * weight
         total_weight += 2.0 * weight
+    empty = SolverDiagnostics(
+        label=label,
+        iterations=0,
+        maximum_change=0.0,
+        converged=True,
+    )
     if not entries or total_weight <= 0:
-        return {}, 0.0
+        return {}, 0.0, empty
     # The units the fixed point is solved in: whatever series is being rated.
     league_average = total_goals / total_weight
     if league_average <= 0:
-        return {}, 0.0
+        return {}, 0.0, empty
     # The units the projection consumes: goals actually scored.
     goal_league_average = total_actual_goals / total_weight
 
-    for _ in range(RATING_SWEEPS):
+    sweeps = 0
+    movement = float("inf")
+    for _ in range(MAXIMUM_RATING_SWEEPS):
+        previous = {**attack, **{f"d{key}": value for key, value in defence.items()}}
+        sweeps += 1
         for_numerator: dict[str, float] = dict.fromkeys(team_ids, 0.0)
         for_denominator: dict[str, float] = dict.fromkeys(team_ids, 0.0)
         against_numerator: dict[str, float] = dict.fromkeys(team_ids, 0.0)
@@ -746,17 +932,36 @@ def _solve_ratings(
             against_denominator[away] += (
                 league_average * attack[home] * options.home_factor * weight
             )
+        # Each club carries `solver_prior_matches` pseudo-matches of exactly
+        # average performance, which appear identically in numerator and
+        # denominator and therefore pull an unconstrained rating toward 1.0
+        # rather than letting it run away. This is what makes the iteration
+        # converge on a sparse early schedule; see `solver_prior_matches`.
+        ridge = options.solver_prior_matches * league_average
         for team_id in team_ids:
             if for_denominator[team_id] > 0:
-                attack[team_id] = for_numerator[team_id] / for_denominator[team_id]
+                attack[team_id] = (for_numerator[team_id] + ridge) / (
+                    for_denominator[team_id] + ridge
+                )
             if against_denominator[team_id] > 0:
-                defence[team_id] = (
-                    against_numerator[team_id] / against_denominator[team_id]
+                defence[team_id] = (against_numerator[team_id] + ridge) / (
+                    against_denominator[team_id] + ridge
                 )
         # Renormalise so the average club sits at 1.0 and the ratings stay
         # interpretable as multipliers of the league average.
         attack = _normalise(attack)
         defence = _normalise(defence)
+        movement = max(
+            max(
+                abs(attack[team_id] - previous[team_id]) for team_id in team_ids
+            ),
+            max(
+                abs(defence[team_id] - previous[f"d{team_id}"])
+                for team_id in team_ids
+            ),
+        )
+        if movement <= RATING_TOLERANCE:
+            break
 
     # `weight` is decayed evidence, used for blending against the prior.
     # `matches` is a plain count, used for uncertainty and for regression, so a
@@ -781,6 +986,27 @@ def _solve_ratings(
             if weights[team_id] > 0
         },
         goal_league_average,
+        SolverDiagnostics(
+            label=label,
+            iterations=sweeps,
+            maximum_change=movement,
+            converged=movement <= RATING_TOLERANCE,
+            teams_at_bounds=tuple(
+                sorted(
+                    team_id
+                    for team_id in team_ids
+                    if weights[team_id] > 0
+                    and (
+                        not options.minimum_multiplier
+                        < attack[team_id]
+                        < options.maximum_multiplier
+                        or not options.minimum_multiplier
+                        < defence[team_id]
+                        < options.maximum_multiplier
+                    )
+                )
+            ),
+        ),
     )
 
 
@@ -791,7 +1017,14 @@ def _preseason_prior(
     previous_season: str | None,
     teams: dict[str, _Team],
     options: TeamStrengthSettings,
-) -> tuple[dict[str, dict[str, Any]], float | None, str, list[dict[str, Any]]]:
+) -> tuple[
+    dict[str, dict[str, Any]],
+    float | None,
+    str,
+    list[dict[str, Any]],
+    SolverDiagnostics | None,
+    ExpectedGoalCoverage | None,
+]:
     """Rate last season opponent-adjusted, then carry it across by club name."""
 
     if previous_season is None:
@@ -803,6 +1036,8 @@ def _preseason_prior(
             None,
             "none",
             [],
+            None,
+            None,
         )
     previous_teams = _load_teams(database, previous_season)
     results = _fixture_results(
@@ -821,15 +1056,19 @@ def _preseason_prior(
             None,
             "none",
             [],
+            None,
+            None,
         )
-    use_expected = _expected_goals_usable(results)
-    ratings, league_average = _solve_ratings(
+    coverage = _expected_goal_coverage(results)
+    use_expected = coverage.usable
+    ratings, league_average, diagnostics = _solve_ratings(
         results,
         list(previous_teams),
         options=options,
         use_expected_goals=use_expected,
         half_life=None,
         reference_gameweek=None,
+        label="preseason_prior",
     )
     # Regress toward the league mean before carrying anything forward: a
     # 38-match sample still contains a lot of noise at club level.
@@ -869,6 +1108,8 @@ def _preseason_prior(
         league_average,
         "expected_goals" if use_expected else "goals",
         results,
+        diagnostics,
+        coverage,
     )
 
 
@@ -884,22 +1125,73 @@ MINIMUM_EXPECTED_GOAL_COVERAGE = 0.80
 MINIMUM_LEAGUE_RETENTION = 0.10
 
 
-def _expected_goals_usable(results: list[dict[str, Any]]) -> bool:
-    """Whether the expected-goal rows are complete enough to rate on."""
+def _expected_goal_coverage(
+    results: list[dict[str, Any]],
+) -> ExpectedGoalCoverage:
+    """How complete the expected-goal feed is, and whether to rate on it.
+
+    The decision is league-wide and all-or-nothing on purpose. Mixing rated and
+    unrated clubs in one solve would be worse than falling back entirely: the
+    club with missing rows would be rated as having created nothing, and the
+    opponent adjustment would then propagate that fiction to everyone who
+    played them. Falling the whole league back to goals is a worse estimator
+    and an honest one.
+
+    Coverage is still measured per club and per venue side, because a feed can
+    clear the league threshold while omitting one club or one side entirely.
+    """
 
     expected_rows = sum(int(row["expected_rows"] or 0) for row in results)
-    if expected_rows <= 0:
-        return False
-    expected = sum(
-        float(row["home_xg"] or 0.0) + float(row["away_xg"] or 0.0)
-        for row in results
+    fixtures = len(results)
+    without_rows = sum(1 for row in results if not int(row["expected_rows"] or 0))
+    home_expected = sum(float(row["home_xg"] or 0.0) for row in results)
+    away_expected = sum(float(row["away_xg"] or 0.0) for row in results)
+    home_goals = sum(float(row["home_score"]) for row in results)
+    away_goals = sum(float(row["away_score"]) for row in results)
+    goals = home_goals + away_goals
+    expected = home_expected + away_expected
+
+    per_team_expected: dict[str, float] = {}
+    per_team_goals: dict[str, float] = {}
+    for row in results:
+        for team, value, scored in (
+            (str(row["home_team_id"]), row["home_xg"], row["home_score"]),
+            (str(row["away_team_id"]), row["away_xg"], row["away_score"]),
+        ):
+            per_team_expected[team] = per_team_expected.get(team, 0.0) + float(
+                value or 0.0
+            )
+            per_team_goals[team] = per_team_goals.get(team, 0.0) + float(scored)
+    by_team = {
+        team: (
+            per_team_expected[team] / per_team_goals[team]
+            if per_team_goals[team] > 0
+            else 1.0
+        )
+        for team in per_team_expected
+    }
+    league_ratio = expected / goals if goals > 0 else 0.0
+    usable = (
+        expected_rows > 0
+        and goals > 0
+        and league_ratio >= MINIMUM_EXPECTED_GOAL_COVERAGE
     )
-    goals = sum(
-        float(row["home_score"]) + float(row["away_score"]) for row in results
+    return ExpectedGoalCoverage(
+        usable=usable,
+        league_ratio=league_ratio,
+        fixtures=fixtures,
+        fixtures_without_expected_rows=without_rows,
+        home_ratio=home_expected / home_goals if home_goals > 0 else 0.0,
+        away_ratio=away_expected / away_goals if away_goals > 0 else 0.0,
+        by_team=by_team,
+        thin_teams=tuple(
+            sorted(
+                team
+                for team, ratio in by_team.items()
+                if ratio < MINIMUM_EXPECTED_GOAL_COVERAGE
+            )
+        ),
     )
-    if goals <= 0:
-        return False
-    return expected / goals >= MINIMUM_EXPECTED_GOAL_COVERAGE
 
 
 def _assist_per_goal(
@@ -937,7 +1229,14 @@ def _current_season_ratings(
     options: TeamStrengthSettings,
     as_of: datetime | None,
     maximum_ingestion_run_id: int | None,
-) -> tuple[dict[str, dict[str, float]], float | None, str, list[dict[str, Any]]]:
+) -> tuple[
+    dict[str, dict[str, float]],
+    float | None,
+    str,
+    list[dict[str, Any]],
+    SolverDiagnostics | None,
+    ExpectedGoalCoverage | None,
+]:
     results = _fixture_results(
         database,
         season_code=season_code,
@@ -946,21 +1245,25 @@ def _current_season_ratings(
         maximum_ingestion_run_id=maximum_ingestion_run_id,
     )
     if not results:
-        return {}, None, "none", []
-    use_expected = _expected_goals_usable(results)
-    ratings, league_average = _solve_ratings(
+        return {}, None, "none", [], None, None
+    coverage = _expected_goal_coverage(results)
+    use_expected = coverage.usable
+    ratings, league_average, diagnostics = _solve_ratings(
         results,
         list(teams),
         options=options,
         use_expected_goals=use_expected,
         half_life=options.current_half_life_gameweeks,
         reference_gameweek=gameweek_number,
+        label="current_season",
     )
     return (
         ratings,
         league_average,
         "expected_goals" if use_expected else "goals",
         results,
+        diagnostics,
+        coverage,
     )
 
 
@@ -1239,6 +1542,8 @@ def _limitations(
     prior_source: str,
     current_source: str,
     has_continuity: bool,
+    solver: tuple[SolverDiagnostics, ...] = (),
+    coverage: dict[str, ExpectedGoalCoverage] | None = None,
 ) -> tuple[str, ...]:
     limitations = [
         "Ratings are relative multipliers of the league average, not absolute "
@@ -1278,4 +1583,41 @@ def _limitations(
             "minutes and output. It cannot tell whether a signing is an "
             "improvement, and no transfer fee or reputation is read."
         )
+    for entry in solver:
+        if not entry.converged:
+            limitations.append(
+                f"The {entry.label} fixed point did not converge in "
+                f"{entry.iterations} sweeps; the largest rating was still "
+                f"moving by {entry.maximum_change:.2e}. The schedule at this "
+                "origin is too sparse or too disconnected to identify the "
+                "ratings, so treat them as weakly determined."
+            )
+        if entry.teams_at_bounds:
+            limitations.append(
+                f"The {entry.label} solve left "
+                f"{len(entry.teams_at_bounds)} club(s) pressed against the "
+                "multiplier bounds, so their ratings are censored by the "
+                "clamp rather than determined by their results."
+            )
+    for name, entry in sorted((coverage or {}).items()):
+        if entry.thin_teams and entry.usable:
+            limitations.append(
+                f"The {name} expected-goal feed clears the league threshold "
+                f"but covers less than "
+                f"{MINIMUM_EXPECTED_GOAL_COVERAGE:.0%} of the goals scored by "
+                f"{len(entry.thin_teams)} club(s). Those clubs are rated on a "
+                "thinner feed than the rest of the division."
+            )
+        if entry.fixtures_without_expected_rows:
+            limitations.append(
+                f"The {name} feed has no expected-goal rows at all for "
+                f"{entry.fixtures_without_expected_rows} of {entry.fixtures} "
+                "fixtures."
+            )
+        if entry.usable and abs(entry.home_ratio - entry.away_ratio) > 0.10:
+            limitations.append(
+                f"The {name} feed covers home and away goals unevenly "
+                f"({entry.home_ratio:.2f} against {entry.away_ratio:.2f}), "
+                "which biases the venue split rather than any one club."
+            )
     return tuple(limitations)
