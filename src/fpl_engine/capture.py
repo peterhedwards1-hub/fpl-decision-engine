@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .config import SeasonRules
+from .declaration import ModelDeclaration
 from .history.database import HistoricalDatabase
 from .projections import (
     DEFAULT_MODEL_CONFIG,
@@ -58,7 +59,7 @@ def capture_gameweek_forecasts(
     forecast to take, so nothing is written.
     """
 
-    from .promotion import declared_challenger_config
+    from .promotion import declared_challenger_declaration
 
     season = database.connection.execute(
         "SELECT id FROM seasons WHERE code = ?", (season_code,)
@@ -117,17 +118,22 @@ def capture_gameweek_forecasts(
             (int(season["id"]),),
         )
     ]
-    plan: list[tuple[str, str, str, ProjectionModelConfig, str]] = [
+    incumbent = ModelDeclaration(model_config=incumbent_config)
+    plan: list[tuple[str, str, str, ModelDeclaration, str]] = [
         (
             "incumbent",
             incumbent_model_version,
             incumbent_model_version,
-            incumbent_config,
-            _config_digest(incumbent_config),
+            incumbent,
+            incumbent.digest(),
         )
     ]
     for declaration in declarations:
-        config = declared_challenger_config(
+        # The whole declared model, not only the projection config: team
+        # strength settings and the reviewed adjustment manifest also decide
+        # the forecast, so a capture built without them is not the candidate
+        # that was registered.
+        declared = declared_challenger_declaration(
             {
                 "candidate_key": declaration["candidate_key"],
                 "model_config": json.loads(declaration["model_config_json"]),
@@ -138,7 +144,7 @@ def capture_gameweek_forecasts(
                 "challenger",
                 str(declaration["candidate_key"]),
                 str(declaration["model_version"]),
-                config,
+                declared,
                 str(declaration["model_config_sha256"]),
             )
         )
@@ -150,12 +156,14 @@ def capture_gameweek_forecasts(
         )
 
     captured = []
-    for role, key, model_version, config, digest in plan:
+    for role, key, model_version, declared, digest in plan:
         result = RatesProjectionModel(
             database,
             rules,
-            config=config,
+            config=declared.model_config,
             model_version=model_version,
+            team_strength_settings=declared.team_strength_settings,
+            team_strength_adjustments=declared.contextual_adjustments,
         ).project(
             season_code=season_code,
             start_gameweek=gameweek,
@@ -229,10 +237,6 @@ def _pre_deadline_snapshot(
 
 
 def _config_digest(config: ProjectionModelConfig) -> str:
-    import hashlib
+    """Kept for callers holding a bare config; delegates to the declaration."""
 
-    return hashlib.sha256(
-        json.dumps(
-            asdict(config), sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-    ).hexdigest()
+    return ModelDeclaration(model_config=config).digest()

@@ -12,6 +12,7 @@ from typing import Any
 
 from .backtest import ProjectionBacktester
 from .config import SeasonRules
+from .declaration import ModelDeclaration
 from .evaluation import (
     evaluate_legal_squad_regret,
     evaluate_owned_captain_regret,
@@ -157,35 +158,47 @@ def load_forward_candidate(
     }
 
 
-def declared_challenger_config(declaration: dict[str, Any]) -> ProjectionModelConfig:
-    """Rebuild the declared configuration, refusing anything the gate would reject.
+def declared_challenger_declaration(
+    declaration: dict[str, Any],
+) -> ModelDeclaration:
+    """Rebuild the whole declared model, refusing anything the gate would reject.
 
-    `evaluate_forward_candidate` compares a run's persisted configuration to the
-    declaration key by key. A run built from a declaration that no longer
-    round-trips through `ProjectionModelConfig` can never qualify, so fail here
-    rather than after the backtest has been spent.
+    `evaluate_forward_candidate` compares a run's persisted configuration to
+    the declaration key by key. A declaration that no longer round-trips can
+    never qualify, so fail here rather than after the backtest has been spent.
+
+    This rebuilds the team-strength settings and the contextual-adjustment
+    manifest as well as the projection config, because those also decide the
+    forecast and are therefore also part of what was preregistered.
     """
 
     declared = declaration["model_config"]
     try:
-        config = ProjectionModelConfig(**declared)
-    except TypeError as error:
+        model = ModelDeclaration.from_dict(declared)
+    except (TypeError, ValueError) as error:
         raise ValueError(
-            f"Declared configuration for {declaration['candidate_key']!r} does not "
-            f"match ProjectionModelConfig: {error}"
+            f"Declared model for {declaration['candidate_key']!r} does not "
+            f"rebuild: {error}"
         ) from error
-    rebuilt = asdict(config)
+    rebuilt = model.as_dict()
     if rebuilt != declared:
         divergent = sorted(
             set(rebuilt) ^ set(declared)
             | {key for key in set(rebuilt) & set(declared) if rebuilt[key] != declared[key]}
         )
         raise ValueError(
-            "Declared configuration no longer round-trips through "
-            f"ProjectionModelConfig; the promotion gate would reject every run. "
-            f"Divergent fields: {', '.join(divergent)}"
+            "Declared model no longer round-trips; the promotion gate would "
+            f"reject every run. Divergent fields: {', '.join(divergent)}"
         )
-    return config
+    return model
+
+
+def declared_challenger_config(
+    declaration: dict[str, Any],
+) -> ProjectionModelConfig:
+    """The projection config alone, for callers that need only that."""
+
+    return declared_challenger_declaration(declaration).model_config
 
 
 def run_forward_candidate_pair(
@@ -218,7 +231,8 @@ def run_forward_candidate_pair(
         raise ValueError(
             "Incumbent and challenger runs must use different model versions"
         )
-    challenger_config = declared_challenger_config(declaration)
+    challenger = declared_challenger_declaration(declaration)
+    challenger_config = challenger.model_config
     if asdict(incumbent_config) == asdict(challenger_config):
         raise ValueError(
             "Incumbent control is identical to the declared candidate; the pair "
@@ -238,11 +252,13 @@ def run_forward_candidate_pair(
         config=incumbent_config,
         model_version=incumbent_model_version,
     ).run(**scope)
-    challenger = ProjectionBacktester(
+    challenger_run = ProjectionBacktester(
         database,
         rules,
         config=challenger_config,
         model_version=declaration["model_version"],
+        team_strength_settings=challenger.team_strength_settings,
+        team_strength_adjustments=challenger.contextual_adjustments,
     ).run(**scope)
     return ForwardCandidateRunPair(
         candidate_key=candidate_key,
@@ -253,7 +269,7 @@ def run_forward_candidate_pair(
         evidence_policy="pre_deadline_only",
         incumbent_run_id=incumbent.backtest_run_id,
         incumbent_model_version=incumbent_model_version,
-        challenger_run_id=challenger.backtest_run_id,
+        challenger_run_id=challenger_run.backtest_run_id,
         challenger_model_version=declaration["model_version"],
         model_config_sha256=declaration["model_config_sha256"],
     )

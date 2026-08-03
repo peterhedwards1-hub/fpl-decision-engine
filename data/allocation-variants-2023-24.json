@@ -1,0 +1,325 @@
+{
+  "contrasts": [
+    {
+      "control": "C_existing_strength_share_allocation",
+      "differences": {
+        "legal_squad_regret_mean": -0.2973,
+        "owned_captain_regret_mean": 0.5676,
+        "player_points_bias": -0.004,
+        "player_points_mae": -0.0035,
+        "player_points_rmse": -0.0099,
+        "top_100_bias": -0.019,
+        "top_100_mae": 0.0693,
+        "top_15_bias": -0.2422,
+        "top_15_mae": 0.0583,
+        "top_50_bias": -0.0407,
+        "top_50_mae": 0.0936,
+        "transfer_regret_continuous_policy_points": -68,
+        "transfer_regret_mean": 0.8056
+      },
+      "isolates": "The marginal contribution of opponent adjustment, with allocation held fixed at the coherent share route. This is the contrast that answers whether the team-strength model earns its place.",
+      "treatment": "D_opponent_adjusted_share_allocation"
+    },
+    {
+      "control": "A_existing_strength_rate_allocation",
+      "differences": {
+        "legal_squad_regret_mean": 2.6757,
+        "owned_captain_regret_mean": -0.3784,
+        "player_points_bias": 0.0285,
+        "player_points_mae": -0.0085,
+        "player_points_rmse": 0.0068,
+        "top_100_bias": 0.177,
+        "top_100_mae": -0.0804,
+        "top_15_bias": 0.5092,
+        "top_15_mae": -0.0873,
+        "top_50_bias": 0.1879,
+        "top_50_mae": -0.1327,
+        "transfer_regret_continuous_policy_points": 30,
+        "transfer_regret_mean": -0.3334
+      },
+      "isolates": "The marginal contribution of share allocation, with team strength held fixed.",
+      "treatment": "C_existing_strength_share_allocation"
+    },
+    {
+      "control": "A_existing_strength_rate_allocation",
+      "differences": {
+        "legal_squad_regret_mean": 2.3784,
+        "owned_captain_regret_mean": 0.1892,
+        "player_points_bias": 0.0245,
+        "player_points_mae": -0.012,
+        "player_points_rmse": -0.0031,
+        "top_100_bias": 0.158,
+        "top_100_mae": -0.0111,
+        "top_15_bias": 0.267,
+        "top_15_mae": -0.029,
+        "top_50_bias": 0.1472,
+        "top_50_mae": -0.0391,
+        "transfer_regret_continuous_policy_points": -38,
+        "transfer_regret_mean": 0.4722
+      },
+      "isolates": "The combined candidate against the production incumbent. Not attributable to either component on its own.",
+      "treatment": "D_opponent_adjusted_share_allocation"
+    },
+    {
+      "control": "A_existing_strength_rate_allocation",
+      "differences": {
+        "legal_squad_regret_mean": 0.2163,
+        "owned_captain_regret_mean": -0.1351,
+        "player_points_bias": 0.003,
+        "player_points_mae": -0.0039,
+        "player_points_rmse": -0.0042,
+        "top_100_bias": 0.0324,
+        "top_100_mae": 0.0144,
+        "top_15_bias": 0.0277,
+        "top_15_mae": 0.0525,
+        "top_50_bias": -0.0432,
+        "top_50_mae": 0.0013,
+        "transfer_regret_continuous_policy_points": 19,
+        "transfer_regret_mean": -1.1667
+      },
+      "isolates": "The cost of feeding a better team rating into the double-counting rate path. Expected to be worse, and reported so that claim rests on a measurement.",
+      "treatment": "B_opponent_adjusted_rate_allocation"
+    }
+  ],
+  "generated_at": "2026-08-02T12:26:23.032105+00:00",
+  "horizon_gameweeks": 1,
+  "limitations": [
+    "Variant B is structurally unsound and is reported so the claim rests on a measurement rather than an assertion. Do not read it as a candidate.",
+    "Player-points RMSE and bias are computed over every projected player-Gameweek; top-player calibration over the model's own highest-ranked players, which is the population a manager actually picks from.",
+    "Regret measures replay one squad forward under a single transfer policy. They are sensitive to that policy, so read the direction of a difference rather than its exact size.",
+    "Historical seasons are design evidence only. Forward 2026/27 captures are the qualification."
+  ],
+  "origin_gameweek_end": 38,
+  "origin_gameweek_start": 2,
+  "season_code": "2023-24",
+  "variants": {
+    "A_existing_strength_rate_allocation": {
+      "allocation": "player_rate",
+      "backtest_run_id": 255,
+      "configuration": {
+        "cold_start_prior": "position",
+        "scoring_event_source": "actual",
+        "team_strength_carry_forward": false,
+        "team_strength_model": "raw_goals"
+      },
+      "legal_squad_regret": {
+        "mean": 98.5405,
+        "origins": 37,
+        "realised_points": 2242.0
+      },
+      "note": "The production incumbent.",
+      "owned_captain_regret": {
+        "gameweeks": 37,
+        "mean": 5.8108,
+        "samples": 37,
+        "total": 215
+      },
+      "player_points": {
+        "bias": -0.0046,
+        "mae": 1.1364,
+        "observations": 28084,
+        "rmse": 2.1045
+      },
+      "sound": true,
+      "team_strength": "existing",
+      "top_player_calibration": {
+        "100": {
+          "bias": 0.2061,
+          "mae": 2.6115,
+          "observations": 3700,
+          "rmse": 3.6235
+        },
+        "15": {
+          "bias": 0.2307,
+          "mae": 3.3332,
+          "observations": 555,
+          "rmse": 4.3242
+        },
+        "50": {
+          "bias": 0.3172,
+          "mae": 2.9561,
+          "observations": 1850,
+          "rmse": 3.9913
+        }
+      },
+      "transfer_regret": {
+        "continuous_hindsight_points": 2942,
+        "continuous_policy_points": 2065,
+        "decisions": 36,
+        "mean": 25.4167,
+        "total": 915
+      }
+    },
+    "B_opponent_adjusted_rate_allocation": {
+      "allocation": "player_rate",
+      "backtest_run_id": 256,
+      "configuration": {
+        "cold_start_prior": "position",
+        "scoring_event_source": "actual",
+        "team_strength_carry_forward": false,
+        "team_strength_model": "opponent_adjusted"
+      },
+      "legal_squad_regret": {
+        "mean": 98.7568,
+        "origins": 37,
+        "realised_points": 2234.0
+      },
+      "note": "Structurally unsound: the rate path multiplies a club-influenced per-90 rate by club strength again, so a better team rating enlarges the double-count. Measured, not recommended.",
+      "owned_captain_regret": {
+        "gameweeks": 37,
+        "mean": 5.6757,
+        "samples": 37,
+        "total": 210
+      },
+      "player_points": {
+        "bias": -0.0016,
+        "mae": 1.1325,
+        "observations": 28084,
+        "rmse": 2.1003
+      },
+      "sound": false,
+      "team_strength": "opponent_adjusted",
+      "top_player_calibration": {
+        "100": {
+          "bias": 0.2385,
+          "mae": 2.6259,
+          "observations": 3700,
+          "rmse": 3.6301
+        },
+        "15": {
+          "bias": 0.2584,
+          "mae": 3.3857,
+          "observations": 555,
+          "rmse": 4.3861
+        },
+        "50": {
+          "bias": 0.274,
+          "mae": 2.9574,
+          "observations": 1850,
+          "rmse": 3.9653
+        }
+      },
+      "transfer_regret": {
+        "continuous_hindsight_points": 2902,
+        "continuous_policy_points": 2084,
+        "decisions": 36,
+        "mean": 24.25,
+        "total": 873
+      }
+    },
+    "C_existing_strength_share_allocation": {
+      "allocation": "team_share",
+      "backtest_run_id": 257,
+      "configuration": {
+        "cold_start_prior": "position_price",
+        "scoring_event_source": "team_share_expected",
+        "team_strength_carry_forward": false,
+        "team_strength_model": "raw_goals"
+      },
+      "legal_squad_regret": {
+        "mean": 101.2162,
+        "origins": 37,
+        "realised_points": 2143.0
+      },
+      "note": "The coherent allocation on the existing decayed expected-goal team strength, which has no opponent adjustment and no preseason prior. The control for D.",
+      "owned_captain_regret": {
+        "gameweeks": 37,
+        "mean": 5.4324,
+        "samples": 37,
+        "total": 201
+      },
+      "player_points": {
+        "bias": 0.0239,
+        "mae": 1.1279,
+        "observations": 28084,
+        "rmse": 2.1113
+      },
+      "sound": true,
+      "team_strength": "existing",
+      "top_player_calibration": {
+        "100": {
+          "bias": 0.3831,
+          "mae": 2.5311,
+          "observations": 3700,
+          "rmse": 3.6196
+        },
+        "15": {
+          "bias": 0.7399,
+          "mae": 3.2459,
+          "observations": 555,
+          "rmse": 4.3575
+        },
+        "50": {
+          "bias": 0.5051,
+          "mae": 2.8234,
+          "observations": 1850,
+          "rmse": 3.9245
+        }
+      },
+      "transfer_regret": {
+        "continuous_hindsight_points": 2958,
+        "continuous_policy_points": 2095,
+        "decisions": 36,
+        "mean": 25.0833,
+        "total": 903
+      }
+    },
+    "D_opponent_adjusted_share_allocation": {
+      "allocation": "team_share",
+      "backtest_run_id": 258,
+      "configuration": {
+        "cold_start_prior": "position_price",
+        "scoring_event_source": "team_share_expected",
+        "team_strength_carry_forward": false,
+        "team_strength_model": "opponent_adjusted"
+      },
+      "legal_squad_regret": {
+        "mean": 100.9189,
+        "origins": 37,
+        "realised_points": 2154.0
+      },
+      "note": "The candidate.",
+      "owned_captain_regret": {
+        "gameweeks": 37,
+        "mean": 6.0,
+        "samples": 37,
+        "total": 222
+      },
+      "player_points": {
+        "bias": 0.0199,
+        "mae": 1.1244,
+        "observations": 28084,
+        "rmse": 2.1014
+      },
+      "sound": true,
+      "team_strength": "opponent_adjusted",
+      "top_player_calibration": {
+        "100": {
+          "bias": 0.3641,
+          "mae": 2.6004,
+          "observations": 3700,
+          "rmse": 3.6581
+        },
+        "15": {
+          "bias": 0.4977,
+          "mae": 3.3042,
+          "observations": 555,
+          "rmse": 4.3682
+        },
+        "50": {
+          "bias": 0.4644,
+          "mae": 2.917,
+          "observations": 1850,
+          "rmse": 3.9977
+        }
+      },
+      "transfer_regret": {
+        "continuous_hindsight_points": 2904,
+        "continuous_policy_points": 2027,
+        "decisions": 36,
+        "mean": 25.8889,
+        "total": 932
+      }
+    }
+  }
+}

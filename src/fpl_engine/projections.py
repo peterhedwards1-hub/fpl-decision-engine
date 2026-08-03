@@ -12,8 +12,15 @@ from typing import Any
 from .config import SeasonRules
 from .domain import Position
 from .history.database import HistoricalDatabase
+from .team_strength import (
+    ContextualAdjustment,
+    TeamStrengthSettings,
+    TeamStrengthState,
+    estimate_team_strength,
+)
 
 MODEL_VERSION = "rates-rules-corrected-v4"
+OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_VERSION = "opponent-adjusted-team-strength-v1"
 TUNED_V3_MODEL_VERSION = "rates-two-stage-v3"
 BASELINE_V2_MODEL_VERSION = "rates-two-stage-v2"
 LEGACY_MODEL_VERSION = "rates-baseline-v1"
@@ -80,9 +87,7 @@ POSITION_PRIORS: dict[Position, dict[str, float]] = {
 # goalkeeping workload or own goals, so those priors stay flat. Clean sheets
 # are excluded because they are supplied by team strength, which now has its
 # own preseason prior.
-COLD_START_SCALED_RATES: frozenset[str] = frozenset(
-    {"goals", "assists", "bonus"}
-)
+COLD_START_SCALED_RATES: frozenset[str] = frozenset({"goals", "assists", "bonus"})
 
 DEFENSIVE_CONTRIBUTION_COUNT_PRIORS: dict[Position, float] = {
     Position.GK: 0.0,
@@ -179,6 +184,15 @@ class ProjectionModelConfig:
     participation_start_minutes_prior: float = 78.0
     participation_substitute_minutes_prior: float = 22.0
     participation_role_decay_per_gameweek: float = 0.03
+    # Which team-strength estimator produces the attack and defence
+    # multipliers. "raw_goals" is the incumbent: goals for and against shrunk
+    # toward the league average, with no adjustment for who they came against.
+    # "opponent_adjusted" uses fpl_engine.team_strength, which rates every club
+    # relative to the opponents it actually faced, seeds a preseason prior from
+    # the previous season's opponent-adjusted expected goals, and reports its
+    # own derivation. It supersedes team_strength_carry_forward, which is
+    # ignored when it is selected.
+    team_strength_model: str = "raw_goals"
 
     def __post_init__(self) -> None:
         if self.player_rate_prior_minutes <= 0:
@@ -201,17 +215,9 @@ class ProjectionModelConfig:
             "learned_hurdle",
             "participation_v1",
         }:
-            raise ValueError(
-                "Minutes model must be 'legacy', 'two_stage' or "
-                "'learned_hurdle'"
-            )
-        if (
-            self.minutes_model == "learned_hurdle"
-            and not self.playing_time_artifact
-        ):
-            raise ValueError(
-                "Learned hurdle minutes require an artifact path"
-            )
+            raise ValueError("Minutes model must be 'legacy', 'two_stage' or 'learned_hurdle'")
+        if self.minutes_model == "learned_hurdle" and not self.playing_time_artifact:
+            raise ValueError("Learned hurdle minutes require an artifact path")
         if self.recent_gameweeks <= 0:
             raise ValueError("Recent Gameweeks must be positive")
         if self.recent_evidence_weight < 1:
@@ -262,19 +268,13 @@ class ProjectionModelConfig:
         if self.promoted_team_defence_multiplier <= 0:
             raise ValueError("Promoted defence multiplier must be positive")
         if self.cold_start_prior not in {"position", "position_price"}:
-            raise ValueError(
-                "Cold-start prior must be 'position' or 'position_price'"
-            )
+            raise ValueError("Cold-start prior must be 'position' or 'position_price'")
         if self.cold_start_price_elasticity < 0:
             raise ValueError("Cold-start price elasticity cannot be negative")
         if not 0 < self.cold_start_minimum_factor <= 1:
-            raise ValueError(
-                "Cold-start minimum factor must be within (0, 1]"
-            )
+            raise ValueError("Cold-start minimum factor must be within (0, 1]")
         if self.cold_start_maximum_factor < self.cold_start_minimum_factor:
-            raise ValueError(
-                "Cold-start maximum factor cannot be below the minimum"
-            )
+            raise ValueError("Cold-start maximum factor cannot be below the minimum")
         if not 0 <= self.coherent_assist_unassisted_goal_fraction <= 1:
             raise ValueError("Coherent unassisted-goal fraction must be between zero and one")
         if self.coherent_penalty_goal_fraction < 0 or self.coherent_penalty_goal_fraction > 1:
@@ -306,6 +306,8 @@ class ProjectionModelConfig:
             raise ValueError("Participation substitute minutes prior must be within a match")
         if not 0 <= self.participation_role_decay_per_gameweek <= 1:
             raise ValueError("Participation role decay must be between zero and one")
+        if self.team_strength_model not in {"raw_goals", "opponent_adjusted"}:
+            raise ValueError("Team strength model must be 'raw_goals' or 'opponent_adjusted'")
 
 
 BASELINE_V2_MODEL_CONFIG = ProjectionModelConfig()
@@ -346,6 +348,24 @@ DEFENSIVE_EMPIRICAL_V5_MODEL_CONFIG = replace(
 PRESEASON_V5_MODEL_CONFIG = replace(
     CORRECTED_V4_MODEL_CONFIG,
     team_strength_carry_forward=True,
+    cold_start_prior="position_price",
+)
+#: The opponent-adjusted challenger. Three changes from the corrected v4
+#: incumbent, each fixing a named structural defect:
+#:
+#: * `team_strength_model` replaces raw goals with an opponent-adjusted
+#:   Poisson rating and a previous-season expected-goal prior, so clubs are
+#:   separated before a ball is kicked and an easy early schedule does not
+#:   make a mediocre club look elite;
+#: * `scoring_event_source` allocates the team's goal expectation to players
+#:   by share, rather than multiplying a player's already club-influenced
+#:   per-90 rate by their club's strength a second time;
+#: * `cold_start_prior` gives a player with no history a price-scaled prior,
+#:   which matters far more once shares, not raw rates, drive scoring.
+OPPONENT_ADJUSTED_TEAM_STRENGTH_V1_MODEL_CONFIG = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    team_strength_model="opponent_adjusted",
+    scoring_event_source="team_share_expected",
     cold_start_prior="position_price",
 )
 DEFAULT_MODEL_CONFIG = CORRECTED_V4_MODEL_CONFIG
@@ -392,6 +412,26 @@ class ProjectionOverride:
     expires_at: str | None = None
     source: str | None = None
     confidence: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.set_piece_role_probability is not None:
+            raise ValueError(
+                "set_piece_role_probability is stored-only and cannot change projections"
+            )
+        if self.confidence is not None and self.confidence not in {"low", "medium", "high"}:
+            raise ValueError("Override confidence must be low, medium or high")
+        if any(
+            value is not None
+            for value in (
+                self.start_probability,
+                self.substitute_appearance_probability,
+                self.conditional_start_minutes,
+                self.conditional_substitute_minutes,
+                self.availability,
+                self.penalty_role_probability,
+            )
+        ) and (not self.source or not self.confidence):
+            raise ValueError("Active component overrides require source and confidence")
 
 
 @dataclass(frozen=True)
@@ -456,6 +496,10 @@ class ProjectionResult:
     projections: tuple[PlayerGameweekProjection, ...]
     team_strengths: dict[str, dict[str, float]]
     model_config: ProjectionModelConfig
+    #: Full derivation of the team ratings when the opponent-adjusted model
+    #: produced them: priors, weights, continuity, adjustments and rationale.
+    #: `None` for the incumbent, which has no such record to give.
+    team_strength_state: TeamStrengthState | None = None
 
 
 class RatesProjectionModel:
@@ -468,11 +512,21 @@ class RatesProjectionModel:
         *,
         config: ProjectionModelConfig = DEFAULT_MODEL_CONFIG,
         model_version: str = MODEL_VERSION,
+        team_strength_settings: TeamStrengthSettings | None = None,
+        team_strength_adjustments: tuple[ContextualAdjustment, ...] = (),
     ) -> None:
         self.database = database
         self.rules = rules
         self.config = config
         self.model_version = model_version
+        # The projection config owns every constant the two share, so a
+        # declared team-strength setting can never disagree with the venue
+        # multipliers and bounds the rest of the projection uses.
+        self.team_strength_settings = (
+            team_strength_settings or TeamStrengthSettings()
+        ).for_projection_config(config)
+        self.team_strength_adjustments = team_strength_adjustments
+        self._last_team_strength_state: TeamStrengthState | None = None
 
     def project(
         self,
@@ -528,12 +582,26 @@ class RatesProjectionModel:
             as_of=fixture_as_of,
             maximum_ingestion_run_id=source_ingestion_run_id,
         )
+        # Cleared first so a raw-goals run can never report the derivation of
+        # an opponent-adjusted run that happened to share this engine.
+        self._last_team_strength_state = None
         strengths = self._team_strengths(
             season_code,
             start_gameweek,
             team_overrides,
             as_of=fixture_as_of,
             maximum_ingestion_run_id=source_ingestion_run_id,
+        )
+        override_lookup = {
+            (override.source_player_id, override.gameweek_number): override
+            for override in overrides
+        }
+        self._prepare_gameweek_participation(
+            players,
+            start_gameweek=start_gameweek,
+            horizon_gameweeks=horizon_gameweeks,
+            overrides=override_lookup,
+            generated_at=generated,
         )
         if self.config.scoring_event_source == "coherent_team_allocation":
             self._prepare_coherent_event_allocations(
@@ -543,10 +611,6 @@ class RatesProjectionModel:
                 start_gameweek=start_gameweek,
                 horizon_gameweeks=horizon_gameweeks,
             )
-        override_lookup = {
-            (override.source_player_id, override.gameweek_number): override
-            for override in overrides
-        }
         projections = tuple(
             projection
             for player in players
@@ -582,6 +646,7 @@ class RatesProjectionModel:
             projections=projections,
             team_strengths=strengths,
             model_config=self.config,
+            team_strength_state=self._last_team_strength_state,
         )
 
     def _resolve_source_ingestion_run_id(
@@ -680,6 +745,14 @@ class RatesProjectionModel:
                        COALESCE(SUM(stats.starts), 0) AS starts,
                        COALESCE(SUM(stats.minutes = 0), 0) AS zero_minute_records,
                        COALESCE(SUM(stats.minutes > 0), 0) AS appearances,
+                       COALESCE(SUM(stats.minutes > 0 AND stats.starts = 0), 0)
+                           AS substitute_appearances,
+                       COALESCE(SUM(CASE WHEN stats.starts = 1 THEN stats.minutes ELSE 0 END), 0)
+                           AS starting_minutes,
+                       COALESCE(SUM(CASE WHEN stats.minutes > 0
+                                         AND stats.starts = 0
+                                         THEN stats.minutes ELSE 0 END), 0)
+                           AS substitute_minutes,
                        COALESCE(SUM(stats.minutes >= 60), 0)
                            AS sixty_appearances,
                        COALESCE(SUM(stats.minutes), 0) AS minutes,
@@ -734,6 +807,14 @@ class RatesProjectionModel:
                        COALESCE(SUM(stats.minutes = 0), 0) AS recent_zero_minute_records,
                        COALESCE(SUM(stats.minutes > 0), 0)
                            AS recent_appearances,
+                       COALESCE(SUM(stats.minutes > 0 AND stats.starts = 0), 0)
+                           AS recent_substitute_appearances,
+                       COALESCE(SUM(CASE WHEN stats.starts = 1 THEN stats.minutes ELSE 0 END), 0)
+                           AS recent_starting_minutes,
+                       COALESCE(SUM(CASE WHEN stats.minutes > 0
+                                         AND stats.starts = 0
+                                         THEN stats.minutes ELSE 0 END), 0)
+                           AS recent_substitute_minutes,
                        COALESCE(SUM(stats.minutes >= 60), 0)
                            AS recent_sixty_appearances,
                        COALESCE(SUM(stats.minutes), 0) AS recent_minutes,
@@ -787,9 +868,14 @@ class RatesProjectionModel:
                    career.matches, career.appearances,
                    career.club_changed,
                    career.starts, career.zero_minute_records,
+                   career.substitute_appearances, career.starting_minutes,
+                   career.substitute_minutes,
                    career.sixty_appearances, career.minutes,
                    recent.recent_matches, recent.recent_appearances,
                    recent.recent_starts, recent.recent_zero_minute_records,
+                   recent.recent_substitute_appearances,
+                   recent.recent_starting_minutes,
+                   recent.recent_substitute_minutes,
                    recent.recent_sixty_appearances, recent.recent_minutes,
                    recent.recent_goals, recent.recent_assists,
                    recent.recent_expected_goals,
@@ -834,7 +920,118 @@ class RatesProjectionModel:
                 season_code,
             ),
         ).fetchall()
-        return [dict(row) for row in rows]
+        previous_rows = self.database.connection.execute(
+            """
+            WITH ranked_previous AS (
+                SELECT current_ps.id AS current_player_season_id,
+                       history_ps.team_id AS previous_team_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY current_ps.id
+                           ORDER BY COALESCE(
+                               history_seasons.ends_on, history_seasons.starts_on
+                           ) DESC,
+                                    history_ps.id DESC
+                       ) AS rank
+                FROM player_seasons current_ps
+                JOIN seasons current_seasons ON current_seasons.id = current_ps.season_id
+                JOIN player_seasons history_ps
+                  ON history_ps.player_id = current_ps.player_id
+                 AND history_ps.identifier_namespace = current_ps.identifier_namespace
+                 AND history_ps.season_id <> current_ps.season_id
+                JOIN seasons history_seasons ON history_seasons.id = history_ps.season_id
+                WHERE current_seasons.code = ?
+                  AND (
+                      history_seasons.ends_on < current_seasons.starts_on
+                      OR (
+                          history_seasons.ends_on IS NULL
+                          AND history_seasons.starts_on < current_seasons.starts_on
+                      )
+                  )
+            )
+            SELECT current_player_season_id, previous_team_id
+            FROM ranked_previous WHERE rank = 1
+            """,
+            (season_code,),
+        ).fetchall()
+        previous_by_player_season = {
+            int(row["current_player_season_id"]): int(row["previous_team_id"])
+            for row in previous_rows
+        }
+        cross_season_recent_rows = self.database.connection.execute(
+            """
+            WITH ranked AS (
+                SELECT current_ps.id AS current_player_season_id,
+                       stats.minutes, stats.starts,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY current_ps.id
+                           ORDER BY COALESCE(fixtures.kickoff_time, gameweeks.deadline_time) DESC,
+                                    stats.id DESC
+                       ) AS rank
+                FROM player_seasons current_ps
+                JOIN seasons current_seasons ON current_seasons.id = current_ps.season_id
+                JOIN player_seasons history_ps
+                  ON history_ps.player_id = current_ps.player_id
+                 AND history_ps.identifier_namespace = current_ps.identifier_namespace
+                JOIN player_fixture_stats stats ON stats.player_season_id = history_ps.id
+                JOIN fixtures ON fixtures.id = stats.fixture_id
+                JOIN seasons history_seasons ON history_seasons.id = fixtures.season_id
+                LEFT JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+                WHERE current_seasons.code = ?
+                  AND (
+                      history_seasons.starts_on < current_seasons.starts_on
+                      OR (
+                          history_seasons.id = current_ps.season_id
+                          AND gameweeks.number < ?
+                      )
+                  )
+            )
+            SELECT current_player_season_id,
+                   COUNT(*) AS matches,
+                   SUM(starts) AS starts,
+                   SUM(minutes > 0) AS appearances,
+                   SUM(minutes > 0 AND starts = 0) AS substitute_appearances,
+                   SUM(minutes = 0) AS zero_minute_records,
+                   SUM(CASE WHEN starts = 1 THEN minutes ELSE 0 END) AS starting_minutes,
+                   SUM(CASE WHEN minutes > 0 AND starts = 0
+                            THEN minutes ELSE 0 END) AS substitute_minutes,
+                   SUM(minutes >= 60) AS sixty_appearances,
+                   SUM(minutes) AS minutes
+            FROM ranked WHERE rank <= ?
+            GROUP BY current_player_season_id
+            """,
+            (season_code, start_gameweek, self.config.recent_gameweeks),
+        ).fetchall()
+        cross_recent_by_player_season = {
+            int(row["current_player_season_id"]): dict(row) for row in cross_season_recent_rows
+        }
+        result = [dict(row) for row in rows]
+        for player in result:
+            previous_team = previous_by_player_season.get(int(player["player_season_id"]))
+            player["previous_team_id"] = previous_team
+            player["current_transfer"] = previous_team is not None and previous_team != int(
+                player["team_id"]
+            )
+            if int(player.get("recent_matches", 0)) == 0:
+                recent = cross_recent_by_player_season.get(int(player["player_season_id"]))
+                if recent is not None:
+                    for name in (
+                        "matches",
+                        "starts",
+                        "appearances",
+                        "substitute_appearances",
+                        "zero_minute_records",
+                        "starting_minutes",
+                        "substitute_minutes",
+                        "sixty_appearances",
+                        "minutes",
+                    ):
+                        player[f"recent_{name}"] = int(recent.get(name) or 0)
+                    player["recent_cross_season_matches"] = int(recent["matches"] or 0)
+                else:
+                    player["recent_cross_season_matches"] = 0
+            else:
+                player["recent_cross_season_matches"] = 0
+        return result
 
     def _fixtures(
         self,
@@ -918,6 +1115,14 @@ class RatesProjectionModel:
         as_of: datetime | None = None,
         maximum_ingestion_run_id: int | None = None,
     ) -> dict[str, dict[str, float]]:
+        if self.config.team_strength_model == "opponent_adjusted":
+            return self._opponent_adjusted_team_strengths(
+                season_code,
+                start_gameweek,
+                overrides,
+                as_of=as_of,
+                maximum_ingestion_run_id=maximum_ingestion_run_id,
+            )
         if self.config.scoring_event_source == "team_share_expected":
             return self._expected_goal_team_strengths(
                 season_code,
@@ -1159,21 +1364,13 @@ class RatesProjectionModel:
         total_matches = sum(int(row["matches"]) for row in rows)
         if not total_matches:
             return {}, None
-        previous_league_average = (
-            sum(float(row["goals_for"]) for row in rows) / total_matches
-        )
+        previous_league_average = sum(float(row["goals_for"]) for row in rows) / total_matches
         regression = self.config.carry_forward_regression_matches
         by_name = {
             str(row["name"]): (
-                (
-                    float(row["goals_for"])
-                    + regression * previous_league_average
-                )
+                (float(row["goals_for"]) + regression * previous_league_average)
                 / (int(row["matches"]) + regression),
-                (
-                    float(row["goals_against"])
-                    + regression * previous_league_average
-                )
+                (float(row["goals_against"]) + regression * previous_league_average)
                 / (int(row["matches"]) + regression),
             )
             for row in rows
@@ -1188,13 +1385,8 @@ class RatesProjectionModel:
             """,
             (season_code,),
         ).fetchall()
-        promoted_attack = (
-            previous_league_average * self.config.promoted_team_attack_multiplier
-        )
-        promoted_defence = (
-            previous_league_average
-            * self.config.promoted_team_defence_multiplier
-        )
+        promoted_attack = previous_league_average * self.config.promoted_team_attack_multiplier
+        promoted_defence = previous_league_average * self.config.promoted_team_defence_multiplier
         return (
             {
                 str(row["team_id"]): by_name.get(
@@ -1205,6 +1397,160 @@ class RatesProjectionModel:
             },
             previous_league_average,
         )
+
+    def fixture_lambdas(
+        self,
+        strengths: dict[str, dict[str, float]],
+        *,
+        team_id: str,
+        opponent_id: str,
+        is_home: bool,
+    ) -> tuple[float, float, float]:
+        """Expected goals for and against in one fixture.
+
+        The single place a team rating becomes a goal expectation. Every
+        consumer goes through it — the player projection, the squad simulator
+        and the historical evaluation — so a model cannot be scored under
+        venue constants the live forecast does not use. Returns the scoring
+        factor, the team's expected goals and the opponent's.
+        """
+
+        team = strengths[team_id]
+        opponent = strengths[opponent_id]
+        league_average = float(team["league_average_goals"])
+        attack_venue = (
+            self.config.home_attack_multiplier if is_home else self.config.away_attack_multiplier
+        )
+        defence_venue = (
+            self.config.away_attack_multiplier if is_home else self.config.home_attack_multiplier
+        )
+        scoring_factor = float(team["attack"]) * float(opponent["defence"]) * attack_venue
+        return (
+            scoring_factor,
+            league_average * scoring_factor,
+            league_average * float(opponent["attack"]) * float(team["defence"]) * defence_venue,
+        )
+
+    def fixture_expected_goals(
+        self,
+        *,
+        season_code: str,
+        gameweek_number: int,
+        team_overrides: tuple[TeamStrengthOverride, ...] = (),
+        as_of: datetime | None = None,
+        maximum_ingestion_run_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Every fixture in a Gameweek, with the goals this model expects.
+
+        The public entry point the historical evaluation uses, so what is
+        scored is what a projection at that origin would actually have used.
+        """
+
+        strengths = self._team_strengths(
+            season_code,
+            gameweek_number,
+            team_overrides,
+            as_of=as_of,
+            maximum_ingestion_run_id=maximum_ingestion_run_id,
+        )
+        rows = self.database.connection.execute(
+            """
+            SELECT fixtures.id AS fixture_id,
+                   fixtures.home_team_id, fixtures.away_team_id,
+                   fixtures.home_score, fixtures.away_score
+            FROM fixtures
+            JOIN seasons ON seasons.id = fixtures.season_id
+            JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+            WHERE seasons.code = ? AND gameweeks.number = ?
+            ORDER BY fixtures.id
+            """,
+            (season_code, gameweek_number),
+        ).fetchall()
+        fixtures = []
+        for row in rows:
+            home = str(row["home_team_id"])
+            away = str(row["away_team_id"])
+            if home not in strengths or away not in strengths:
+                continue
+            _, home_lambda, away_lambda = self.fixture_lambdas(
+                strengths, team_id=home, opponent_id=away, is_home=True
+            )
+            fixtures.append(
+                {
+                    "fixture_id": int(row["fixture_id"]),
+                    "gameweek_number": gameweek_number,
+                    "home_team_id": home,
+                    "away_team_id": away,
+                    "home_expected_goals": home_lambda,
+                    "away_expected_goals": away_lambda,
+                    "home_score": row["home_score"],
+                    "away_score": row["away_score"],
+                }
+            )
+        return fixtures
+
+    def _opponent_adjusted_team_strengths(
+        self,
+        season_code: str,
+        start_gameweek: int,
+        overrides: tuple[TeamStrengthOverride, ...],
+        *,
+        as_of: datetime | None,
+        maximum_ingestion_run_id: int | None,
+    ) -> dict[str, dict[str, float]]:
+        """Adapt the consolidated estimator to the projection strength dict.
+
+        The estimator is the single source of team strength for this
+        configuration: preseason prior, current-season updating and contextual
+        adjustment all happen inside it, so the two rival implementations below
+        are bypassed entirely rather than blended with.
+
+        `TeamStrengthOverride` is preserved and still wins outright. An
+        override is an operator asserting a value; a `ContextualAdjustment` is
+        a bounded, dated, explained nudge to a derived one. Both are recorded.
+        """
+
+        state = estimate_team_strength(
+            self.database,
+            season_code=season_code,
+            gameweek_number=start_gameweek,
+            settings=self.team_strength_settings,
+            adjustments=self.team_strength_adjustments,
+            as_of=as_of,
+            maximum_ingestion_run_id=maximum_ingestion_run_id,
+        )
+        self._last_team_strength_state = state
+        result: dict[str, dict[str, float]] = {
+            team_id: {
+                # Already clamped inside the estimator, against the same bounds
+                # this config declares. Clamping again here would be harmless
+                # but would hide a divergence rather than surface one.
+                "attack": team.attack,
+                "defence": team.defence,
+                "matches": team.matches_observed,
+                "league_average_goals": state.league_average_goals,
+                "assist_per_goal": state.assist_per_goal,
+                "source_is_expected_goals": (
+                    1.0 if team.evidence_source == "expected_goals" else 0.0
+                ),
+                "uncertainty": team.uncertainty,
+                "prior_weight": team.prior_weight,
+                "current_weight": team.current_weight,
+                "schedule_strength": team.schedule_strength,
+                "is_promoted": 1.0 if team.is_promoted else 0.0,
+                "adjustments_applied": float(len(team.adjustments)),
+            }
+            for team_id, team in state.teams.items()
+        }
+        by_source = {team.source_team_id: team_id for team_id, team in state.teams.items()}
+        for override in overrides:
+            team_id = by_source.get(override.source_team_id)
+            if team_id is None:
+                raise ValueError(f"Unknown team override {override.source_team_id!r}")
+            result[team_id]["attack"] = override.attack_multiplier
+            result[team_id]["defence"] = override.defence_susceptibility
+            result[team_id]["overridden"] = 1.0
+        return result
 
     def _expected_goal_team_strengths(
         self,
@@ -1299,6 +1645,13 @@ class RatesProjectionModel:
                 weighted_xa += float(row["xa_for"]) * weight
                 weighted_matches += weight
         league_average = weighted_xg / weighted_matches if weighted_matches else 1.4
+        if league_average <= 0:
+            # Some imported seasons store expected_goals as 0.0 rather than
+            # NULL, so the COALESCE fallback to actual goals never fires and
+            # every prior fixture reads as goalless. Without this the next
+            # division raises. Same fallback as the no-fixtures case above;
+            # this changes no output that previously computed.
+            league_average = 1.4
         assist_per_goal = (
             (
                 weighted_xa
@@ -1356,20 +1709,63 @@ class RatesProjectionModel:
         self,
         players: list[dict[str, Any]],
     ) -> None:
-        """Create coherent player shares without reapplying team strength."""
+        """Create coherent player shares without reapplying team strength.
+
+        A share is a player's slice of their own club's attacking output, so
+        the club's quality is applied exactly once — to the team total — and
+        never again to the player. This is the fix for the double count: the
+        rate path multiplies a per-90 rate that was itself earned at that club
+        by that club's strength a second time.
+
+        Each player's weight is their expected goal (or assist) involvement in
+        one fixture: a shrunk per-90 rate scaled by expected minutes. Four
+        things feed the rate:
+
+        * historical expected goals and assists, falling back to actual events
+          where the expected fields are absent;
+        * recent evidence, weighted by `scoring_recent_evidence_weight`, so a
+          player who has just taken over a role moves faster than their season
+          total suggests;
+        * a position prior, shrinking small samples toward what a typical
+          player in that position does;
+        * the cold-start price factor on the prior term only, so a player with
+          no minutes at this club is not assumed to be a reserve, and the
+          adjustment fades automatically as real minutes accumulate.
+
+        Shares are normalised to sum to one within a club, so the players'
+        goal expectations reconcile exactly to the team's. What that does not
+        model: own goals, and the fact that not every goal is assisted — the
+        latter is handled separately by the league assist-per-goal ratio, and
+        the former is left in the per-player deduction where it already lives.
+        No penalty or set-piece role data is available in this schema, so
+        share is inferred from output alone; a reviewed role override remains
+        the only way to assert one.
+        """
 
         raw: dict[str, list[tuple[dict[str, Any], float, float]]] = {}
         prior_minutes = self.config.player_rate_prior_minutes
+        recent_extra = self.config.scoring_recent_evidence_weight - 1.0
         for player in players:
             position = Position(player["position"])
-            sample_minutes = float(player["minutes"])
+            sample_minutes = float(player["minutes"]) + recent_extra * float(
+                player["recent_minutes"]
+            )
+            price_factor = float(player.get("_cold_start_price_factor", 1.0))
             goal_rate = (
-                float(player["expected_goals"]) * 90.0
-                + POSITION_PRIORS[position]["goals"] * prior_minutes
+                (
+                    float(player["expected_goals"])
+                    + recent_extra * float(player["recent_expected_goals"])
+                )
+                * 90.0
+                + POSITION_PRIORS[position]["goals"] * price_factor * prior_minutes
             ) / (sample_minutes + prior_minutes)
             assist_rate = (
-                float(player["expected_assists"]) * 90.0
-                + POSITION_PRIORS[position]["assists"] * prior_minutes
+                (
+                    float(player["expected_assists"])
+                    + recent_extra * float(player["recent_expected_assists"])
+                )
+                * 90.0
+                + POSITION_PRIORS[position]["assists"] * price_factor * prior_minutes
             ) / (sample_minutes + prior_minutes)
             minute_factor = float(player["_expected_minutes_per_fixture"]) / 90.0
             raw.setdefault(str(player["team_id"]), []).append(
@@ -1387,6 +1783,121 @@ class RatesProjectionModel:
                 player["_assist_share"] = (
                     assist_weight / total_assists if total_assists > 0 else 0.0
                 )
+
+    def _prepare_gameweek_participation(
+        self,
+        players: list[dict[str, Any]],
+        *,
+        start_gameweek: int,
+        horizon_gameweeks: int,
+        overrides: dict[tuple[str, int], ProjectionOverride],
+        generated_at: datetime,
+    ) -> None:
+        """Resolve each Gameweek's participation before event allocation.
+
+        Overrides are immutable inputs to a run. Their effective/expiry dates
+        are evaluated against the forecast origin; the explicit Gameweek key
+        prevents an override leaking into another Gameweek.
+        """
+        for player in players:
+            by_gameweek: dict[int, dict[str, float]] = {}
+            for offset, gameweek in enumerate(
+                range(start_gameweek, start_gameweek + horizon_gameweeks)
+            ):
+                decay = (
+                    (1.0 - self.config.participation_role_decay_per_gameweek) ** offset
+                    if self.config.minutes_model == "participation_v1"
+                    else 1.0
+                )
+                start = float(player["_start_probability"])
+                sub = float(player["_substitute_probability"])
+                if self.config.minutes_model == "participation_v1":
+                    start = (
+                        self.config.participation_start_prior_probability
+                        + (start - self.config.participation_start_prior_probability) * decay
+                    )
+                    sub = (
+                        self.config.participation_substitute_prior_probability
+                        + (sub - self.config.participation_substitute_prior_probability) * decay
+                    )
+                state = {
+                    "_availability": float(player["_availability"]),
+                    "_start_probability": start,
+                    "_substitute_probability": sub,
+                    "_conditional_start_minutes": float(player["_conditional_start_minutes"]),
+                    "_conditional_substitute_minutes": float(
+                        player["_conditional_substitute_minutes"]
+                    ),
+                    "_penalty_role_probability": None,
+                }
+                override = overrides.get((str(player["source_player_id"]), gameweek))
+                if self.config.minutes_model != "participation_v1" and override is None:
+                    by_gameweek[gameweek] = {
+                        "start_probability": state["_start_probability"],
+                        "substitute_probability": state["_substitute_probability"],
+                        "appearance_probability": float(player["_appearance_probability"]),
+                        "no_appearance_probability": 1.0 - float(player["_appearance_probability"]),
+                        "sixty_probability": float(player["_sixty_probability"]),
+                        "expected_minutes": float(player["_expected_minutes_per_fixture"]),
+                        "conditional_start_minutes": state["_conditional_start_minutes"],
+                        "conditional_substitute_minutes": state["_conditional_substitute_minutes"],
+                        "override_active": 0.0,
+                        "penalty_role_probability": 0.0,
+                    }
+                    continue
+                if override is not None and _override_active(override, generated_at):
+                    if override.availability is not None:
+                        state["_availability"] = _clamp(override.availability, 0.0, 1.0)
+                    if override.start_probability is not None:
+                        state["_start_probability"] = _clamp(
+                            override.start_probability * state["_availability"], 0.0, 1.0
+                        )
+                    if override.substitute_appearance_probability is not None:
+                        state["_substitute_probability"] = _clamp(
+                            override.substitute_appearance_probability * state["_availability"],
+                            0.0,
+                            1.0,
+                        )
+                    if override.conditional_start_minutes is not None:
+                        state["_conditional_start_minutes"] = _clamp(
+                            override.conditional_start_minutes, 0.0, 90.0
+                        )
+                    if override.conditional_substitute_minutes is not None:
+                        state["_conditional_substitute_minutes"] = _clamp(
+                            override.conditional_substitute_minutes, 0.0, 90.0
+                        )
+                    if override.penalty_role_probability is not None:
+                        state["_penalty_role_probability"] = _clamp(
+                            override.penalty_role_probability, 0.0, 1.0
+                        )
+                    if override.expected_minutes is not None:
+                        _reconcile_participation_to_minutes(
+                            state,
+                            _clamp(override.expected_minutes, 0.0, 90.0),
+                        )
+                _reconcile_participation_to_minutes(
+                    state,
+                    _participation_minutes(state),
+                )
+                by_gameweek[gameweek] = {
+                    "start_probability": state["_start_probability"],
+                    "substitute_probability": state["_substitute_probability"],
+                    "appearance_probability": state["_appearance_probability"],
+                    "no_appearance_probability": state["_no_appearance_probability"],
+                    "sixty_probability": state["_sixty_probability"],
+                    "expected_minutes": state["_expected_minutes_per_fixture"],
+                    "conditional_start_minutes": state["_conditional_start_minutes"],
+                    "conditional_substitute_minutes": state["_conditional_substitute_minutes"],
+                    "override_active": float(
+                        override is not None and _override_active(override, generated_at)
+                    ),
+                    "penalty_role_probability": (
+                        0.0
+                        if state["_penalty_role_probability"] is None
+                        else float(state["_penalty_role_probability"])
+                    ),
+                }
+            player["_participation_by_gameweek"] = by_gameweek
 
     def _prepare_coherent_event_allocations(
         self,
@@ -1418,18 +1929,11 @@ class RatesProjectionModel:
                     (home_id, away_id, True),
                     (away_id, home_id, False),
                 ):
-                    team_strength = strengths[team_id]
-                    opponent_strength = strengths[opponent_id]
-                    venue_attack = (
-                        self.config.home_attack_multiplier
-                        if is_home
-                        else self.config.away_attack_multiplier
-                    )
-                    team_lambda = (
-                        team_strength["league_average_goals"]
-                        * team_strength["attack"]
-                        * opponent_strength["defence"]
-                        * venue_attack
+                    _, team_lambda, _ = self.fixture_lambdas(
+                        strengths,
+                        team_id=team_id,
+                        opponent_id=opponent_id,
+                        is_home=is_home,
                     )
                     team_players = by_team.get(team_id, ())
                     goal_weights: list[tuple[dict[str, Any], float]] = []
@@ -1443,25 +1947,33 @@ class RatesProjectionModel:
                         # minutes shrinkage prevents tiny samples from taking
                         # an extreme share; price only enters the prior path.
                         goal_rate = (
-                            expected_xg * 90.0
-                            + POSITION_PRIORS[position]["goals"] * prior_minutes
+                            expected_xg * 90.0 + POSITION_PRIORS[position]["goals"] * prior_minutes
                         ) / (sample_minutes + prior_minutes)
                         assist_rate = (
                             expected_xa * 90.0
                             + POSITION_PRIORS[position]["assists"] * prior_minutes
                         ) / (sample_minutes + prior_minutes)
-                        if bool(player.get("_club_changed", player.get("club_changed", False))):
+                        if bool(player.get("current_transfer", False)):
                             transfer_shrinkage = self.config.coherent_transfer_shrinkage
                             goal_rate = (
-                                (1.0 - transfer_shrinkage) * goal_rate
-                                + transfer_shrinkage * POSITION_PRIORS[position]["goals"]
-                            )
+                                1.0 - transfer_shrinkage
+                            ) * goal_rate + transfer_shrinkage * POSITION_PRIORS[position]["goals"]
                             assist_rate = (
-                                (1.0 - transfer_shrinkage) * assist_rate
-                                + transfer_shrinkage * POSITION_PRIORS[position]["assists"]
-                            )
+                                1.0 - transfer_shrinkage
+                            ) * assist_rate + transfer_shrinkage * POSITION_PRIORS[position][
+                                "assists"
+                            ]
+                        gameweek_participation = player.get("_participation_by_gameweek", {}).get(
+                            gameweek, {}
+                        )
                         participation = _clamp(
-                            float(player.get("_expected_minutes_per_fixture", 0.0)) / 90.0,
+                            float(
+                                gameweek_participation.get(
+                                    "expected_minutes",
+                                    player.get("_expected_minutes_per_fixture", 0.0),
+                                )
+                            )
+                            / 90.0,
                             0.0,
                             1.0,
                         )
@@ -1479,7 +1991,46 @@ class RatesProjectionModel:
                         id(player): weight / total_assist_weight if total_assist_weight else 0.0
                         for player, weight in assist_weights
                     }
+                    explicit_penalty_weights = {
+                        id(player): float(
+                            player.get("_participation_by_gameweek", {})
+                            .get(gameweek, {})
+                            .get("penalty_role_probability", 0.0)
+                        )
+                        for player in team_players
+                    }
+                    eligible_penalty_players = [
+                        player
+                        for player in team_players
+                        if float(
+                            player.get("_participation_by_gameweek", {})
+                            .get(gameweek, {})
+                            .get(
+                                "appearance_probability",
+                                player.get("_appearance_probability", 0.0),
+                            )
+                        )
+                        > 0
+                    ]
+                    total_explicit_penalty = sum(explicit_penalty_weights.values())
+                    penalty_shares = (
+                        {
+                            id(player): explicit_penalty_weights[id(player)]
+                            / total_explicit_penalty
+                            for player in team_players
+                        }
+                        if total_explicit_penalty > 0
+                        else {
+                            id(player): 1.0 / len(eligible_penalty_players)
+                            if player in eligible_penalty_players
+                            else 0.0
+                            for player in team_players
+                        }
+                        if eligible_penalty_players
+                        else {}
+                    )
                     penalty_total = team_lambda * self.config.coherent_penalty_goal_fraction
+                    open_play_total = team_lambda - penalty_total
                     assisted_total = team_lambda * (
                         1.0 - self.config.coherent_assist_unassisted_goal_fraction
                     )
@@ -1498,16 +2049,21 @@ class RatesProjectionModel:
                                 "penalty_share": 0.0,
                             },
                         )
-                        row["goals"] += team_lambda * goal_share
+                        penalty_share = penalty_shares.get(id(player), 0.0)
+                        row["goals"] += open_play_total * goal_share + penalty_total * penalty_share
+                        row["open_play_goals"] = (
+                            row.get("open_play_goals", 0.0) + open_play_total * goal_share
+                        )
+                        row["penalty_goals"] = (
+                            row.get("penalty_goals", 0.0) + penalty_total * penalty_share
+                        )
                         row["assists"] += assisted_total * assist_share
                         row["team_expected_goals"] += team_lambda
                         row["expected_assisted_goals"] += assisted_total
                         row["goal_share"] += goal_share
                         row["assist_share"] += assist_share
                         row["penalty_share"] += (
-                            penalty_total * goal_share / team_lambda
-                            if team_lambda > 0
-                            else 0.0
+                            penalty_total * penalty_share / team_lambda if team_lambda > 0 else 0.0
                         )
 
     def _prepare_cold_start_priors(
@@ -1528,12 +2084,9 @@ class RatesProjectionModel:
             return
         by_position: dict[str, list[int]] = {}
         for player in players:
-            by_position.setdefault(str(player["position"]), []).append(
-                int(player["price_tenths"])
-            )
+            by_position.setdefault(str(player["position"]), []).append(int(player["price_tenths"]))
         medians = {
-            position: sorted(prices)[len(prices) // 2]
-            for position, prices in by_position.items()
+            position: sorted(prices)[len(prices) // 2] for position, prices in by_position.items()
         }
         for player in players:
             reference = medians[str(player["position"])]
@@ -1598,9 +2151,7 @@ class RatesProjectionModel:
                     if appearance_probability > 0
                     else 0.0
                 )
-                expected_minutes = (
-                    appearance_probability * conditional_minutes
-                )
+                expected_minutes = appearance_probability * conditional_minutes
                 player["_start_probability"] = min(
                     appearance_probability,
                     start_probability * availability,
@@ -1633,11 +2184,18 @@ class RatesProjectionModel:
                 weighted_starts = float(player.get("starts", 0.0)) + extra_recent_weight * float(
                     player.get("recent_starts", 0.0)
                 )
-                weighted_zero_minutes = float(
+                weighted_substitute_appearances = float(
+                    player.get("substitute_appearances", 0.0)
+                ) + extra_recent_weight * float(player.get("recent_substitute_appearances", 0.0))
+                weighted_unused_records = float(
                     player.get("zero_minute_records", 0.0)
-                ) + extra_recent_weight * float(
-                    player.get("recent_zero_minute_records", 0.0)
-                )
+                ) + extra_recent_weight * float(player.get("recent_zero_minute_records", 0.0))
+                weighted_starting_minutes = float(
+                    player.get("starting_minutes", 0.0)
+                ) + extra_recent_weight * float(player.get("recent_starting_minutes", 0.0))
+                weighted_substitute_minutes = float(
+                    player.get("substitute_minutes", 0.0)
+                ) + extra_recent_weight * float(player.get("recent_substitute_minutes", 0.0))
                 role_unknown = weighted_matches < 3 or (
                     float(player.get("recent_matches", 0.0)) == 0
                     and weighted_starts / max(weighted_matches, 1.0) < 0.35
@@ -1648,48 +2206,65 @@ class RatesProjectionModel:
                     * self.config.participation_start_prior_probability
                 ) / (weighted_matches + self.config.participation_start_prior_matches)
                 start_probability = _clamp(start_probability * availability, 0.0, 1.0)
-                non_start_matches = max(0.0, weighted_matches - weighted_starts)
+                non_start_matches = max(
+                    weighted_substitute_appearances + weighted_unused_records,
+                    weighted_matches - weighted_starts,
+                    0.0,
+                )
                 substitute_probability = (
-                    weighted_zero_minutes
+                    weighted_substitute_appearances
                     + self.config.participation_substitute_prior_matches
                     * self.config.participation_substitute_prior_probability
                 ) / (non_start_matches + self.config.participation_substitute_prior_matches)
                 substitute_probability = _clamp(substitute_probability * availability, 0.0, 1.0)
                 if role_unknown:
-                    start_probability = _clamp(
-                        0.60 * start_probability
-                        + 0.40 * self.config.participation_start_prior_probability,
-                        0.05,
-                        0.80,
-                    ) * availability
-                    substitute_probability = _clamp(
-                        0.60 * substitute_probability
-                        + 0.40 * self.config.participation_substitute_prior_probability,
-                        0.02,
-                        0.55,
-                    ) * availability
-                start_minutes = (
-                    float(player["minutes"]) / max(float(player["appearances"]), 1.0)
-                    if float(player["appearances"]) > 0
-                    else MINUTES_PRIORS[position]["conditional_minutes"]
-                )
+                    start_probability = (
+                        _clamp(
+                            0.60 * start_probability
+                            + 0.40 * self.config.participation_start_prior_probability,
+                            0.05,
+                            0.80,
+                        )
+                        * availability
+                    )
+                    substitute_probability = (
+                        _clamp(
+                            0.60 * substitute_probability
+                            + 0.40 * self.config.participation_substitute_prior_probability,
+                            0.02,
+                            0.55,
+                        )
+                        * availability
+                    )
+                conditional_prior = self.config.conditional_minutes_prior_appearances
                 start_minutes = _clamp(
-                    0.75 * start_minutes + 0.25 * self.config.participation_start_minutes_prior,
+                    (
+                        weighted_starting_minutes
+                        + conditional_prior * self.config.participation_start_minutes_prior
+                    )
+                    / (weighted_starts + conditional_prior),
                     1.0,
                     90.0,
                 )
-                substitute_minutes = self.config.participation_substitute_minutes_prior
+                substitute_minutes = _clamp(
+                    (
+                        weighted_substitute_minutes
+                        + conditional_prior * self.config.participation_substitute_minutes_prior
+                    )
+                    / (weighted_substitute_appearances + conditional_prior),
+                    1.0,
+                    90.0,
+                )
                 conditional_minutes = (
                     start_probability * start_minutes
                     + (1.0 - start_probability) * substitute_probability * substitute_minutes
                 ) / max(
-                    start_probability
-                    + (1.0 - start_probability) * substitute_probability,
+                    start_probability + (1.0 - start_probability) * substitute_probability,
                     1e-9,
                 )
-                appearance_probability = start_probability + (
-                    1.0 - start_probability
-                ) * substitute_probability
+                appearance_probability = (
+                    start_probability + (1.0 - start_probability) * substitute_probability
+                )
                 start_sixty = _clamp((start_minutes - 45.0) / 30.0, 0.0, 1.0)
                 sub_sixty = 0.0
                 sixty_probability = (
@@ -1716,6 +2291,14 @@ class RatesProjectionModel:
                     if role_unknown
                     else "historical starts and minutes"
                 )
+                player["_participation_evidence"] = {
+                    "starts": weighted_starts,
+                    "substitute_appearances": weighted_substitute_appearances,
+                    "unused_substitute_records": weighted_unused_records,
+                    "starting_minutes": weighted_starting_minutes,
+                    "substitute_minutes": weighted_substitute_minutes,
+                    "conditional_minutes_prior_weight": conditional_prior,
+                }
             else:
                 extra_recent_weight = self.config.recent_evidence_weight - 1.0
                 weighted_matches = float(player["matches"]) + extra_recent_weight * float(
@@ -1766,10 +2349,7 @@ class RatesProjectionModel:
             player.setdefault("_reconciliation_adjustment", 0.0)
             player.setdefault("_unresolved_minutes", 0.0)
 
-        if (
-            self.config.minutes_model == "legacy"
-            or not self.config.enforce_team_minutes
-        ):
+        if self.config.minutes_model == "legacy" or not self.config.enforce_team_minutes:
             return
 
         players_by_team: dict[str, list[dict[str, Any]]] = {}
@@ -1820,32 +2400,18 @@ class RatesProjectionModel:
                 reconciled.extend(zip(group_players, allocations, strict=True))
             for player, expected_minutes in reconciled:
                 prior_expected = float(player["_expected_minutes_per_fixture"])
-                adjustment = expected_minutes - prior_expected
-                if self.config.minutes_reconciliation_mode == "bounded_role_preserving":
-                    player["_reconciliation_adjustment"] = adjustment
+                if (
+                    self.config.minutes_reconciliation_mode == "bounded_role_preserving"
+                    and self.config.minutes_model == "participation_v1"
+                ):
                     player["_unresolved_minutes"] = 0.0
+                    expected_minutes = _reconcile_participation_to_minutes(
+                        player,
+                        expected_minutes,
+                    )
+                    player["_reconciliation_adjustment"] = expected_minutes - prior_expected
                     conditional_minutes = float(player["_conditional_minutes"])
-                    # Keep the route probabilities coherent.  A bounded
-                    # adjustment may leave a residual rather than fabricating
-                    # a certain starter.
-                    ratio = expected_minutes / max(prior_expected, 1e-9)
-                    player["_start_probability"] = _clamp(
-                        float(player["_start_probability"]) * ratio,
-                        0.0,
-                        1.0,
-                    )
-                    player["_substitute_probability"] = _clamp(
-                        float(player["_substitute_probability"]) * ratio,
-                        0.0,
-                        1.0,
-                    )
-                    appearance_probability = _clamp(
-                        float(player["_start_probability"])
-                        + (1.0 - float(player["_start_probability"]))
-                        * float(player["_substitute_probability"]),
-                        0.0,
-                        1.0,
-                    )
+                    appearance_probability = float(player["_appearance_probability"])
                 else:
                     conditional_minutes = float(player["_conditional_minutes"])
                     appearance_probability = _clamp(
@@ -1863,10 +2429,7 @@ class RatesProjectionModel:
                 residual = max(
                     0.0,
                     target
-                    - sum(
-                        float(item["_expected_minutes_per_fixture"])
-                        for item in group_players
-                    ),
+                    - sum(float(item["_expected_minutes_per_fixture"]) for item in group_players),
                 )
                 for index, player in enumerate(group_players):
                     player["_unresolved_minutes"] = residual if index == 0 else 0.0
@@ -1938,8 +2501,7 @@ class RatesProjectionModel:
                         name == "defensive_contributions"
                         and self.config.defensive_contribution_model == "threshold_poisson"
                     )
-                    else prior[name]
-                    * (price_factor if name in COLD_START_SCALED_RATES else 1.0)
+                    else prior[name] * (price_factor if name in COLD_START_SCALED_RATES else 1.0)
                 )
                 * prior_minutes
             )
@@ -1955,76 +2517,39 @@ class RatesProjectionModel:
             ]
             fixture_count = len(player_fixtures)
             override = overrides.get((player["source_player_id"], gameweek))
-            role_decay = (
-                (1.0 - self.config.participation_role_decay_per_gameweek) ** offset
-                if self.config.minutes_model == "participation_v1"
-                else 1.0
+            state = player.get("_participation_by_gameweek", {}).get(gameweek, {})
+            start_probability = float(
+                state.get(
+                    "start_probability", player.get("_start_probability", appearance_probability)
+                )
             )
-            if self.config.minutes_model == "participation_v1":
-                prior_start = self.config.participation_start_prior_probability
-                prior_sub = self.config.participation_substitute_prior_probability
-                start_probability = prior_start + (
-                    float(player["_start_probability"]) - prior_start
-                ) * role_decay
-                substitute_probability = prior_sub + (
-                    float(player["_substitute_probability"]) - prior_sub
-                ) * role_decay
-                conditional_start_minutes = float(player["_conditional_start_minutes"])
-                conditional_substitute_minutes = float(player["_conditional_substitute_minutes"])
-                appearance_probability = start_probability + (
-                    1.0 - start_probability
-                ) * substitute_probability
-                expected_minutes = (
-                    start_probability * conditional_start_minutes
-                    + (1.0 - start_probability)
-                    * substitute_probability
-                    * conditional_substitute_minutes
-                ) * fixture_count
-                sixty_probability = start_probability * _clamp(
-                    (conditional_start_minutes - 45.0) / 30.0,
-                    0.0,
-                    1.0,
-                ) * fixture_count
-                sixty_probability = min(appearance_probability * fixture_count, sixty_probability)
-                conditional_minutes = (
-                    expected_minutes / (appearance_probability * fixture_count)
-                    if appearance_probability * fixture_count > 0
-                    else 0.0
+            substitute_probability = float(
+                state.get("substitute_probability", player.get("_substitute_probability", 0.0))
+            )
+            conditional_start_minutes = float(
+                state.get(
+                    "conditional_start_minutes",
+                    player.get("_conditional_start_minutes", conditional_minutes),
                 )
-            else:
-                start_probability = float(player.get("_start_probability", appearance_probability))
-                substitute_probability = float(player.get("_substitute_probability", 0.0))
-                conditional_start_minutes = float(
-                    player.get("_conditional_start_minutes", conditional_minutes)
+            )
+            conditional_substitute_minutes = float(
+                state.get(
+                    "conditional_substitute_minutes",
+                    player.get("_conditional_substitute_minutes", 0.0),
                 )
-                conditional_substitute_minutes = float(
-                    player.get("_conditional_substitute_minutes", 0.0)
-                )
-                expected_minutes = minutes_per_fixture * fixture_count
-                sixty_probability = float(player["_sixty_probability"]) * fixture_count
-            if override is not None:
-                expected_minutes = _clamp(override.expected_minutes, 0.0, 90.0 * fixture_count)
+            )
+            fixture_appearance_probability = float(
+                state.get("appearance_probability", appearance_probability)
+            )
+            fixture_sixty_probability = float(state.get("sixty_probability", sixty_probability))
+            per_fixture_minutes = float(state.get("expected_minutes", minutes_per_fixture))
+            expected_minutes = per_fixture_minutes * fixture_count
             per_fixture_minutes = 0.0 if fixture_count == 0 else expected_minutes / fixture_count
-            fixture_appearance_probability = appearance_probability
-            fixture_sixty_probability = (
-                sixty_probability / fixture_count if fixture_count else 0.0
+            conditional_minutes = (
+                per_fixture_minutes / fixture_appearance_probability
+                if fixture_appearance_probability > 0
+                else 0.0
             )
-            if override is not None and self.config.minutes_model != "legacy":
-                if override.start_probability is not None:
-                    start_probability = _clamp(override.start_probability, 0.0, 1.0)
-                if override.substitute_appearance_probability is not None:
-                    substitute_probability = _clamp(
-                        override.substitute_appearance_probability, 0.0, 1.0
-                    )
-                fixture_appearance_probability = _clamp(
-                    start_probability + (1.0 - start_probability) * substitute_probability,
-                    0.0,
-                    1.0,
-                )
-                fixture_sixty_probability = min(
-                    fixture_appearance_probability,
-                    fixture_appearance_probability * float(player["_sixty_given_appearance"]),
-                )
             components = {
                 "appearance": 0.0,
                 "goal": 0.0,
@@ -2049,25 +2574,11 @@ class RatesProjectionModel:
                 is_home = player["team_id"] == fixture["home_team_id"]
                 opponent_id = str(fixture["away_team_id"] if is_home else fixture["home_team_id"])
                 team_strength = strengths[str(player["team_id"])]
-                opponent_strength = strengths[opponent_id]
-                venue_attack = (
-                    self.config.home_attack_multiplier
-                    if is_home
-                    else self.config.away_attack_multiplier
-                )
-                scoring_factor = (
-                    team_strength["attack"] * opponent_strength["defence"] * venue_attack
-                )
-                team_lambda = team_strength["league_average_goals"] * scoring_factor
-                opponent_lambda = (
-                    team_strength["league_average_goals"]
-                    * opponent_strength["attack"]
-                    * team_strength["defence"]
-                    * (
-                        self.config.away_attack_multiplier
-                        if is_home
-                        else self.config.home_attack_multiplier
-                    )
+                scoring_factor, team_lambda, opponent_lambda = self.fixture_lambdas(
+                    strengths,
+                    team_id=str(player["team_id"]),
+                    opponent_id=opponent_id,
+                    is_home=is_home,
                 )
                 latent["team_expected_goals"] += team_lambda
                 latent["opponent_expected_goals"] += opponent_lambda
@@ -2106,12 +2617,8 @@ class RatesProjectionModel:
                     # loop would double count the already aggregated share.
                     pass
                 else:
-                    expected_goals_events += (
-                        rates["goals"] * minute_factor * scoring_factor
-                    )
-                    expected_assists_events += (
-                        rates["assists"] * minute_factor * scoring_factor
-                    )
+                    expected_goals_events += rates["goals"] * minute_factor * scoring_factor
+                    expected_assists_events += rates["assists"] * minute_factor * scoring_factor
                     components["goal"] += (
                         rates["goals"]
                         * minute_factor
@@ -2214,8 +2721,7 @@ class RatesProjectionModel:
                     * self.rules.scoring.goals[position.value]
                 )
                 components["assist"] += (
-                    float(coherent_events.get("assists", 0.0))
-                    * self.rules.scoring.assists
+                    float(coherent_events.get("assists", 0.0)) * self.rules.scoring.assists
                 )
                 if coherent_events.get("team_expected_goals", 0.0):
                     latent["goal_share"] = float(coherent_events.get("goals", 0.0)) / float(
@@ -2303,9 +2809,7 @@ class RatesProjectionModel:
                         float(player.get("_unresolved_minutes", 0.0)),
                         3,
                     ),
-                    reconciliation_warning=bool(
-                        player.get("_reconciliation_warning", False)
-                    ),
+                    reconciliation_warning=bool(player.get("_reconciliation_warning", False)),
                     goal_share=round(float(latent.get("goal_share", 0.0)), 8),
                     assist_share=round(float(latent.get("assist_share", 0.0)), 8),
                     penalty_share=round(float(latent.get("penalty_share", 0.0)), 8),
@@ -2354,6 +2858,10 @@ class RatesProjectionModel:
             "team_strengths": strengths,
             "model_config": self.config.__dict__,
         }
+        if self._last_team_strength_state is not None:
+            # Every contextual adjustment travels with the run that used it,
+            # so no adjustment can be applied without leaving a record.
+            assumptions["team_strength_state"] = self._last_team_strength_state.as_dict()
         with self.database.transaction():
             cursor = self.database.connection.execute(
                 """
@@ -2516,9 +3024,7 @@ def coherence_diagnostics(
                 "max_role_unknown": 0.0,
             },
         )
-        row["team_expected_goals"] = max(
-            row["team_expected_goals"], projection.team_expected_goals
-        )
+        row["team_expected_goals"] = max(row["team_expected_goals"], projection.team_expected_goals)
         row["expected_assisted_goals"] = max(
             row["expected_assisted_goals"], projection.expected_assisted_goals
         )
@@ -2653,6 +3159,89 @@ def _bounded_minutes_reconciliation(
         adjusted = _clamp(adjusted, value - limit, value + limit)
         result.append(_clamp(adjusted, 0.0, 90.0))
     return result
+
+
+def _reconcile_participation_to_minutes(
+    player: dict[str, Any],
+    target_minutes: float,
+) -> float:
+    """Change participation routes in a defined order and return valid minutes.
+
+    Start probability is adjusted first, then substitute probability only if a
+    reachable target remains. Derived appearance, no-appearance, 60-minute
+    probability and unconditional minutes are recomputed together.
+    """
+    if float(player.get("_availability", 1.0)) <= 0.0:
+        player["_start_probability"] = 0.0
+        player["_substitute_probability"] = 0.0
+        player["_appearance_probability"] = 0.0
+        player["_no_appearance_probability"] = 1.0
+        player["_sixty_probability"] = 0.0
+        player["_expected_minutes_per_fixture"] = 0.0
+        return 0.0
+    start_minutes = float(player["_conditional_start_minutes"])
+    substitute_minutes = float(player["_conditional_substitute_minutes"])
+    substitute_probability = float(player["_substitute_probability"])
+    denominator = start_minutes - substitute_probability * substitute_minutes
+    start_probability = (
+        (target_minutes - substitute_probability * substitute_minutes) / denominator
+        if abs(denominator) > 1e-9
+        else float(player["_start_probability"])
+    )
+    start_probability = _clamp(start_probability, 0.0, 1.0)
+    remaining = target_minutes - start_probability * start_minutes
+    substitute_probability = (
+        remaining / ((1.0 - start_probability) * substitute_minutes)
+        if (1.0 - start_probability) * substitute_minutes > 1e-9
+        else 0.0
+    )
+    substitute_probability = _clamp(substitute_probability, 0.0, 1.0)
+    appearance_probability = start_probability + (1.0 - start_probability) * substitute_probability
+    expected_minutes = (
+        start_probability * start_minutes
+        + (1.0 - start_probability) * substitute_probability * substitute_minutes
+    )
+    sixty_probability = start_probability * _clamp(
+        (start_minutes - 45.0) / 30.0,
+        0.0,
+        1.0,
+    )
+    player["_start_probability"] = start_probability
+    player["_substitute_probability"] = substitute_probability
+    player["_appearance_probability"] = appearance_probability
+    player["_no_appearance_probability"] = 1.0 - appearance_probability
+    player["_sixty_probability"] = min(appearance_probability, sixty_probability)
+    player["_sixty_given_appearance"] = (
+        player["_sixty_probability"] / appearance_probability if appearance_probability > 0 else 0.0
+    )
+    player["_expected_minutes_per_fixture"] = expected_minutes
+    return expected_minutes
+
+
+def _participation_minutes(state: dict[str, Any]) -> float:
+    start = float(state["_start_probability"])
+    substitute = float(state["_substitute_probability"])
+    return start * float(state["_conditional_start_minutes"]) + (1.0 - start) * substitute * float(
+        state["_conditional_substitute_minutes"]
+    )
+
+
+def _override_active(override: ProjectionOverride, generated_at: datetime) -> bool:
+    """Enforce optional ISO effective/expiry bounds without guessing dates."""
+    for value, is_expiry in (
+        (override.effective_from, False),
+        (override.expires_at, True),
+    ):
+        if value is None:
+            continue
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("Projection override dates must be timezone-aware")
+        if not is_expiry and generated_at < parsed:
+            return False
+        if is_expiry and generated_at >= parsed:
+            return False
+    return True
 
 
 def _poisson_at_least(rate: float, threshold: int) -> float:
