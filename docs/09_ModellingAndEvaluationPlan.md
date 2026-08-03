@@ -319,7 +319,7 @@ Note that xG/xA are absent in 2021/22, so this challenger has two development fo
 three.
 
 **Implemented in full by `opponent-adjusted-team-strength-v1`** — see
-`12_TeamStrengthModel.md`. That candidate is the first configuration to do all three
+`13_TeamStrengthModel.md`. That candidate is the first configuration to do all three
 steps: it rates clubs opponent-adjusted (§6.1a's carry-forward does not), seeds the
 preseason prior from previous-season opponent-adjusted expected goals, and allocates by
 share so the double-count named above cannot occur. `DEFAULT_MODEL_CONFIG` is unchanged

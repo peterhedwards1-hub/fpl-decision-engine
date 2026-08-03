@@ -44,5 +44,6 @@
   "participation_substitute_prior_matches": 4.0,
   "participation_start_minutes_prior": 78.0,
   "participation_substitute_minutes_prior": 22.0,
-  "participation_role_decay_per_gameweek": 0.03
+  "participation_role_decay_per_gameweek": 0.03,
+  "team_strength_model": "raw_goals"
 }
