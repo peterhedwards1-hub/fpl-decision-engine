@@ -1475,8 +1475,11 @@ def _weekly_cycle(
 
     runs = database.connection.execute(
         """
-        SELECT weekly_decision_runs.id, mode, created_at, frozen_at,
-               recommendation_json
+        SELECT weekly_decision_runs.id,
+               weekly_decision_runs.mode,
+               weekly_decision_runs.created_at,
+               weekly_decision_runs.frozen_at,
+               weekly_decision_runs.recommendation_json
         FROM weekly_decision_runs
         JOIN seasons ON seasons.id = weekly_decision_runs.season_id
         JOIN gameweeks ON gameweeks.id = weekly_decision_runs.gameweek_id

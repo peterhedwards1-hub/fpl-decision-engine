@@ -96,6 +96,22 @@ def register_forward_candidate(
     created = registered_at or datetime.now(UTC)
     if created.tzinfo is None:
         raise ValueError("Registration time must be timezone-aware")
+    # Registration is the last cheap point to reject a partial declaration.
+    # Without this check Python fills omitted dataclass fields from current
+    # code defaults, while the later promotion gate compares the persisted
+    # partial JSON to the rebuilt complete declaration and rejects it only
+    # after a forward capture has been spent.
+    try:
+        rebuilt_declaration = ModelDeclaration.from_dict(model_config).as_dict()
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "Candidate model declaration cannot be reconstructed: " f"{error}"
+        ) from error
+    if rebuilt_declaration != model_config:
+        raise ValueError(
+            "Candidate model declaration must explicitly contain every active "
+            "field and round-trip exactly before registration"
+        )
     config_json = json.dumps(model_config, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(config_json.encode("utf-8")).hexdigest()
     policy_json = json.dumps(asdict(policy), sort_keys=True)

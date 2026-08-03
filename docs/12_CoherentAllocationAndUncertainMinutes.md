@@ -1,22 +1,48 @@
 # Coherent allocation and uncertain minutes challengers
 
-The incumbent rates model remains the default. These three configurations are opt-in forward challengers:
+The incumbent rates model remains the default. The component matrix below is
+opt-in only; each file is a complete copy of `preseason-priors-v1` with only
+the named component changed. It is deliberately not a comparison against
+generic `ProjectionModelConfig` defaults.
 
-| Candidate | Minutes | Player scoring |
-| --- | --- | --- |
-| `coherent-player-allocation-v1` | incumbent two-stage minutes | `coherent_team_allocation` |
-| `uncertain-minutes-v1` | `participation_v1` with bounded reconciliation | incumbent independent rates |
-| `coherent-points-minutes-v1` | `participation_v1` with bounded reconciliation | `coherent_team_allocation` |
+| Candidate | Team strength | Minutes | Player scoring |
+| --- | --- | --- | --- |
+| `preseason-priors-v1` | preseason raw-goals control | incumbent two-stage | independent rates |
+| `opponent-adjusted-team-strength-only-v1` | opponent-adjusted | incumbent two-stage | independent rates (diagnostic only: known double-count limitation) |
+| `coherent-player-allocation-v1` | preseason raw-goals control | incumbent two-stage | `coherent_team_allocation` |
+| `uncertain-minutes-v1` | preseason raw-goals control | `participation_v1` | independent rates |
+| `opponent-adjusted-coherent-allocation-v1` | opponent-adjusted | incumbent two-stage | `coherent_team_allocation` |
+| `coherent-points-minutes-v1` | preseason raw-goals control | `participation_v1` | `coherent_team_allocation` |
+| `opponent-adjusted-coherent-participation-v1` | opponent-adjusted | `participation_v1` | `coherent_team_allocation` |
 
-The JSON files in `config/model_candidates/` contain every parameter. The canonical `ProjectionModelConfig` dataclass is hashed after loading, so changing any new assumption changes the persisted assumption hash. `DEFAULT_MODEL_CONFIG` is unchanged.
+Every candidate file contains every `ProjectionModelConfig` field and is tested
+through the same declaration round-trip used by the promotion gate. For
+opponent-adjusted candidates, its settings and contextual-adjustment manifest
+are also pinned. Shared venue, multiplier-bound, assist-rate and form-half-life
+values have one source of truth: the projection config. A contradictory copy in
+the team-strength settings is rejected rather than silently overwritten. The
+canonical declaration is hashed after loading, so changing an active assumption
+changes the persisted identity. `DEFAULT_MODEL_CONFIG` is unchanged.
 
 ## Coherent event allocation
 
 For each fixture the model first calculates one team expected-goals value from the same team strength, opponent defence and venue factors used by the team projection. It then forms non-negative player weights from historical xG/xA, position priors, expected participation and shrinkage. The normalized weights allocate the team value. No second team-strength multiplier is applied to the allocated player events. Consequently, the sum of player goals equals the team fixture expectation whenever at least one player has positive participation; an all-unavailable team is reported as unallocated rather than silently assigned to a fringe player.
 
-Penalty goals are a declared uncertain fraction (`0.08` by default) of team goals and currently use the same normalized role weights because no reviewed penalty-taker evidence is present in the historical schema. This is explicitly marked unresolved; it is not a claim that the highest historical scorer is the taker. Assists are allocated from team assisted goals, equal to team goals multiplied by `(1 - coherent_assist_unassisted_goal_fraction)`. Rebounds, own goals and goals without an FPL assist remain represented by that unassisted fraction rather than being independently generated.
+Penalty goals are a declared uncertain fraction (`0.08` by default) of team goals.
+Reviewed, effective-dated penalty-role overrides allocate that component between
+the declared primary and secondary takers; an unavailable taker receives none.
+Without such evidence, the component uses an explicitly unresolved broad prior,
+not the ordinary goal-share leader. Assists are allocated from team assisted
+goals, equal to team goals multiplied by
+`(1 - coherent_assist_unassisted_goal_fraction)`. Rebounds, own goals and goals
+without an FPL assist remain represented by that unassisted fraction rather than
+being independently generated.
 
-Transfers use the old event evidence as a role prior and apply additional shrinkage when historical data shows more than one club. The new club controls the available team output; it does not multiply the old-club total a second time.
+Transfers use the old event evidence as a role prior and apply additional
+shrinkage only when the target-season club differs from the most recent
+previous-season club. A settled player is not penalised merely for an older
+career move. The new club controls the available team output; it does not
+multiply the old-club total a second time.
 
 ## Participation and reconciliation
 
@@ -26,9 +52,9 @@ The old 990-minute allocation remains available for the incumbent. The challenge
 
 Every persisted projection row includes the participation components, role evidence, unknown-role flag, reconciliation adjustment, team expected goals, assisted-goal expectation, goal/assist/penalty shares and the canonical config hash in `assumptions_json`.
 
-## 2026/27 forward diagnostic run
+## 2026/27 diagnostic run (superseded comparison)
 
-The following run used database `data/fpl.sqlite3`, ingestion run `7`, generated at `2026-08-02T18:39:20.591976+00:00`, with the pre-deadline snapshot and an eight-Gameweek horizon:
+The following run used database `data/fpl.sqlite3`, ingestion run `7`, generated at `2026-08-02T18:39:20.591976+00:00`, with the pre-deadline snapshot and an eight-Gameweek horizon. It predates the complete-control declarations above, so it is retained as a structural diagnostic only. It is not a valid clean ablation or qualification result and must be regenerated before comparison or forward registration.
 
 | Model | Horizon points (own scale) | Captain / vice | Notable change |
 | --- | ---: | --- | --- |

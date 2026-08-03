@@ -588,7 +588,10 @@ route in `11_ComponentModelsAndForwardQualification.md`: immutable pre-registrat
 with a config SHA-256, matched incumbent and candidate runs from the same
 pre-deadline snapshot, and the predeclared forecast, distribution and
 decision gates. The imported database currently holds 2021/22–2023/24 only, so no
-2026/27 origin exists to register against yet.
+2026/27 origin exists in that historical development database. The current live
+`data/fpl.sqlite3` is separate: it contains 2026/27 snapshots and can supply a
+registration origin. A committed configuration is not thereby registered or
+captured; consult the registration and capture records before spending a live slot.
 
 ### Recommendation: do not register this candidate yet
 

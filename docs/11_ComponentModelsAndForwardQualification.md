@@ -20,6 +20,22 @@ Their canonical configs and common gate policy live in
 `config/model_candidates/`. Schema 15 stores the registration time, config SHA-256 and
 policy immutably.
 
+### Status terminology and databases
+
+This document distinguishes three states that must not be inferred from one
+another: **committed** means a JSON declaration exists in the repository;
+**registered** means an immutable row exists in the target database before the
+deadline; **captured** means that registered declaration has a matching
+pre-deadline forecast run. A committed challenger is neither registered nor
+captured merely because a current-season snapshot exists.
+
+The historical development database used for the evaluations in this document
+is separate from the live `data/fpl.sqlite3`. The live database now contains
+2026/27 ingestion snapshots and can support a registration/capture origin.
+Always inspect its registration and prospective-capture-status records before
+using a forward slot; the table above records the historical qualification
+workflow, not a claim about every current checkout or snapshot.
+
 A fourth candidate configuration, `opponent-adjusted-team-strength-v1`, is written and
 historically evaluated but **not registered, and not currently recommended for
 registration**. Its design, results and remaining uncertainties are in

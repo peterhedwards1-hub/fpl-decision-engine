@@ -38,6 +38,11 @@ from fpl_engine.promotion import (
 )
 from fpl_engine.prospective import build_prospective_capture_status
 
+INCUMBENT_CONFIG = asdict(CORRECTED_V4_MODEL_CONFIG)
+CANDIDATE_CONFIG = asdict(PRESEASON_V5_MODEL_CONFIG)
+INCUMBENT_CONFIG_JSON = json.dumps(INCUMBENT_CONFIG, sort_keys=True)
+CANDIDATE_CONFIG_JSON = json.dumps(CANDIDATE_CONFIG, sort_keys=True)
+
 
 def test_forward_candidate_registration_is_hashed_and_immutable(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
@@ -55,7 +60,7 @@ def test_forward_candidate_registration_is_hashed_and_immutable(tmp_path) -> Non
             candidate_key="team-share-v1",
             season_code="2026-27",
             model_version="team-share-v1",
-            model_config={"scoring_event_source": "team_share_expected"},
+            model_config=asdict(PRESEASON_V5_MODEL_CONFIG),
             registered_at=datetime(2026, 7, 30, tzinfo=UTC),
         )
 
@@ -66,9 +71,9 @@ def test_forward_candidate_registration_is_hashed_and_immutable(tmp_path) -> Non
             FROM model_candidate_registrations
             """
         ).fetchone()
-        assert json.loads(stored["model_config_json"]) == {
-            "scoring_event_source": "team_share_expected"
-        }
+        assert json.loads(stored["model_config_json"]) == asdict(
+            PRESEASON_V5_MODEL_CONFIG
+        )
         assert stored["status"] == "declared"
         with pytest.raises(
             sqlite3.IntegrityError,
@@ -79,6 +84,25 @@ def test_forward_candidate_registration_is_hashed_and_immutable(tmp_path) -> Non
                 UPDATE model_candidate_registrations
                 SET model_version = 'changed'
                 """
+            )
+
+
+def test_forward_candidate_registration_refuses_a_partial_declaration(tmp_path) -> None:
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.connection.execute(
+            "INSERT INTO seasons (code, name) VALUES ('2026-27', '2026/27')"
+        )
+        database.connection.commit()
+
+        with pytest.raises(ValueError, match="round-trip exactly"):
+            register_forward_candidate(
+                database,
+                candidate_key="partial",
+                season_code="2026-27",
+                model_version="partial-v1",
+                model_config={"scoring_event_source": "team_share_expected"},
+                registered_at=datetime(2026, 7, 30, tzinfo=UTC),
             )
 
 
@@ -135,7 +159,7 @@ def test_prospective_status_requires_each_registered_candidate_run(
             candidate_key="candidate",
             season_code="2026-27",
             model_version="candidate-v1",
-            model_config={"value": 1},
+            model_config=CANDIDATE_CONFIG,
             registered_at=datetime(2026, 7, 30, tzinfo=UTC),
         )
 
@@ -212,12 +236,12 @@ def test_matched_forward_rows_can_qualify_declared_candidate(
             (
                 1,
                 "incumbent",
-                '{"value":0}',
+                INCUMBENT_CONFIG_JSON,
             ),
             (
                 2,
                 "candidate-v1",
-                '{"value":1}',
+                CANDIDATE_CONFIG_JSON,
             ),
         )
         for run_id, version, config in run_values:
@@ -260,7 +284,7 @@ def test_matched_forward_rows_can_qualify_declared_candidate(
             candidate_key="candidate",
             season_code="2026-27",
             model_version="candidate-v1",
-            model_config={"value": 1},
+            model_config=CANDIDATE_CONFIG,
             gate_policy=policy,
             registered_at=datetime(2026, 7, 30, tzinfo=UTC),
         )
@@ -338,8 +362,8 @@ def test_probability_gate_fails_cleanly_without_single_fixture_rows(
                 (index, index, str(index), position),
             )
         for run_id, version, config in (
-            (1, "incumbent", '{"value":0}'),
-            (2, "candidate-v1", '{"value":1}'),
+            (1, "incumbent", INCUMBENT_CONFIG_JSON),
+            (2, "candidate-v1", CANDIDATE_CONFIG_JSON),
         ):
             database.connection.execute(
                 """
@@ -380,7 +404,7 @@ def test_probability_gate_fails_cleanly_without_single_fixture_rows(
             candidate_key="candidate",
             season_code="2026-27",
             model_version="candidate-v1",
-            model_config={"value": 1},
+            model_config=CANDIDATE_CONFIG,
             gate_policy=policy,
             registered_at=datetime(2026, 7, 30, tzinfo=UTC),
         )
