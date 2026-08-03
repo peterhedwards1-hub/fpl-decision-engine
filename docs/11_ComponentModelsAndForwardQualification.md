@@ -39,7 +39,7 @@ workflow, not a claim about every current checkout or snapshot.
 A fourth candidate configuration, `opponent-adjusted-team-strength-v1`, is written and
 historically evaluated but **not registered, and not currently recommended for
 registration**. Its design, results and remaining uncertainties are in
-`12_TeamStrengthModel.md`.
+`13_TeamStrengthModel.md`.
 
 Its controlled four-variant evaluation found the pattern this gate exists to catch:
 the candidate has the best player-points MAE of the four and the worst owned-captain
