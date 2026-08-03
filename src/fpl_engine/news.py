@@ -261,7 +261,10 @@ def _parse_v3_sources(value: Any, field: str, index: int) -> tuple[dict[str, Any
         source_url = _required_text(source["source_url"], "source_url", index)
         published_at = _timestamp(source["published_at"], "published_at", index)
         if source["source_tier"] not in V3_SOURCE_TIERS:
-            raise ValueError(f"Evidence item {index} has invalid source_tier")
+            raise ValueError(
+                f"Evidence item {index} has invalid source_tier; "
+                f"use one of {sorted(V3_SOURCE_TIERS)}"
+            )
         result.append(
             {
                 "source_name": source_name,
@@ -312,7 +315,10 @@ def _parse_v3_evidence(
     if item["evidence_type"] not in V3_EVIDENCE_TYPES:
         raise ValueError(f"Evidence item {index} has invalid evidence_type")
     if item["source_tier"] not in V3_SOURCE_TIERS:
-        raise ValueError(f"Evidence item {index} has invalid source_tier")
+        raise ValueError(
+            f"Evidence item {index} has invalid source_tier; "
+            f"use one of {sorted(V3_SOURCE_TIERS)}"
+        )
     if item["model_area"] not in V3_MODEL_AREAS:
         raise ValueError(f"Evidence item {index} has invalid model_area")
     if item["adjustment_support"] not in ADJUSTMENT_SUPPORT:
@@ -411,7 +417,10 @@ def _parse_v3_discovery(item: dict[str, Any], index: int) -> dict[str, Any]:
     if item["identity_status"] == "resolved":
         _required_text(item["source_player_id"], "source_player_id", index)
     if item["source_tier"] not in V3_SOURCE_TIERS:
-        raise ValueError(f"Discovery {index} has invalid source_tier")
+        raise ValueError(
+            f"Discovery {index} has invalid source_tier; "
+            f"use one of {sorted(V3_SOURCE_TIERS)}"
+        )
     _timestamp(item["published_at"], "published_at", index)
     for field in (
         "discovery_id",

@@ -170,10 +170,13 @@ class WeeklyWorkflowRepository:
         decision_maker: str = "user",
         reviewed_at: datetime | None = None,
     ) -> None:
-        if not rationale.strip():
-            raise WorkflowError("A review rationale is required")
         if not decision_maker.strip():
             raise WorkflowError("A decision maker is required")
+        rationale = rationale.strip() or (
+            "Accepted without additional note."
+            if status == "accepted"
+            else "Rejected without additional note."
+        )
         evidence = self.database.connection.execute(
             """
             SELECT review_status, suggested_adjustment_json, schema_version,

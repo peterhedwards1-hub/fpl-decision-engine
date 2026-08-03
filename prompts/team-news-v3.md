@@ -52,6 +52,20 @@ basis. Every evidence item and discovery needs a direct URL and publication
 time. A source before the research window is background context only unless
 explicitly marked as such.
 
+For `source_tier`, use exactly one of these four lowercase enum values. Do not
+invent alternatives such as `reliable_direct_reporting`, `secondary`, `direct`,
+or `reliable`:
+
+- `official`: an official club, FPL, league or manager source;
+- `strong_reporting`: reliable named journalism or direct reporting;
+- `predicted_lineup`: an established predicted-line-up source;
+- `rumour`: unverified, speculative, fan-site or otherwise weak reporting.
+
+Classify the source itself, not the certainty of the claim. Use the `confidence`
+field for claim certainty. Before returning, check every evidence source,
+supporting source, conflicting source and discovery uses one of those four exact
+values.
+
 Modes:
 
 - preseason: friendlies are experimental, travel squads are incomplete,

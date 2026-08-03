@@ -1285,6 +1285,29 @@ def _weekly_cycle(
             )
         pending = [row for row in evidence_rows if row["review_status"] == "pending"]
         if pending:
+            st.info(
+                "Review means: keep or discard this evidence for the current Gameweek. "
+                "Accept credible, relevant reports; reject items that are unreliable or "
+                "not decision-relevant. Leave the minutes adjustment at 0.00 unless the "
+                "source directly supports a change in expected minutes."
+            )
+            if all(row["adjustment_support"] != "supported_numeric" for row in pending):
+                st.caption(
+                    "All pending items are informational and have no model-supported "
+                    "numeric adjustment."
+                )
+                if st.button("Accept all as informational (0-minute adjustments)"):
+                    for row in pending:
+                        workflow.review_evidence(
+                            int(row["id"]),
+                            status="accepted",
+                            rationale=(
+                                "Accepted as informational; no model-supported "
+                                "minutes adjustment."
+                            ),
+                            expected_minutes_adjustment=None,
+                        )
+                    st.rerun()
             pending_id = st.selectbox(
                 "Evidence to review",
                 [row["id"] for row in pending],
@@ -1293,14 +1316,26 @@ def _weekly_cycle(
                 ),
             )
             review_status = st.radio("Review decision", ("accepted", "rejected"), horizontal=True)
+            selected_pending = next(row for row in pending if row["id"] == pending_id)
+            if selected_pending["decision_question"]:
+                st.caption(f"Decision question: {selected_pending['decision_question']}")
+            if selected_pending["adjustment_support"] != "supported_numeric":
+                st.caption(
+                    "This item is informational rather than a model-supported numeric "
+                    "adjustment; keep the value at 0.00."
+                )
             minutes_adjustment = st.number_input(
-                "Expected-minutes adjustment",
+                "Expected-minutes adjustment (supported numeric evidence only)",
                 min_value=-90.0,
                 max_value=90.0,
                 value=0.0,
                 step=5.0,
+                disabled=selected_pending["adjustment_support"] != "supported_numeric",
             )
-            review_rationale = st.text_input("Review rationale")
+            review_rationale = st.text_input(
+                "Review rationale (optional)",
+                placeholder="Leave blank to use an automatic note.",
+            )
             if st.button("Record evidence review"):
                 try:
                     workflow.review_evidence(
@@ -1308,7 +1343,12 @@ def _weekly_cycle(
                         status=review_status,
                         rationale=review_rationale,
                         expected_minutes_adjustment=(
-                            minutes_adjustment if review_status == "accepted" else None
+                            minutes_adjustment
+                            if (
+                                review_status == "accepted"
+                                and selected_pending["adjustment_support"] == "supported_numeric"
+                            )
+                            else None
                         ),
                     )
                 except WorkflowError as error:
@@ -1316,13 +1356,8 @@ def _weekly_cycle(
                 else:
                     st.rerun()
 
-        accepted_adjustments = [
-            row
-            for row in evidence_rows
-            if row["review_status"] == "accepted" and row["expected_minutes_adjustment"] is not None
-        ]
         if (
-            accepted_adjustments
+            evidence_rows
             and not pending
             and st.button(
                 "Generate comparable pre-news and final projections",
@@ -1396,6 +1431,7 @@ def _weekly_cycle(
                 hide_index=True,
                 use_container_width=True,
             )
+        if coverage_rows and pairs:
             latest_pair = pairs[0]
             unfinished = database.connection.execute(
                 """
