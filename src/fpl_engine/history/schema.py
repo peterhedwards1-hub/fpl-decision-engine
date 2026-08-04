@@ -645,6 +645,99 @@ SELECT
     source_observation_key,
     provenance_run_id
 FROM player_gameweek_observations;
+
+CREATE TABLE IF NOT EXISTS reviewed_projection_modifiers (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    source_player_id TEXT,
+    source_team_id TEXT,
+    modifier_type TEXT NOT NULL CHECK (modifier_type IN (
+        'expected_minutes', 'expected_minutes_delta',
+        'appearance_probability', 'appearance_probability_delta',
+        'starting_probability', 'starting_probability_delta',
+        'sixty_probability', 'sixty_probability_delta', 'availability'
+    )),
+    operation TEXT NOT NULL CHECK (operation IN ('set', 'delta', 'multiplier', 'unavailable')),
+    value REAL NOT NULL,
+    start_gameweek INTEGER NOT NULL CHECK (start_gameweek BETWEEN 1 AND 38),
+    end_gameweek INTEGER NOT NULL CHECK (end_gameweek BETWEEN 1 AND 38),
+    evidence_ids_json TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    expires_at TEXT,
+    research_run_id TEXT,
+    input_package_id TEXT,
+    status TEXT NOT NULL DEFAULT 'accepted' CHECK (
+        status IN ('accepted', 'superseded', 'rejected')
+    ),
+    model_support TEXT NOT NULL DEFAULT 'supported' CHECK (
+        model_support IN ('supported', 'informational', 'unsupported')
+    ),
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+    supersedes_id INTEGER REFERENCES reviewed_projection_modifiers(id),
+    created_at TEXT NOT NULL,
+    CHECK (start_gameweek <= end_gameweek),
+    CHECK (source_player_id IS NOT NULL OR source_team_id IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS projection_run_modifier_links (
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id) ON DELETE CASCADE,
+    modifier_id INTEGER NOT NULL REFERENCES reviewed_projection_modifiers(id),
+    effective_value_json TEXT NOT NULL,
+    PRIMARY KEY (projection_run_id, modifier_id)
+);
+
+CREATE TABLE IF NOT EXISTS research_projection_runs (
+    revised_projection_run_id INTEGER PRIMARY KEY REFERENCES projection_runs(id) ON DELETE CASCADE,
+    baseline_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    decision_type TEXT NOT NULL CHECK (decision_type IN ('opening_squad', 'transfers', 'weekly_xi')),
+    input_package_id TEXT,
+    research_run_id TEXT,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    model_config_hash TEXT NOT NULL,
+    horizon_gameweeks INTEGER NOT NULL CHECK (horizon_gameweeks > 0),
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS research_decision_comparisons (
+    id INTEGER PRIMARY KEY,
+    decision_type TEXT NOT NULL CHECK (decision_type IN ('opening_squad', 'transfers', 'weekly_xi')),
+    baseline_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    revised_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    baseline_recommendation_json TEXT NOT NULL,
+    revised_recommendation_json TEXT NOT NULL,
+    baseline_objective REAL NOT NULL,
+    baseline_revalued_objective REAL NOT NULL,
+    revised_objective REAL NOT NULL,
+    decision_improvement REAL NOT NULL,
+    projection_impact REAL NOT NULL,
+    changed_players_json TEXT NOT NULL,
+    explanations_json TEXT NOT NULL,
+    modifier_ids_json TEXT NOT NULL,
+    robustness TEXT NOT NULL CHECK (robustness IN ('robust', 'moderate', 'near_tie')),
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviewed_modifiers_scope
+    ON reviewed_projection_modifiers(season_id, start_gameweek, end_gameweek, status);
+CREATE INDEX IF NOT EXISTS idx_projection_modifier_links_run
+    ON projection_run_modifier_links(projection_run_id);
+CREATE INDEX IF NOT EXISTS idx_research_comparisons_runs
+    ON research_decision_comparisons(baseline_projection_run_id, revised_projection_run_id);
+
+CREATE TRIGGER IF NOT EXISTS prevent_reviewed_modifier_update
+BEFORE UPDATE ON reviewed_projection_modifiers
+BEGIN
+    SELECT RAISE(ABORT, 'reviewed projection modifiers are immutable; create a superseding modifier');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prevent_reviewed_modifier_delete
+BEFORE DELETE ON reviewed_projection_modifiers
+BEGIN
+    SELECT RAISE(ABORT, 'reviewed projection modifiers are immutable');
+END;
 """
 
 # This is deliberately kept in the application so the migration is testable against
@@ -1578,6 +1671,86 @@ ALTER TABLE news_projection_pairs ADD COLUMN source_ingestion_run_id INTEGER REF
 
 CREATE INDEX idx_team_news_coverage_result ON team_news_coverage(research_result_id, status);
 CREATE INDEX idx_team_news_research_package ON team_news_research_runs(input_package_id, generated_at);
+
+CREATE TABLE reviewed_projection_modifiers (
+    id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+    gameweek_id INTEGER NOT NULL REFERENCES gameweeks(id),
+    source_player_id TEXT,
+    source_team_id TEXT,
+    modifier_type TEXT NOT NULL CHECK (modifier_type IN (
+        'expected_minutes', 'expected_minutes_delta',
+        'appearance_probability', 'appearance_probability_delta',
+        'starting_probability', 'starting_probability_delta',
+        'sixty_probability', 'sixty_probability_delta', 'availability'
+    )),
+    operation TEXT NOT NULL CHECK (operation IN ('set', 'delta', 'multiplier', 'unavailable')),
+    value REAL NOT NULL,
+    start_gameweek INTEGER NOT NULL CHECK (start_gameweek BETWEEN 1 AND 38),
+    end_gameweek INTEGER NOT NULL CHECK (end_gameweek BETWEEN 1 AND 38),
+    evidence_ids_json TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    expires_at TEXT,
+    research_run_id TEXT,
+    input_package_id TEXT,
+    status TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN ('accepted', 'superseded', 'rejected')),
+    model_support TEXT NOT NULL DEFAULT 'supported' CHECK (model_support IN ('supported', 'informational', 'unsupported')),
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+    supersedes_id INTEGER REFERENCES reviewed_projection_modifiers(id),
+    created_at TEXT NOT NULL,
+    CHECK (start_gameweek <= end_gameweek),
+    CHECK (source_player_id IS NOT NULL OR source_team_id IS NOT NULL)
+);
+CREATE TABLE projection_run_modifier_links (
+    projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id) ON DELETE CASCADE,
+    modifier_id INTEGER NOT NULL REFERENCES reviewed_projection_modifiers(id),
+    effective_value_json TEXT NOT NULL,
+    PRIMARY KEY (projection_run_id, modifier_id)
+);
+CREATE TABLE research_projection_runs (
+    revised_projection_run_id INTEGER PRIMARY KEY REFERENCES projection_runs(id) ON DELETE CASCADE,
+    baseline_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    decision_type TEXT NOT NULL CHECK (decision_type IN ('opening_squad', 'transfers', 'weekly_xi')),
+    input_package_id TEXT,
+    research_run_id TEXT,
+    source_ingestion_run_id INTEGER REFERENCES ingestion_runs(id),
+    model_config_hash TEXT NOT NULL,
+    horizon_gameweeks INTEGER NOT NULL CHECK (horizon_gameweeks > 0),
+    created_at TEXT NOT NULL
+);
+CREATE TABLE research_decision_comparisons (
+    id INTEGER PRIMARY KEY,
+    decision_type TEXT NOT NULL CHECK (decision_type IN ('opening_squad', 'transfers', 'weekly_xi')),
+    baseline_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    revised_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),
+    baseline_recommendation_json TEXT NOT NULL,
+    revised_recommendation_json TEXT NOT NULL,
+    baseline_objective REAL NOT NULL,
+    baseline_revalued_objective REAL NOT NULL,
+    revised_objective REAL NOT NULL,
+    decision_improvement REAL NOT NULL,
+    projection_impact REAL NOT NULL,
+    changed_players_json TEXT NOT NULL,
+    explanations_json TEXT NOT NULL,
+    modifier_ids_json TEXT NOT NULL,
+    robustness TEXT NOT NULL CHECK (robustness IN ('robust', 'moderate', 'near_tie')),
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_reviewed_modifiers_scope ON reviewed_projection_modifiers(season_id, start_gameweek, end_gameweek, status);
+CREATE INDEX idx_projection_modifier_links_run ON projection_run_modifier_links(projection_run_id);
+CREATE INDEX idx_research_comparisons_runs ON research_decision_comparisons(baseline_projection_run_id, revised_projection_run_id);
+CREATE TRIGGER prevent_reviewed_modifier_update
+BEFORE UPDATE ON reviewed_projection_modifiers
+BEGIN
+    SELECT RAISE(ABORT, 'reviewed projection modifiers are immutable; create a superseding modifier');
+END;
+CREATE TRIGGER prevent_reviewed_modifier_delete
+BEFORE DELETE ON reviewed_projection_modifiers
+BEGIN
+    SELECT RAISE(ABORT, 'reviewed projection modifiers are immutable');
+END;
 
 PRAGMA user_version = 15;
 COMMIT;

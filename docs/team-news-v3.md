@@ -71,3 +71,50 @@ reported as news uplift only when the underlying snapshot matches; it is not a
 model promotion signal. V1 and v2 records remain readable and retain their
 original schema and prompt labels. V1/v2 records do not acquire v3 coverage by
 reinterpretation.
+
+## Research-to-decision loop
+
+The complete decision loop is:
+
+```text
+baseline projection -> baseline decision -> ChatGPT research
+    -> human review -> reviewed modifiers -> revised projection
+    -> same optimiser -> before/after decision comparison
+```
+
+The research result is advisory. Importing it never changes a projection. For
+each material evidence item choose **Reject**, **Accept as informational**, or
+**Accept with model modifier**. The first two choices do not create a model
+input. A modifier is created only after the reviewer supplies its supported
+type, operation, value, Gameweek range, rationale and evidence link. Unsupported
+role suggestions remain visible as reviewed evidence and are labelled
+“Reviewed but not model-supported”.
+
+Supported production modifiers are the expected-minutes, probability and
+availability fields listed in the v3 schema. Values apply only in their
+explicit Gameweek range and are excluded after expiry. Accepted modifiers are
+immutable; corrections use a superseding record.
+
+Use **Apply research and rerun decision** in Weekly Cycle after all current
+evidence has been reviewed. The revised run uses the same source-ingestion run,
+model configuration, start Gameweek and horizon as the baseline. The
+comparison reports the baseline recommendation under baseline beliefs, that
+same recommendation revalued under revised beliefs, and the revised
+recommendation under revised beliefs. Decision improvement is the third minus
+the second; projection impact is the second minus the first. Changed actions
+include accepted modifier IDs and are classified as `robust`, `moderate` or
+`near_tie`.
+
+CLI equivalents are:
+
+```text
+fpl-history --database data/fpl.sqlite3 review-team-news-modifier ...
+fpl-history --database data/fpl.sqlite3 apply-team-news-research --baseline-projection-run 123 --decision-type opening_squad
+fpl-history --database data/fpl.sqlite3 compare-research-decision --baseline-projection-run 123 --revised-projection-run 140
+```
+
+Transfer comparisons additionally accept `--current-squad-json` containing
+`player_ids`, `selling_prices_tenths`, `bank_tenths`, `free_transfers` and
+optional `available_chips`. Transfer and weekly-XI paths reuse the exact
+manager state and optimiser rules; ChatGPT never selects players or performs
+FPL account actions.

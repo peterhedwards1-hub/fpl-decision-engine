@@ -42,6 +42,13 @@ from fpl_engine.projections import (
     ProjectionOverride,
     RatesProjectionModel,
 )
+from fpl_engine.research_decision import (
+    compare_opening_squad_decision,
+    compare_transfer_decision,
+    compare_weekly_xi_decision,
+    generate_revised_projection,
+)
+from fpl_engine.reviewed_modifiers import ReviewedProjectionModifier
 from fpl_engine.team_news_v3 import generate_team_news_research_package
 from fpl_engine.transfers import CurrentSquad, recommend_transfers
 from fpl_engine.ui.view import pitch_html
@@ -1219,7 +1226,9 @@ def _weekly_cycle(
                 st.rerun()
         evidence_rows = database.connection.execute(
             """
-            SELECT news_evidence.id, players.web_name, evidence_type, summary,
+            SELECT news_evidence.id, ps.source_player_id, players.web_name,
+                   news_evidence.research_run_id, news_evidence.input_package_id,
+                   evidence_type, summary,
                    confidence, review_status, expected_minutes_adjustment,
                    rationale, schema_version, prompt_version, priority,
                    selected_player_status, source_tier, published_at, expires_at,
@@ -1315,8 +1324,17 @@ def _weekly_cycle(
                     row["summary"] for row in pending if row["id"] == value
                 ),
             )
-            review_status = st.radio("Review decision", ("accepted", "rejected"), horizontal=True)
             selected_pending = next(row for row in pending if row["id"] == pending_id)
+            review_action = st.radio(
+                "Review decision",
+                ("accepted", "rejected", "accepted_with_modifier"),
+                format_func=lambda value: {
+                    "accepted": "Accept as informational",
+                    "rejected": "Reject",
+                    "accepted_with_modifier": "Accept with model modifier",
+                }[value],
+                horizontal=True,
+            )
             if selected_pending["decision_question"]:
                 st.caption(f"Decision question: {selected_pending['decision_question']}")
             if selected_pending["adjustment_support"] != "supported_numeric":
@@ -1324,34 +1342,123 @@ def _weekly_cycle(
                     "This item is informational rather than a model-supported numeric "
                     "adjustment; keep the value at 0.00."
                 )
-            minutes_adjustment = st.number_input(
-                "Expected-minutes adjustment (supported numeric evidence only)",
-                min_value=-90.0,
-                max_value=90.0,
-                value=0.0,
-                step=5.0,
-                disabled=selected_pending["adjustment_support"] != "supported_numeric",
-            )
+            minutes_adjustment = None
+            modifier_type = None
+            modifier_operation = None
+            modifier_value = None
+            modifier_start = gameweek_number
+            modifier_end = gameweek_number
+            if review_action == "accepted_with_modifier":
+                st.caption(
+                    "A modifier changes model inputs over an explicit Gameweek range. "
+                    "Use this only when the source supports a concrete, reviewable implication."
+                )
+                modifier_type = st.selectbox(
+                    "Modifier type",
+                    (
+                        "expected_minutes",
+                        "expected_minutes_delta",
+                        "appearance_probability",
+                        "appearance_probability_delta",
+                        "starting_probability",
+                        "starting_probability_delta",
+                        "sixty_probability",
+                        "sixty_probability_delta",
+                        "availability",
+                    ),
+                )
+                default_operation = "delta" if modifier_type.endswith("_delta") else "set"
+                operation_options = (
+                    ("delta", "set", "multiplier")
+                    if modifier_type.endswith("_delta")
+                    else ("set", "delta", "multiplier")
+                )
+                if modifier_type == "availability":
+                    operation_options = ("set", "unavailable", "delta", "multiplier")
+                modifier_operation = st.selectbox(
+                    "Operation",
+                    operation_options,
+                    index=operation_options.index(default_operation)
+                    if default_operation in operation_options
+                    else 0,
+                )
+                probability_modifier = (
+                    "probability" in modifier_type or modifier_type == "availability"
+                )
+                modifier_value = st.number_input(
+                    "Modifier value",
+                    min_value=-1.0 if probability_modifier else -90.0,
+                    max_value=1.0 if probability_modifier else 90.0,
+                    value=0.0 if modifier_operation in {"delta", "unavailable"} else 1.0,
+                    step=0.05 if probability_modifier else 5.0,
+                )
+                modifier_start = st.number_input(
+                    "First applicable Gameweek",
+                    min_value=1,
+                    max_value=38,
+                    value=gameweek_number,
+                    step=1,
+                )
+                modifier_end = st.number_input(
+                    "Last applicable Gameweek",
+                    min_value=1,
+                    max_value=38,
+                    value=gameweek_number,
+                    step=1,
+                )
+            else:
+                minutes_adjustment = st.number_input(
+                    "Expected-minutes adjustment (supported numeric evidence only)",
+                    min_value=-90.0,
+                    max_value=90.0,
+                    value=0.0,
+                    step=5.0,
+                    disabled=(
+                        review_action != "accepted"
+                        or selected_pending["adjustment_support"] != "supported_numeric"
+                    ),
+                )
             review_rationale = st.text_input(
                 "Review rationale (optional)",
                 placeholder="Leave blank to use an automatic note.",
             )
             if st.button("Record evidence review"):
                 try:
+                    modifier = None
+                    if review_action == "accepted_with_modifier":
+                        if not selected_pending["source_player_id"]:
+                            raise WorkflowError(
+                                "A model modifier requires a resolved player identity"
+                            )
+                        modifier = ReviewedProjectionModifier(
+                            source_player_id=selected_pending["source_player_id"],
+                            modifier_type=modifier_type,
+                            operation=modifier_operation,
+                            value=float(modifier_value),
+                            start_gameweek=int(modifier_start),
+                            end_gameweek=int(modifier_end),
+                            evidence_ids=(int(pending_id),),
+                            rationale=review_rationale or "Accepted model modifier.",
+                            reviewed_by="user",
+                            reviewed_at=datetime.now(UTC),
+                            research_run_id=selected_pending["research_run_id"],
+                            input_package_id=selected_pending["input_package_id"],
+                        )
                     workflow.review_evidence(
                         pending_id,
-                        status=review_status,
+                        status="rejected" if review_action == "rejected" else "accepted",
                         rationale=review_rationale,
                         expected_minutes_adjustment=(
                             minutes_adjustment
                             if (
-                                review_status == "accepted"
+                                review_action == "accepted"
                                 and selected_pending["adjustment_support"] == "supported_numeric"
                             )
                             else None
                         ),
+                        modifier=modifier,
                     )
-                except WorkflowError as error:
+                except (WorkflowError, ValueError) as error:
                     st.error(str(error))
                 else:
                     st.rerun()
@@ -1389,6 +1496,7 @@ def _weekly_cycle(
             SELECT pairs.id, pairs.created_at,
                    pairs.pre_news_projection_run_id,
                    pairs.post_news_projection_run_id,
+                   pairs.input_package_id, pairs.research_run_id,
                    evaluations.points_mae_change,
                    evaluations.minutes_mae_change
             FROM news_projection_pairs pairs
@@ -1408,6 +1516,125 @@ def _weekly_cycle(
                 hide_index=True,
                 use_container_width=True,
             )
+            latest_pair = pairs[0]
+            with st.expander("Apply reviewed research and compare the decision", expanded=True):
+                st.caption(
+                    "This reruns the optimiser using the same source snapshot, model "
+                    "configuration and full projection horizon as the baseline."
+                )
+                decision_type = st.selectbox(
+                    "Decision to rerun",
+                    options=("opening_squad", "transfers", "weekly_xi"),
+                    format_func=lambda value: {
+                        "opening_squad": "Opening squad",
+                        "transfers": "Transfers from current squad",
+                        "weekly_xi": "Weekly XI and captaincy",
+                    }[value],
+                    key="research_decision_type",
+                )
+                if st.button("Rerun decision with reviewed research"):
+                    try:
+                        rerun = generate_revised_projection(
+                            database,
+                            rules,
+                            baseline_projection_run_id=int(
+                                latest_pair["pre_news_projection_run_id"]
+                            ),
+                            decision_type=decision_type,
+                            input_package_id=latest_pair["input_package_id"],
+                            research_run_id=latest_pair["research_run_id"],
+                        )
+                        if decision_type == "opening_squad":
+                            comparison = compare_opening_squad_decision(
+                                database, rules,
+                                baseline_projection_run_id=rerun.baseline_projection_run_id,
+                                revised_projection_run_id=rerun.revised_projection_run_id,
+                                modifier_ids=rerun.modifier_ids,
+                            )
+                        elif decision_type == "weekly_xi":
+                            comparison = compare_weekly_xi_decision(
+                                database, rules,
+                                baseline_projection_run_id=rerun.baseline_projection_run_id,
+                                revised_projection_run_id=rerun.revised_projection_run_id,
+                                modifier_ids=rerun.modifier_ids,
+                            )
+                        else:
+                            snapshot = database.connection.execute(
+                                """
+                                SELECT manager_snapshots.*
+                                FROM manager_snapshots
+                                JOIN seasons ON seasons.id = manager_snapshots.season_id
+                                WHERE seasons.code = ?
+                                ORDER BY manager_snapshots.captured_at DESC,
+                                         manager_snapshots.id DESC
+                                LIMIT 1
+                                """,
+                                (season_code,),
+                            ).fetchone()
+                            if snapshot is None:
+                                raise WorkflowError(
+                                    "Transfer comparison requires a saved current squad snapshot"
+                                )
+                            entries = database.connection.execute(
+                                """
+                                SELECT ps.source_player_id, entries.selling_price_tenths
+                                FROM manager_squad_entries entries
+                                JOIN player_seasons ps ON ps.id = entries.player_season_id
+                                WHERE entries.manager_snapshot_id = ?
+                                """,
+                                (snapshot["id"],),
+                            ).fetchall()
+                            current = CurrentSquad(
+                                player_ids=frozenset(row["source_player_id"] for row in entries),
+                                selling_prices_tenths={
+                                    row["source_player_id"]: int(row["selling_price_tenths"])
+                                    for row in entries
+                                },
+                                bank_tenths=int(snapshot["bank_tenths"]),
+                                free_transfers=int(snapshot["free_transfers"]),
+                                available_chips=tuple(
+                                    json.loads(snapshot["remaining_chips_json"]).keys()
+                                ),
+                            )
+                            comparison = compare_transfer_decision(
+                                database, rules,
+                                baseline_projection_run_id=rerun.baseline_projection_run_id,
+                                revised_projection_run_id=rerun.revised_projection_run_id,
+                                current_squad=current,
+                                modifier_ids=rerun.modifier_ids,
+                            )
+                    except (ValueError, WorkflowError, OptimisationError) as error:
+                        st.error(str(error))
+                    else:
+                        st.success(
+                            f"Revised projection run {rerun.revised_projection_run_id} "
+                            f"and comparison {comparison.comparison_id} saved."
+                        )
+                        metrics = st.columns(4)
+                        metrics[0].metric(
+                            "Baseline under baseline beliefs",
+                            f"{comparison.baseline_objective:.2f}",
+                        )
+                        metrics[1].metric(
+                            "Baseline under revised beliefs",
+                            f"{comparison.baseline_revalued_objective:.2f}",
+                        )
+                        metrics[2].metric(
+                            "Revised recommendation",
+                            f"{comparison.revised_objective:.2f}",
+                        )
+                        metrics[3].metric(
+                            "Value of changing decision",
+                            f"{comparison.decision_improvement:+.2f}",
+                        )
+                        st.write(f"Robustness: **{comparison.robustness}**")
+                        st.json(comparison.changed_players)
+                        if comparison.explanations:
+                            st.dataframe(
+                                pd.DataFrame(list(comparison.explanations)),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
         coverage_rows = database.connection.execute(
             """
             SELECT coverage.source_player_id, coverage.priority, coverage.status,

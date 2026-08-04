@@ -399,7 +399,7 @@ def _config_hash(config: ProjectionModelConfig) -> str:
 class ProjectionOverride:
     source_player_id: str
     gameweek_number: int
-    expected_minutes: float
+    expected_minutes: float | None
     rationale: str
     start_probability: float | None = None
     substitute_appearance_probability: float | None = None
@@ -412,6 +412,19 @@ class ProjectionOverride:
     expires_at: str | None = None
     source: str | None = None
     confidence: str | None = None
+    expected_minutes_delta: float = 0.0
+    expected_minutes_multiplier: float = 1.0
+    appearance_probability: float | None = None
+    appearance_probability_delta: float = 0.0
+    appearance_probability_multiplier: float = 1.0
+    start_probability_delta: float = 0.0
+    start_probability_multiplier: float = 1.0
+    sixty_probability: float | None = None
+    sixty_probability_delta: float = 0.0
+    sixty_probability_multiplier: float = 1.0
+    availability_delta: float = 0.0
+    availability_multiplier: float = 1.0
+    modifier_ids: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if self.set_piece_role_probability is not None:
@@ -429,9 +442,29 @@ class ProjectionOverride:
                 self.conditional_substitute_minutes,
                 self.availability,
                 self.penalty_role_probability,
+                self.appearance_probability,
+                self.sixty_probability,
             )
         ) and (not self.source or not self.confidence):
             raise ValueError("Active component overrides require source and confidence")
+        for name, value in (
+            ("expected_minutes_delta", self.expected_minutes_delta),
+            ("appearance_probability_delta", self.appearance_probability_delta),
+            ("start_probability_delta", self.start_probability_delta),
+            ("sixty_probability_delta", self.sixty_probability_delta),
+            ("availability_delta", self.availability_delta),
+        ):
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+        for name, value in (
+            ("expected_minutes_multiplier", self.expected_minutes_multiplier),
+            ("appearance_probability_multiplier", self.appearance_probability_multiplier),
+            ("start_probability_multiplier", self.start_probability_multiplier),
+            ("sixty_probability_multiplier", self.sixty_probability_multiplier),
+            ("availability_multiplier", self.availability_multiplier),
+        ):
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and non-negative")
 
 
 @dataclass(frozen=True)
@@ -465,6 +498,7 @@ class PlayerGameweekProjection:
     uncertainty: float
     assumptions: tuple[str, ...]
     override_rationale: str | None = None
+    modifier_ids: tuple[int, ...] = ()
     latent_expectations: dict[str, float] | None = None
     start_probability: float = 0.0
     substitute_appearance_probability: float = 0.0
@@ -1829,6 +1863,7 @@ class RatesProjectionModel:
                         player["_conditional_substitute_minutes"]
                     ),
                     "_penalty_role_probability": None,
+                    "_sixty_probability_override": None,
                 }
                 override = overrides.get((str(player["source_player_id"]), gameweek))
                 if self.config.minutes_model != "participation_v1" and override is None:
@@ -1848,15 +1883,44 @@ class RatesProjectionModel:
                 if override is not None and _override_active(override, generated_at):
                     if override.availability is not None:
                         state["_availability"] = _clamp(override.availability, 0.0, 1.0)
+                    state["_availability"] = _clamp(
+                        state["_availability"] * override.availability_multiplier
+                        + override.availability_delta,
+                        0.0,
+                        1.0,
+                    )
                     if override.start_probability is not None:
-                        state["_start_probability"] = _clamp(
-                            override.start_probability * state["_availability"], 0.0, 1.0
-                        )
+                        state["_start_probability"] = override.start_probability
+                    state["_start_probability"] = _clamp(
+                        state["_start_probability"] * override.start_probability_multiplier
+                        + override.start_probability_delta,
+                        0.0,
+                        state["_availability"],
+                    )
                     if override.substitute_appearance_probability is not None:
                         state["_substitute_probability"] = _clamp(
                             override.substitute_appearance_probability * state["_availability"],
                             0.0,
                             1.0,
+                        )
+                    if override.appearance_probability is not None:
+                        _set_participation_appearance(
+                            state,
+                            _clamp(override.appearance_probability, 0.0, 1.0),
+                        )
+                    elif (
+                        override.appearance_probability_delta != 0.0
+                        or override.appearance_probability_multiplier != 1.0
+                    ):
+                        current_appearance = _participation_appearance(state)
+                        _set_participation_appearance(
+                            state,
+                            _clamp(
+                                current_appearance * override.appearance_probability_multiplier
+                                + override.appearance_probability_delta,
+                                0.0,
+                                1.0,
+                            ),
                         )
                     if override.conditional_start_minutes is not None:
                         state["_conditional_start_minutes"] = _clamp(
@@ -1873,12 +1937,49 @@ class RatesProjectionModel:
                     if override.expected_minutes is not None:
                         _reconcile_participation_to_minutes(
                             state,
-                            _clamp(override.expected_minutes, 0.0, 90.0),
+                            _clamp(
+                                override.expected_minutes * override.expected_minutes_multiplier
+                                + override.expected_minutes_delta,
+                                0.0,
+                                90.0,
+                            ),
+                        )
+                    elif (
+                        override.expected_minutes_delta != 0.0
+                        or override.expected_minutes_multiplier != 1.0
+                    ):
+                        _reconcile_participation_to_minutes(
+                            state,
+                            _clamp(
+                                _participation_minutes(state)
+                                * override.expected_minutes_multiplier
+                                + override.expected_minutes_delta,
+                                0.0,
+                                90.0,
+                            ),
                         )
                 _reconcile_participation_to_minutes(
                     state,
                     _participation_minutes(state),
                 )
+                if override is not None and _override_active(override, generated_at):
+                    if override.sixty_probability is not None:
+                        state["_sixty_probability_override"] = _clamp(
+                            override.sixty_probability, 0.0, state["_appearance_probability"]
+                        )
+                    elif (
+                        override.sixty_probability_delta != 0.0
+                        or override.sixty_probability_multiplier != 1.0
+                    ):
+                        state["_sixty_probability_override"] = _clamp(
+                            state["_sixty_probability"]
+                            * override.sixty_probability_multiplier
+                            + override.sixty_probability_delta,
+                            0.0,
+                            state["_appearance_probability"],
+                        )
+                    if state["_sixty_probability_override"] is not None:
+                        state["_sixty_probability"] = state["_sixty_probability_override"]
                 by_gameweek[gameweek] = {
                     "start_probability": state["_start_probability"],
                     "substitute_probability": state["_substitute_probability"],
@@ -2779,6 +2880,7 @@ class RatesProjectionModel:
                     uncertainty=round(uncertainty, 3),
                     assumptions=assumptions,
                     override_rationale=None if override is None else override.rationale,
+                    modifier_ids=() if override is None else override.modifier_ids,
                     latent_expectations={name: round(value, 8) for name, value in latent.items()},
                     start_probability=round(start_probability, 6),
                     substitute_appearance_probability=round(
@@ -2948,6 +3050,7 @@ def _persisted_projection_assumptions(
 ) -> dict[str, Any]:
     return {
         "notes": projection.assumptions,
+        "modifier_ids": list(projection.modifier_ids),
         "participation": {
             "start_probability": projection.start_probability,
             "substitute_appearance_probability": projection.substitute_appearance_probability,
@@ -3224,6 +3327,36 @@ def _participation_minutes(state: dict[str, Any]) -> float:
     return start * float(state["_conditional_start_minutes"]) + (1.0 - start) * substitute * float(
         state["_conditional_substitute_minutes"]
     )
+
+
+def _participation_appearance(state: dict[str, Any]) -> float:
+    return _clamp(
+        float(state["_start_probability"])
+        + (1.0 - float(state["_start_probability"]))
+        * float(state["_substitute_probability"]),
+        0.0,
+        1.0,
+    )
+
+
+def _set_participation_appearance(state: dict[str, Any], target: float) -> None:
+    """Set appearance while preserving the existing start/sub route split."""
+
+    target = _clamp(target, 0.0, float(state.get("_availability", 1.0)))
+    current = _participation_appearance(state)
+    if current <= 1e-9:
+        state["_start_probability"] = target
+        state["_substitute_probability"] = 0.0
+        return
+    start_share = float(state["_start_probability"]) / current
+    start = min(target, target * start_share)
+    substitute = (
+        (target - start) / (1.0 - start)
+        if 1.0 - start > 1e-9
+        else 0.0
+    )
+    state["_start_probability"] = _clamp(start, 0.0, 1.0)
+    state["_substitute_probability"] = _clamp(substitute, 0.0, 1.0)
 
 
 def _override_active(override: ProjectionOverride, generated_at: datetime) -> bool:

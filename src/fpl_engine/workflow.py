@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from .history.database import HistoricalDatabase
+from .reviewed_modifiers import (
+    ReviewedProjectionModifier,
+    create_reviewed_modifier,
+)
 
 DecisionMode = Literal["provisional", "final"]
 ReviewStatus = Literal["pending", "accepted", "rejected"]
@@ -167,9 +171,18 @@ class WeeklyWorkflowRepository:
         status: Literal["accepted", "rejected"],
         rationale: str,
         expected_minutes_adjustment: float | None = None,
+        modifier: ReviewedProjectionModifier | None = None,
         decision_maker: str = "user",
         reviewed_at: datetime | None = None,
     ) -> None:
+        if modifier is not None and status != "accepted":
+            raise WorkflowError("A rejected evidence item cannot create a model modifier")
+        if (
+            modifier is not None
+            and modifier.evidence_ids
+            and evidence_id not in modifier.evidence_ids
+        ):
+            raise WorkflowError("The reviewed modifier must cite the evidence being reviewed")
         if not decision_maker.strip():
             raise WorkflowError("A decision maker is required")
         rationale = rationale.strip() or (
@@ -180,7 +193,7 @@ class WeeklyWorkflowRepository:
         evidence = self.database.connection.execute(
             """
             SELECT review_status, suggested_adjustment_json, schema_version,
-                   adjustment_support
+                   adjustment_support, season_id, gameweek_id
             FROM news_evidence WHERE id = ?
             """,
             (evidence_id,),
@@ -194,6 +207,7 @@ class WeeklyWorkflowRepository:
         )
         if (
             status == "accepted"
+            and modifier is None
             and expected_minutes_adjustment is None
             and suggested is not None
             and suggested.get("kind") == "expected_minutes_delta"
@@ -237,6 +251,27 @@ class WeeklyWorkflowRepository:
         if cursor.rowcount != 1:
             self.database.connection.rollback()
             raise WorkflowError("Evidence is missing or has already been reviewed")
+        if modifier is not None:
+            season = self.database.connection.execute(
+                "SELECT code FROM seasons WHERE id = ?", (evidence["season_id"],)
+            ).fetchone()
+            gameweek = self.database.connection.execute(
+                "SELECT number FROM gameweeks WHERE id = ?", (evidence["gameweek_id"],)
+            ).fetchone()
+            if season is None or gameweek is None:
+                self.database.connection.rollback()
+                raise WorkflowError("Modifier evidence has no valid season/Gameweek context")
+            try:
+                create_reviewed_modifier(
+                    self.database,
+                    season_code=season["code"],
+                    gameweek_number=int(gameweek["number"]),
+                    modifier=modifier,
+                    commit=False,
+                )
+            except Exception:
+                self.database.connection.rollback()
+                raise
         self.database.connection.commit()
 
     def create_decision_run(

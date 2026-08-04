@@ -52,6 +52,13 @@ from ..promotion import (
     run_forward_candidate_pair,
 )
 from ..prospective import build_prospective_capture_status
+from ..research_decision import (
+    compare_opening_squad_decision,
+    compare_transfer_decision,
+    compare_weekly_xi_decision,
+    generate_revised_projection,
+)
+from ..reviewed_modifiers import ReviewedProjectionModifier
 from ..squad_comparison import compare_opening_squads
 from ..team_news_v3 import generate_team_news_research_package
 from ..team_strength import ContextualAdjustment
@@ -59,6 +66,7 @@ from ..team_strength_report import (
     build_team_strength_report,
     evaluate_team_strength_models,
 )
+from ..transfers import CurrentSquad
 from ..tuning import tune_projection_model, tune_projection_model_rolling
 from .csv_bundle import load_csv_bundle
 from .database import HistoricalDatabase
@@ -717,6 +725,52 @@ def main() -> None:
     result_parser.add_argument("--gameweek", type=int, required=True)
     result_parser.add_argument("--input", required=True)
 
+    modifier_parser = subparsers.add_parser(
+        "review-team-news-modifier",
+        help="Accept one evidence item with an explicit reviewed projection modifier",
+    )
+    modifier_parser.add_argument("--season-code", required=True)
+    modifier_parser.add_argument("--gameweek", type=int, required=True)
+    modifier_parser.add_argument("--evidence-id", type=int, required=True)
+    modifier_parser.add_argument("--player-id", required=True)
+    modifier_parser.add_argument("--modifier-type", required=True)
+    modifier_parser.add_argument("--operation", required=True)
+    modifier_parser.add_argument("--value", type=float, required=True)
+    modifier_parser.add_argument("--start-gameweek", type=int, required=True)
+    modifier_parser.add_argument("--end-gameweek", type=int, required=True)
+    modifier_parser.add_argument("--rationale", required=True)
+    modifier_parser.add_argument("--reviewed-by", default="user")
+    modifier_parser.add_argument("--research-run-id")
+    modifier_parser.add_argument("--input-package-id")
+
+    apply_parser = subparsers.add_parser(
+        "apply-team-news-research",
+        help="Rerun a projection and decision using accepted reviewed modifiers",
+    )
+    apply_parser.add_argument("--baseline-projection-run", type=int, required=True)
+    apply_parser.add_argument(
+        "--decision-type",
+        choices=("opening_squad", "transfers", "weekly_xi"),
+        default="opening_squad",
+    )
+    apply_parser.add_argument("--rules")
+    apply_parser.add_argument("--output")
+
+    compare_research_parser = subparsers.add_parser(
+        "compare-research-decision",
+        help="Compare baseline and revised opening-squad decisions",
+    )
+    compare_research_parser.add_argument("--baseline-projection-run", type=int, required=True)
+    compare_research_parser.add_argument("--revised-projection-run", type=int, required=True)
+    compare_research_parser.add_argument(
+        "--decision-type",
+        choices=("opening_squad", "transfers", "weekly_xi"),
+        default="opening_squad",
+    )
+    compare_research_parser.add_argument("--current-squad-json")
+    compare_research_parser.add_argument("--rules")
+    compare_research_parser.add_argument("--output")
+
     args = parser.parse_args()
     database_path = Path(args.database)
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -789,6 +843,159 @@ def main() -> None:
                     indent=2,
                 )
             )
+            return
+
+        if args.command == "review-team-news-modifier":
+            from ..workflow import WeeklyWorkflowRepository
+
+            modifier = ReviewedProjectionModifier(
+                source_player_id=args.player_id,
+                modifier_type=args.modifier_type,
+                operation=args.operation,
+                value=args.value,
+                start_gameweek=args.start_gameweek,
+                end_gameweek=args.end_gameweek,
+                evidence_ids=(args.evidence_id,),
+                rationale=args.rationale,
+                reviewed_by=args.reviewed_by,
+                reviewed_at=datetime.now(UTC),
+                research_run_id=args.research_run_id,
+                input_package_id=args.input_package_id,
+            )
+            WeeklyWorkflowRepository(database).review_evidence(
+                args.evidence_id,
+                status="accepted",
+                rationale=args.rationale,
+                modifier=modifier,
+            )
+            print(
+                json.dumps(
+                    {"evidence_id": args.evidence_id, "status": "accepted", "modifier": True}
+                )
+            )
+            return
+
+        if args.command == "apply-team-news-research":
+            baseline = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_runs
+                JOIN seasons ON seasons.id = projection_runs.season_id
+                WHERE projection_runs.id = ?
+                """,
+                (args.baseline_projection_run,),
+            ).fetchone()
+            if baseline is None:
+                raise ValueError("Baseline projection run is unavailable")
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{baseline['code']}.json"))
+            rerun = generate_revised_projection(
+                database,
+                rules,
+                baseline_projection_run_id=args.baseline_projection_run,
+                decision_type=args.decision_type,
+            )
+            result = {
+                "revised_projection_run_id": rerun.revised_projection_run_id,
+                "baseline_projection_run_id": rerun.baseline_projection_run_id,
+                "modifier_ids": list(rerun.modifier_ids),
+            }
+            if args.decision_type == "opening_squad":
+                comparison = compare_opening_squad_decision(
+                    database, rules,
+                    baseline_projection_run_id=rerun.baseline_projection_run_id,
+                    revised_projection_run_id=rerun.revised_projection_run_id,
+                    modifier_ids=rerun.modifier_ids,
+                )
+                result["comparison"] = comparison.__dict__
+            elif args.decision_type == "weekly_xi":
+                comparison = compare_weekly_xi_decision(
+                    database, rules,
+                    baseline_projection_run_id=rerun.baseline_projection_run_id,
+                    revised_projection_run_id=rerun.revised_projection_run_id,
+                    modifier_ids=rerun.modifier_ids,
+                )
+                result["comparison"] = comparison.__dict__
+            elif args.current_squad_json:
+                current_payload = json.loads(
+                    Path(args.current_squad_json).read_text(encoding="utf-8")
+                )
+                current = CurrentSquad(
+                    player_ids=frozenset(str(value) for value in current_payload["player_ids"]),
+                    selling_prices_tenths={
+                        str(key): int(value)
+                        for key, value in current_payload["selling_prices_tenths"].items()
+                    },
+                    bank_tenths=int(current_payload["bank_tenths"]),
+                    free_transfers=int(current_payload["free_transfers"]),
+                    available_chips=tuple(current_payload.get("available_chips", ())),
+                )
+                result["comparison"] = compare_transfer_decision(
+                    database, rules,
+                    baseline_projection_run_id=rerun.baseline_projection_run_id,
+                    revised_projection_run_id=rerun.revised_projection_run_id,
+                    current_squad=current,
+                    modifier_ids=rerun.modifier_ids,
+                ).__dict__
+            if args.output:
+                Path(args.output).write_text(
+                    json.dumps(result, indent=2, default=str), encoding="utf-8"
+                )
+            print(json.dumps(result, indent=2, default=str))
+            return
+
+        if args.command == "compare-research-decision":
+            baseline = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_runs
+                JOIN seasons ON seasons.id = projection_runs.season_id
+                WHERE projection_runs.id = ?
+                """,
+                (args.baseline_projection_run,),
+            ).fetchone()
+            if baseline is None:
+                raise ValueError("Baseline projection run is unavailable")
+            rules = load_season_rules(Path(args.rules or f"config/seasons/{baseline['code']}.json"))
+            if args.decision_type == "opening_squad":
+                comparison = compare_opening_squad_decision(
+                    database, rules,
+                    baseline_projection_run_id=args.baseline_projection_run,
+                    revised_projection_run_id=args.revised_projection_run,
+                )
+            elif args.decision_type == "weekly_xi":
+                comparison = compare_weekly_xi_decision(
+                    database, rules,
+                    baseline_projection_run_id=args.baseline_projection_run,
+                    revised_projection_run_id=args.revised_projection_run,
+                )
+            else:
+                if not args.current_squad_json:
+                    raise ValueError("Transfer comparisons require --current-squad-json")
+                current_payload = json.loads(
+                    Path(args.current_squad_json).read_text(encoding="utf-8")
+                )
+                current = CurrentSquad(
+                    player_ids=frozenset(str(value) for value in current_payload["player_ids"]),
+                    selling_prices_tenths={
+                        str(key): int(value)
+                        for key, value in current_payload["selling_prices_tenths"].items()
+                    },
+                    bank_tenths=int(current_payload["bank_tenths"]),
+                    free_transfers=int(current_payload["free_transfers"]),
+                    available_chips=tuple(current_payload.get("available_chips", ())),
+                )
+                comparison = compare_transfer_decision(
+                    database, rules,
+                    baseline_projection_run_id=args.baseline_projection_run,
+                    revised_projection_run_id=args.revised_projection_run,
+                    current_squad=current,
+                )
+            result = comparison.__dict__
+            if args.output:
+                Path(args.output).write_text(
+                    json.dumps(result, indent=2, default=str), encoding="utf-8"
+                )
+            print(json.dumps(result, indent=2, default=str))
             return
 
         if args.command == "backtest-report":
