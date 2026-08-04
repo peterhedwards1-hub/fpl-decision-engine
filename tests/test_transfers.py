@@ -69,6 +69,7 @@ def test_transfer_recommender_searches_the_configured_move_cap_by_default() -> N
             free_transfers=1,
         ),
         rules=RULES,
+        candidate_pool_size=2,
     )
 
     assert {route.transfer_count for route in recommendation.routes} == {
@@ -86,12 +87,26 @@ def test_transfer_recommender_searches_the_configured_move_cap_by_default() -> N
     )
     assert recommendation.primary.horizon_points_gain > 0
     assert recommendation.primary.next_free_transfers >= 1
+    assert all(
+        sum(route.transfer_count == count for route in recommendation.routes) == 2
+        for count in range(1, 6)
+    )
     roll = next(
         route for route in recommendation.routes if route.transfer_count == 0
     )
     assert roll.points_hit == 0
     assert roll.horizon_points_gain == 0
-    assert "exact best legal routes" in recommendation.search_scope
+    assert "all exactly rescored" in recommendation.search_scope
+
+
+def test_transfer_candidate_pool_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="Candidate pool size must be positive"):
+        recommend_transfers(
+            (),
+            CurrentSquad(frozenset(), {}, 0, 1),
+            rules=RULES,
+            candidate_pool_size=0,
+        )
 
 
 def test_free_transfer_value_is_state_dependent_expected_avoided_hits() -> None:

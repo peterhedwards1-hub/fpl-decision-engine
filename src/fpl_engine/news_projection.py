@@ -46,7 +46,7 @@ def create_news_projection_pair(
     *,
     season_code: str,
     gameweek_number: int,
-    horizon_gameweeks: int = 1,
+    horizon_gameweeks: int | None = None,
     config: ProjectionModelConfig = DEFAULT_MODEL_CONFIG,
     generated_at: datetime | None = None,
     observation_mode: str = "latest_available",
@@ -81,6 +81,9 @@ def create_news_projection_pair(
         raise WorkflowError(
             f"Cannot generate final news projections with {pending} pending evidence item(s)"
         )
+    effective_horizon = 1 if horizon_gameweeks is None else horizon_gameweeks
+    if effective_horizon <= 0:
+        raise WorkflowError("Projection-pair horizon must be positive")
     evidence = database.connection.execute(
         """
         SELECT news_evidence.id, news_evidence.expected_minutes_adjustment,
@@ -121,7 +124,7 @@ def create_news_projection_pair(
         ).project(
             season_code=season_code,
             start_gameweek=gameweek_number,
-            horizon_gameweeks=horizon_gameweeks,
+            horizon_gameweeks=effective_horizon,
             generated_at=generated,
             observation_mode=observation_mode,
         )
@@ -135,7 +138,8 @@ def create_news_projection_pair(
         pre_news = None
         pre_row = database.connection.execute(
             """
-            SELECT id, season_id, start_gameweek, source_ingestion_run_id
+            SELECT id, season_id, start_gameweek, horizon_gameweeks,
+                   source_ingestion_run_id
             FROM projection_runs WHERE id = ?
             """,
             (pre_news_projection_run_id,),
@@ -146,6 +150,12 @@ def create_news_projection_pair(
             or pre_row["start_gameweek"] != gameweek_number
         ):
             raise WorkflowError("The supplied pre-news projection does not cover this Gameweek")
+        stored_horizon = int(pre_row["horizon_gameweeks"])
+        if horizon_gameweeks is not None and horizon_gameweeks != stored_horizon:
+            raise WorkflowError(
+                "The supplied pre-news projection horizon does not match the requested horizon"
+            )
+        effective_horizon = stored_horizon
         pre_projection_id = int(pre_row["id"])
         pre_source = pre_row["source_ingestion_run_id"]
         expected_minutes = {
@@ -225,7 +235,7 @@ def create_news_projection_pair(
     ).project(
         season_code=season_code,
         start_gameweek=gameweek_number,
-        horizon_gameweeks=horizon_gameweeks,
+        horizon_gameweeks=effective_horizon,
         overrides=overrides,
         generated_at=generated,
         observation_mode=observation_mode,

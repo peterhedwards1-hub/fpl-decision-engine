@@ -14,6 +14,7 @@ from .optimisation import (
     CandidatePlayer,
     GameweekPlayerValue,
     _optimal_captaincy,
+    appearance_qualified_candidates,
     optimise_full_squad,
     optimise_opening_squads,
     optimise_starting_xi,
@@ -245,7 +246,13 @@ def _recommendation_json(result: Any) -> dict[str, Any]:
         "bench_player_ids": list(result.bench_player_ids),
         "captain_id": result.captain_id,
         "vice_captain_id": result.vice_captain_id,
+        "lineup_expected_points": result.lineup_expected_points,
         "horizon_expected_points": result.horizon_expected_points,
+        "horizon_expected_bench_contribution": (
+            result.horizon_expected_bench_contribution
+        ),
+        "terminal_value": result.terminal_value,
+        "decision_value": result.decision_value,
         "gameweek_expected_points": result.gameweek_expected_points,
         "total_cost_tenths": result.total_cost_tenths,
     }
@@ -264,40 +271,39 @@ def compare_opening_squad_decision(
     baseline_candidates = load_projection_candidates(database, baseline_projection_run_id)
     revised_candidates = load_projection_candidates(database, revised_projection_run_id)
     baseline = optimise_opening_squads(
-        baseline_candidates,
+        appearance_qualified_candidates(baseline_candidates),
         budget_tenths=rules.squad.budget_tenths,
         rules=rules,
         alternative_count=2,
+        candidate_pool_size=8,
     ).primary
     revised = optimise_opening_squads(
-        revised_candidates,
+        appearance_qualified_candidates(revised_candidates),
         budget_tenths=rules.squad.budget_tenths,
         rules=rules,
         alternative_count=2,
+        candidate_pool_size=8,
     ).primary
     revised_by_id = {player.source_player_id: player for player in revised_candidates}
-    baseline_revalued = 0.0
-    for plan in baseline.gameweek_plans:
-        values = {
-            player_id: next(
-                value.expected_points
-                for value in revised_by_id[player_id].gameweek_values
-                if value.gameweek_number == plan.gameweek_number
-            )
-            for player_id in plan.starting_player_ids
-        }
-        baseline_revalued += sum(values.values())
-        baseline_revalued += next(
-            value.expected_points
-            for value in revised_by_id[plan.captain_id].gameweek_values
-            if value.gameweek_number == plan.gameweek_number
-        )
     baseline_ids = {player.source_player_id for player in baseline.players}
+    baseline_selected_revised = tuple(
+        revised_by_id[player_id]
+        for player_id in sorted(baseline_ids)
+        if player_id in revised_by_id
+    )
+    if len(baseline_selected_revised) != rules.squad.squad_size:
+        raise ValueError("The revised projection cannot revalue every baseline squad player")
+    baseline_revalued_result = optimise_full_squad(
+        baseline_selected_revised,
+        budget_tenths=sum(player.price_tenths for player in baseline_selected_revised),
+        rules=rules,
+    )
+    baseline_revalued = baseline_revalued_result.decision_value
     revised_ids = {player.source_player_id for player in revised.players}
     added = sorted(revised_ids - baseline_ids)
     removed = sorted(baseline_ids - revised_ids)
-    decision_improvement = round(revised.horizon_expected_points - baseline_revalued, 6)
-    projection_impact = round(baseline_revalued - baseline.horizon_expected_points, 6)
+    decision_improvement = round(revised.decision_value - baseline_revalued, 6)
+    projection_impact = round(baseline_revalued - baseline.decision_value, 6)
     robustness = (
         "near_tie" if abs(decision_improvement) < 0.5 else
         "moderate" if abs(decision_improvement) < 2.0 else "robust"
@@ -337,9 +343,9 @@ def compare_opening_squad_decision(
             revised_projection_run_id,
             json.dumps(_recommendation_json(baseline), sort_keys=True),
             json.dumps(_recommendation_json(revised), sort_keys=True),
-            baseline.horizon_expected_points,
+            baseline.decision_value,
             baseline_revalued,
-            revised.horizon_expected_points,
+            revised.decision_value,
             decision_improvement,
             projection_impact,
             json.dumps({"added": added, "removed": removed}),
@@ -356,9 +362,9 @@ def compare_opening_squad_decision(
         decision_type="opening_squad",
         baseline_projection_run_id=baseline_projection_run_id,
         revised_projection_run_id=revised_projection_run_id,
-        baseline_objective=baseline.horizon_expected_points,
+        baseline_objective=baseline.decision_value,
         baseline_revalued_objective=baseline_revalued,
-        revised_objective=revised.horizon_expected_points,
+        revised_objective=revised.decision_value,
         decision_improvement=decision_improvement,
         projection_impact=projection_impact,
         changed_players={"added": added, "removed": removed},
@@ -578,8 +584,18 @@ def compare_transfer_decision(
 
     baseline_candidates = load_projection_candidates(database, baseline_projection_run_id)
     revised_candidates = load_projection_candidates(database, revised_projection_run_id)
-    baseline = recommend_transfers(baseline_candidates, current_squad, rules=rules)
-    revised = recommend_transfers(revised_candidates, current_squad, rules=rules)
+    baseline = recommend_transfers(
+        baseline_candidates,
+        current_squad,
+        rules=rules,
+        candidate_pool_size=4,
+    )
+    revised = recommend_transfers(
+        revised_candidates,
+        current_squad,
+        rules=rules,
+        candidate_pool_size=4,
+    )
     baseline_ids = {p.source_player_id for p in baseline.primary.resulting_squad.players}
     revised_ids = {p.source_player_id for p in revised.primary.resulting_squad.players}
     revised_by_id = {p.source_player_id: p for p in revised_candidates}
@@ -622,9 +638,9 @@ def compare_transfer_decision(
             "transfers_out": [p.source_player_id for p in revised.primary.transfers_out],
             "route_score": revised.primary.route_score,
         },
-        baseline_objective=baseline.primary.resulting_squad.horizon_expected_points,
-        baseline_revalued=baseline_revalued_result.horizon_expected_points,
-        revised_objective=revised.primary.resulting_squad.horizon_expected_points,
+        baseline_objective=baseline.primary.resulting_squad.decision_value,
+        baseline_revalued=baseline_revalued_result.decision_value,
+        revised_objective=revised.primary.resulting_squad.decision_value,
         changed_players={"added": added, "removed": removed},
         explanations=explanations,
         modifier_ids=modifier_ids,

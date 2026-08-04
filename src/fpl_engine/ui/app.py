@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from fpl_engine.backtest import load_backtest_report
-from fpl_engine.chips import recommend_chip
+from fpl_engine.chips import recommend_chip_timing
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Chip, Position
 from fpl_engine.history.database import HistoricalDatabase
@@ -23,30 +23,35 @@ from fpl_engine.manager import (
     ManagerStateRepository,
 )
 from fpl_engine.model_health import build_model_health_report
-from fpl_engine.news import (
-    ingest_structured_news,
-    structured_news_v3_schema,
-)
+from fpl_engine.news import ingest_structured_news
 from fpl_engine.news_projection import (
     create_news_projection_pair,
     evaluate_news_projection_pair,
 )
 from fpl_engine.optimisation import (
+    DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
     CandidatePlayer,
     GameweekPlayerValue,
     OptimisationError,
+    appearance_qualified_candidates,
     optimise_opening_squads,
     optimise_starting_xi,
+)
+from fpl_engine.production import (
+    recommend_planning_horizon,
+    select_production_projection_run,
 )
 from fpl_engine.projections import (
     ProjectionOverride,
     RatesProjectionModel,
 )
+from fpl_engine.prospective import build_prospective_capture_status
 from fpl_engine.research_decision import (
     compare_opening_squad_decision,
     compare_transfer_decision,
     compare_weekly_xi_decision,
     generate_revised_projection,
+    load_projection_candidates,
 )
 from fpl_engine.reviewed_modifiers import ReviewedProjectionModifier
 from fpl_engine.team_news_v3 import generate_team_news_research_package
@@ -56,6 +61,51 @@ from fpl_engine.workflow import WeeklyWorkflowRepository, WorkflowError
 
 DATABASE_PATH = Path(os.environ.get("FPL_DATABASE_PATH", "data/fpl.sqlite3"))
 RULES_PATH = Path(os.environ.get("FPL_RULES_PATH", "config/seasons/2026-27.json"))
+TRANSFER_POLICY_PATH = Path(
+    os.environ.get(
+        "FPL_TRANSFER_POLICY_PATH",
+        "data/models/transfer-policy-evaluation-v1.json",
+    )
+)
+OPENING_SQUAD_HORIZON_GAMEWEEKS = 8
+WEEKLY_PLANNING_HORIZON_GAMEWEEKS = 5
+
+
+def _remaining_horizon(gameweek_number: int, requested: int) -> int:
+    return min(requested, 39 - gameweek_number)
+
+
+def _weekly_planning_horizon(
+    database: HistoricalDatabase,
+    rules: object,
+    season_code: str,
+    gameweek_number: int,
+):
+    return recommend_planning_horizon(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        base_horizon_gameweeks=WEEKLY_PLANNING_HORIZON_GAMEWEEKS,
+        chip_expiry_gameweek=rules.chips.first_set_expiry_gameweek,
+    )
+
+
+def _load_future_transfer_needs() -> dict[int, float] | None:
+    if not TRANSFER_POLICY_PATH.exists():
+        return None
+    raw = json.loads(TRANSFER_POLICY_PATH.read_text(encoding="utf-8"))
+    if raw.get("qualified") is not True:
+        return None
+    raw_distribution = raw.get("future_transfer_need_distribution")
+    if not isinstance(raw_distribution, dict):
+        return None
+    distribution = {
+        int(count): float(probability)
+        for count, probability in raw_distribution.items()
+    }
+    if not distribution or abs(sum(distribution.values()) - 1.0) > 1e-6:
+        return None
+    return distribution
 
 
 def main() -> None:
@@ -266,7 +316,7 @@ def _editor(
     edited = st.data_editor(
         pd.DataFrame(rows),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         disabled=("Player ID", "Player", "Team", "Position", "Current £m"),
         column_config={
             "Purchase £m": st.column_config.NumberColumn(
@@ -549,7 +599,7 @@ def _projection_explorer(
     st.dataframe(
         pd.DataFrame([dict(row) for row in totals]),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     selected = st.selectbox(
         "Component detail",
@@ -572,7 +622,7 @@ def _projection_explorer(
     st.dataframe(
         pd.DataFrame([dict(row) for row in details]),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     with st.expander("Model assumptions and team strengths"):
         st.json(latest_run["assumptions_json"])
@@ -704,18 +754,12 @@ def _starting_xi_explorer(
         "A solver-proven optimum across all available players, subject to "
         "budget, position and three-per-club constraints."
     )
-    latest_run = database.connection.execute(
-        """
-        SELECT projection_runs.id, projection_runs.model_version,
-               projection_runs.horizon_gameweeks
-        FROM projection_runs
-        JOIN seasons ON seasons.id = projection_runs.season_id
-        WHERE seasons.code = ? AND projection_runs.start_gameweek = ?
-        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC
-        LIMIT 1
-        """,
-        (season_code, gameweek_number),
-    ).fetchone()
+    latest_run = select_production_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=1,
+    )
     if latest_run is None:
         st.info("Generate a projection baseline before optimising an XI.")
         return
@@ -728,7 +772,7 @@ def _starting_xi_explorer(
     )
     if not st.button("Optimise starting XI"):
         return
-    candidates = _load_optimisation_candidates(database, int(latest_run["id"]))
+    candidates = _load_optimisation_candidates(database, latest_run.run_id)
     try:
         result = optimise_starting_xi(
             candidates,
@@ -777,7 +821,7 @@ def _starting_xi_explorer(
             for player in result.near_selected
         ),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -788,30 +832,43 @@ def _full_squad_explorer(
     gameweek_number: int,
 ) -> None:
     st.subheader("Full squad and weekly lineup")
-    latest_run = database.connection.execute(
-        """
-        SELECT projection_runs.id, projection_runs.model_version,
-               projection_runs.horizon_gameweeks
-        FROM projection_runs
-        JOIN seasons ON seasons.id = projection_runs.season_id
-        WHERE seasons.code = ? AND projection_runs.start_gameweek = ?
-        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC
-        LIMIT 1
-        """,
-        (season_code, gameweek_number),
-    ).fetchone()
+    required_horizon = _remaining_horizon(
+        gameweek_number,
+        OPENING_SQUAD_HORIZON_GAMEWEEKS,
+    )
+    latest_run = select_production_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=required_horizon,
+    )
     if latest_run is None:
-        st.info("Generate a projection baseline before selecting a full squad.")
+        st.info(
+            "Generate a production projection covering at least "
+            f"{required_horizon} Gameweeks before selecting a full squad."
+        )
         return
+    st.caption(
+        f"Production run {latest_run.run_id} · {latest_run.model_version} · "
+        f"{latest_run.horizon_gameweeks} Gameweeks"
+    )
     if not st.button("Optimise £100m squad"):
         return
-    candidates = _load_optimisation_candidates(database, int(latest_run["id"]))
+    candidates = appearance_qualified_candidates(
+        _load_optimisation_candidates(database, latest_run.run_id)
+    )
+    st.caption(
+        "Opening robustness guardrail: every eligible player has at least "
+        f"{DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE:.0%} mean projected "
+        "availability across the horizon."
+    )
     try:
         recommendation = optimise_opening_squads(
             candidates,
             budget_tenths=rules.squad.budget_tenths,
             rules=rules,
             alternative_count=2,
+            candidate_pool_size=8,
         )
     except (OptimisationError, ValueError) as error:
         st.error(str(error))
@@ -873,7 +930,7 @@ def _full_squad_explorer(
             for index, alternative in enumerate(recommendation.alternatives, start=1)
         ),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     st.write("Re-run triggers")
     for trigger in recommendation.transfer_triggers:
@@ -891,22 +948,30 @@ def _transfer_explorer(
     if latest is None:
         st.info("Save your current squad before comparing transfer routes.")
         return
-    latest_run = database.connection.execute(
-        """
-        SELECT projection_runs.id FROM projection_runs
-        JOIN seasons ON seasons.id = projection_runs.season_id
-        WHERE seasons.code = ? AND projection_runs.start_gameweek = ?
-        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC
-        LIMIT 1
-        """,
-        (season_code, gameweek_number),
-    ).fetchone()
+    planning_horizon = _weekly_planning_horizon(
+        database,
+        rules,
+        season_code,
+        gameweek_number,
+    )
+    required_horizon = planning_horizon.required_horizon_gameweeks
+    if planning_horizon.reasons:
+        st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
+    latest_run = select_production_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=required_horizon,
+    )
     if latest_run is None:
-        st.info("Generate a projection baseline before comparing transfers.")
+        st.info(
+            "Generate a production projection covering at least "
+            f"{required_horizon} Gameweeks before comparing transfers."
+        )
         return
     if not st.button("Compare roll and configured multi-transfer routes"):
         return
-    candidates = _load_optimisation_candidates(database, int(latest_run["id"]))
+    candidates = _load_optimisation_candidates(database, latest_run.run_id)
     snapshot = latest.snapshot
     current = CurrentSquad(
         player_ids=frozenset(entry.source_player_id for entry in snapshot.entries),
@@ -917,15 +982,23 @@ def _transfer_explorer(
         free_transfers=snapshot.free_transfers,
     )
     try:
+        future_transfer_needs = _load_future_transfer_needs()
         recommendation = recommend_transfers(
             candidates,
             current,
             rules=rules,
+            candidate_pool_size=4,
+            future_transfer_needs=future_transfer_needs,
         )
     except (OptimisationError, ValueError) as error:
         st.error(str(error))
         return
     st.caption(recommendation.search_scope)
+    if future_transfer_needs is None:
+        st.warning(
+            "Saved-transfer option value is not calibrated yet; small positive "
+            "transfer gains may be too eager. Run the transfer-policy evaluation."
+        )
     st.dataframe(
         pd.DataFrame(
             {
@@ -940,7 +1013,7 @@ def _transfer_explorer(
             for route in recommendation.routes
         ),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     st.success(f"Primary recommendation: {recommendation.primary.explanation}")
 
@@ -956,19 +1029,27 @@ def _chip_explorer(
     if latest is None:
         st.info("Save your current squad before comparing chips.")
         return
-    latest_run = database.connection.execute(
-        """
-        SELECT projection_runs.id FROM projection_runs
-        JOIN seasons ON seasons.id = projection_runs.season_id
-        WHERE seasons.code = ? AND projection_runs.start_gameweek = ?
-        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC
-        LIMIT 1
-        """,
-        (season_code, gameweek_number),
-    ).fetchone()
+    planning_horizon = _weekly_planning_horizon(
+        database,
+        rules,
+        season_code,
+        gameweek_number,
+    )
+    required_horizon = planning_horizon.required_horizon_gameweeks
+    latest_run = select_production_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=required_horizon,
+    )
     if latest_run is None:
-        st.info("Generate a projection baseline before comparing chips.")
+        st.info(
+            "Generate a production projection covering at least "
+            f"{required_horizon} Gameweeks before comparing chip timing."
+        )
         return
+    if planning_horizon.reasons:
+        st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
     snapshot = latest.snapshot
     available_chips = [
         chip_name for chip_name, remaining in snapshot.remaining_chips.items() if remaining > 0
@@ -994,14 +1075,7 @@ def _chip_explorer(
             "older snapshots are missing."
         ),
     )
-    future_opportunity_cost = st.number_input(
-        "Future opportunity cost (points)",
-        min_value=0.0,
-        value=0.0,
-        step=0.5,
-        help=("Optional estimate of the value of saving this chip for a better future Gameweek."),
-    )
-    if not st.button("Value selected chip"):
+    if not st.button("Compare chip timing across the planning horizon"):
         return
     try:
         previous_uses = tuple(
@@ -1012,31 +1086,56 @@ def _chip_explorer(
         return
     candidates = _load_optimisation_candidates(
         database,
-        int(latest_run["id"]),
+        latest_run.run_id,
     )
     current_ids = frozenset(entry.source_player_id for entry in snapshot.entries)
     budget_tenths = (
         sum(entry.selling_price_tenths for entry in snapshot.entries) + snapshot.bank_tenths
     )
     try:
-        recommendation = recommend_chip(
+        candidate_gameweeks = tuple(
+            sorted(
+                {
+                    value.gameweek_number
+                    for player in candidates
+                    for value in player.gameweek_values
+                }
+                or {gameweek_number}
+            )
+        )
+        timing = recommend_chip_timing(
             Chip(chip_name),
             candidates,
-            gameweek_number=gameweek_number,
+            candidate_gameweeks=candidate_gameweeks,
             previous_chip_gameweeks=previous_uses,
             budget_tenths=budget_tenths,
             rules=rules,
             current_player_ids=current_ids,
-            future_opportunity_cost=float(future_opportunity_cost),
         )
     except (OptimisationError, ValueError) as error:
         st.error(str(error))
         return
-    st.metric(
-        "Expected incremental points",
-        f"{recommendation.expected_incremental_points:.2f}",
+    recommendation = timing.recommendation
+    st.metric("Recommended Gameweek", f"GW{timing.recommended_gameweek}")
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Gameweek": option.gameweek_number,
+                "Gross gain": option.gross_incremental_points,
+                "Best later opportunity": option.future_opportunity_cost,
+                "Net versus waiting": option.net_value_versus_best_later,
+            }
+            for option in timing.options
+        ),
+        hide_index=True,
+        width="stretch",
     )
-    st.write(recommendation.explanation)
+    st.write(timing.explanation)
+    if not timing.horizon_reaches_set_expiry:
+        st.warning(
+            "Do not treat this as a season-wide chip recommendation: later "
+            "Gameweeks in the active chip set are outside the projection."
+        )
     if recommendation.captain_id is not None:
         captain = next(
             player for player in candidates if player.source_player_id == recommendation.captain_id
@@ -1056,7 +1155,7 @@ def _chip_explorer(
                 for player in recommendation.squad.players
             ),
             hide_index=True,
-            use_container_width=True,
+        width="stretch",
         )
 
 
@@ -1108,15 +1207,21 @@ def _weekly_cycle(
     st.subheader("Two-pass weekly cycle")
     workflow = WeeklyWorkflowRepository(database)
     player_lookup = {row["source_player_id"]: row for row in available}
-    latest_projection = database.connection.execute(
-        """
-        SELECT projection_runs.id, projection_runs.generated_at FROM projection_runs
-        JOIN seasons ON seasons.id = projection_runs.season_id
-        WHERE seasons.code = ? AND start_gameweek = ?
-        ORDER BY projection_runs.generated_at DESC, projection_runs.id DESC LIMIT 1
-        """,
-        (season_code, gameweek_number),
-    ).fetchone()
+    planning_horizon = _weekly_planning_horizon(
+        database,
+        rules,
+        season_code,
+        gameweek_number,
+    )
+    required_horizon = planning_horizon.required_horizon_gameweeks
+    if planning_horizon.reasons:
+        st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
+    latest_projection = select_production_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=required_horizon,
+    )
     with st.expander("Export decision-focused v3 research package", expanded=False):
         st.caption(
             "The package identifies the selected XI, bench, armbands, projection assumptions, "
@@ -1141,7 +1246,7 @@ def _weekly_cycle(
                     database,
                     season_code=season_code,
                     gameweek_number=gameweek_number,
-                    projection_run_id=int(latest_projection["id"]),
+                    projection_run_id=latest_projection.run_id,
                     research_mode=package_mode,
                     research_window_start=package_window,
                     alternatives_limit=int(package_limit),
@@ -1165,9 +1270,38 @@ def _weekly_cycle(
             "Paste the strict JSON produced by the team-news research prompt. "
             "Every item enters the human review queue before it can affect projections."
         )
+        latest_package = database.connection.execute(
+            """
+            SELECT package_id
+            FROM team_news_input_packages
+            WHERE season_id = (SELECT id FROM seasons WHERE code = ?)
+              AND gameweek_id = (
+                  SELECT id FROM gameweeks
+                  WHERE season_id = (SELECT id FROM seasons WHERE code = ?)
+                    AND number = ?
+              )
+            ORDER BY created_at DESC, package_id DESC
+            LIMIT 1
+            """,
+            (season_code, season_code, gameweek_number),
+        ).fetchone()
+        if latest_package is None:
+            st.warning(
+                "Generate a v3 research package above before importing a result. "
+                "The ChatGPT response must preserve that package's exact ID and hash."
+            )
+        else:
+            st.info(
+                f"Expected package: {latest_package['package_id']}. "
+                "Do not use the example IDs from the schema template."
+            )
         structured_payload = st.text_area(
             "Structured team-news JSON",
-            value=json.dumps(structured_news_v3_schema(), indent=2),
+            value="",
+            placeholder=(
+                "Paste the complete JSON returned by ChatGPT here, including "
+                "input_package_id and input_package_hash."
+            ),
             height=180,
         )
         if st.button("Import structured news"):
@@ -1290,7 +1424,7 @@ def _weekly_cycle(
             st.dataframe(
                 pd.DataFrame([dict(row) for row in evidence_rows]),
                 hide_index=True,
-                use_container_width=True,
+        width="stretch",
             )
         pending = [row for row in evidence_rows if row["review_status"] == "pending"]
         if pending:
@@ -1478,7 +1612,7 @@ def _weekly_cycle(
                     season_code=season_code,
                     gameweek_number=gameweek_number,
                     pre_news_projection_run_id=(
-                        None if latest_projection is None else int(latest_projection["id"])
+                        None if latest_projection is None else latest_projection.run_id
                     ),
                 )
             except WorkflowError as error:
@@ -1514,7 +1648,7 @@ def _weekly_cycle(
             st.dataframe(
                 pd.DataFrame([dict(row) for row in pairs]),
                 hide_index=True,
-                use_container_width=True,
+        width="stretch",
             )
             latest_pair = pairs[0]
             with st.expander("Apply reviewed research and compare the decision", expanded=True):
@@ -1633,8 +1767,83 @@ def _weekly_cycle(
                             st.dataframe(
                                 pd.DataFrame(list(comparison.explanations)),
                                 hide_index=True,
-                                use_container_width=True,
+        width="stretch",
                             )
+                        recommendation_row = database.connection.execute(
+                            """
+                            SELECT baseline_recommendation_json,
+                                   revised_recommendation_json
+                            FROM research_decision_comparisons
+                            WHERE id = ?
+                            """,
+                            (comparison.comparison_id,),
+                        ).fetchone()
+                        if recommendation_row is not None:
+                            revised_recommendation = json.loads(
+                                recommendation_row["revised_recommendation_json"]
+                            )
+                            if decision_type == "opening_squad":
+                                revised_candidates = {
+                                    player.source_player_id: player
+                                    for player in load_projection_candidates(
+                                        database, comparison.revised_projection_run_id
+                                    )
+                                }
+                                rows = []
+                                starting = set(
+                                    revised_recommendation.get("starting_player_ids", [])
+                                )
+                                for player_id in revised_recommendation.get("players", []):
+                                    player = revised_candidates.get(player_id)
+                                    if player is None:
+                                        continue
+                                    rows.append(
+                                        {
+                                            "Player": player.web_name,
+                                            "Team": player.team_short_name,
+                                            "Position": player.position.value,
+                                            "Price (£m)": player.price_tenths / 10,
+                                            "Status": (
+                                                "Starter"
+                                                if player_id in starting
+                                                else "Bench"
+                                            ),
+                                            "Captain": player_id
+                                            == revised_recommendation.get("captain_id"),
+                                            "Vice-captain": player_id
+                                            == revised_recommendation.get("vice_captain_id"),
+                                        }
+                                    )
+                                if rows:
+                                    st.subheader("Suggested team after reviewed research")
+                                    st.dataframe(
+                                        pd.DataFrame(rows),
+                                        hide_index=True,
+        width="stretch",
+                                    )
+                            elif decision_type == "transfers":
+                                st.subheader("Suggested transfers after reviewed research")
+                                st.write(
+                                    "Transfers in:",
+                                    revised_recommendation.get("transfers_in", []),
+                                )
+                                st.write(
+                                    "Transfers out:",
+                                    revised_recommendation.get("transfers_out", []),
+                                )
+                            else:
+                                st.subheader("Suggested XI after reviewed research")
+                                st.write(
+                                    "Starting players:",
+                                    revised_recommendation.get("players", []),
+                                )
+                                st.write(
+                                    "Captain:", revised_recommendation.get("captain_id")
+                                )
+                                st.write(
+                                    "Vice-captain:",
+                                    revised_recommendation.get("vice_captain_id"),
+                                )
         coverage_rows = database.connection.execute(
             """
             SELECT coverage.source_player_id, coverage.priority, coverage.status,
@@ -1656,7 +1865,7 @@ def _weekly_cycle(
             st.dataframe(
                 pd.DataFrame([dict(row) for row in coverage_rows]),
                 hide_index=True,
-                use_container_width=True,
+        width="stretch",
             )
         if coverage_rows and pairs:
             latest_pair = pairs[0]
@@ -1756,7 +1965,7 @@ def _weekly_cycle(
     st.dataframe(
         pd.DataFrame([dict(row) for row in runs]),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     final_runs = [row for row in runs if row["mode"] == "final"]
     if not final_runs:
@@ -1857,7 +2066,7 @@ def _data_health(
                 for version in health.versions
             ),
             hide_index=True,
-            use_container_width=True,
+        width="stretch",
         )
     else:
         st.caption("No completed player forecasts are available to score yet.")
@@ -1870,6 +2079,40 @@ def _data_health(
         f"points MAE change: {health.news_points_mae_change}; "
         f"minutes MAE change: {health.news_minutes_mae_change}"
     )
+    st.write("Forward model qualification")
+    candidates = database.connection.execute(
+        """
+        SELECT registrations.candidate_key, registrations.model_version,
+               registrations.status, registrations.registered_at,
+               registrations.evaluated_at
+        FROM model_candidate_registrations registrations
+        JOIN seasons ON seasons.id = registrations.season_id
+        WHERE seasons.code = ?
+        ORDER BY registrations.id
+        """,
+        (season_code,),
+    ).fetchall()
+    if candidates:
+        st.dataframe(
+            pd.DataFrame([dict(row) for row in candidates]),
+            hide_index=True,
+        width="stretch",
+        )
+        st.caption(
+            "Declared challengers are captured alongside the incumbent but do not "
+            "drive advice until their immutable forward gates pass."
+        )
+    else:
+        st.caption("No forward model candidates are registered for this season.")
+    prospective = build_prospective_capture_status(database, season_code)
+    capture = prospective["summary"]
+    if capture["no_missed_required_evidence_to_date"]:
+        st.success("No required forward evidence has been missed to date.")
+    else:
+        st.error(
+            f"{capture['incomplete_gameweeks']} Gameweek(s) have incomplete, "
+            "irrecoverable forward evidence."
+        )
     latest_backtest = database.connection.execute(
         """
         SELECT backtests.id
@@ -1930,7 +2173,7 @@ def _data_health(
         st.dataframe(
             pd.DataFrame(score_rows),
             hide_index=True,
-            use_container_width=True,
+        width="stretch",
         )
         with st.expander("Backtest assumptions and limitations"):
             st.json(

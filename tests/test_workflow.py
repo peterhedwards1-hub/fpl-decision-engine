@@ -171,3 +171,41 @@ def test_two_pass_workflow_freezes_final_and_records_outcome(tmp_path) -> None:
         assert health.weekly_bias == 8.0
         assert health.news_pairs_scored == 1
         assert health.news_points_mae_change is not None
+
+
+def test_news_pair_inherits_the_supplied_production_run_horizon(tmp_path) -> None:
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="official-fpl-api",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            _bundle(),
+        )
+        projection_id = RatesProjectionModel(database, RULES).project(
+            season_code="2026-27",
+            start_gameweek=1,
+            horizon_gameweeks=2,
+            generated_at=CAPTURED_AT,
+        ).projection_run_id
+
+        pair = create_news_projection_pair(
+            database,
+            RULES,
+            season_code="2026-27",
+            gameweek_number=1,
+            generated_at=CAPTURED_AT,
+            pre_news_projection_run_id=projection_id,
+        )
+
+        horizons = database.connection.execute(
+            """
+            SELECT id, horizon_gameweeks FROM projection_runs
+            WHERE id IN (?, ?)
+            ORDER BY id
+            """,
+            (pair.pre_news_projection_run_id, pair.post_news_projection_run_id),
+        ).fetchall()
+        assert [int(row["horizon_gameweeks"]) for row in horizons] == [2, 2]

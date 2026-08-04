@@ -182,6 +182,67 @@ def test_chip_timing_computes_future_opportunity_cost() -> None:
     )
 
     assert timing.recommended_gameweek == 3
+    assert not timing.horizon_reaches_set_expiry
     current = timing.options[0]
     assert current.future_opportunity_cost > 0
     assert current.net_value_versus_best_later < 0
+
+
+def test_chip_timing_skips_illegal_weeks_and_does_not_cross_chip_sets() -> None:
+    current_ids = frozenset(
+        {
+            "1",
+            "2",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+        }
+    )
+
+    def at_gameweeks(first: int, second: int):
+        return tuple(
+            CandidatePlayer(
+                **{
+                    **player.__dict__,
+                    "expected_points": 10.0,
+                    "gameweek_values": (
+                        GameweekPlayerValue(first, 4.0, 0.9),
+                        GameweekPlayerValue(second, 8.0, 0.9),
+                    ),
+                }
+            )
+            for player in _candidates()
+        )
+
+    free_hit = recommend_chip_timing(
+        Chip.FREE_HIT,
+        at_gameweeks(1, 2),
+        candidate_gameweeks=(1, 2),
+        previous_chip_gameweeks=(),
+        budget_tenths=1000,
+        rules=RULES,
+        current_player_ids=current_ids,
+    )
+    assert tuple(option.gameweek_number for option in free_hit.options) == (2,)
+
+    triple_captain = recommend_chip_timing(
+        Chip.TRIPLE_CAPTAIN,
+        at_gameweeks(19, 20),
+        candidate_gameweeks=(19, 20),
+        previous_chip_gameweeks=(),
+        budget_tenths=1000,
+        rules=RULES,
+        current_player_ids=current_ids,
+    )
+    assert tuple(option.gameweek_number for option in triple_captain.options) == (19,)
+    assert triple_captain.horizon_reaches_set_expiry

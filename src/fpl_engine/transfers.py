@@ -62,8 +62,9 @@ def recommend_transfers(
     rules: SeasonRules,
     max_transfers: int | None = None,
     future_transfer_needs: Mapping[int, float] | None = None,
+    candidate_pool_size: int = 1,
 ) -> TransferRecommendation:
-    """Compare rolling and exact best routes for each transfer count."""
+    """Compare rolling and exact-rescored routes for each transfer count."""
 
     try:
         import pulp
@@ -82,6 +83,8 @@ def recommend_transfers(
     )
     if not 0 <= search_limit <= rules.squad.squad_size:
         raise ValueError("Maximum transfers is outside the legal squad range")
+    if candidate_pool_size < 1:
+        raise ValueError("Candidate pool size must be positive")
     max_transfers = search_limit
     current_candidates = tuple(by_id[player_id] for player_id in current.player_ids)
     baseline = optimise_full_squad(
@@ -100,41 +103,53 @@ def recommend_transfers(
         )
     ]
     for transfer_count in range(1, search_limit + 1):
-        selected_ids = _best_transfer_squad(
-            candidates,
-            current,
-            transfer_count,
-            rules,
-            pulp,
-        )
-        if selected_ids is None:
-            continue
-        selected = tuple(by_id[player_id] for player_id in selected_ids)
-        incoming = selected_ids - current.player_ids
-        outgoing = current.player_ids - selected_ids
-        money_available = current.bank_tenths + sum(
-            current.selling_prices_tenths[player_id] for player_id in outgoing
-        )
-        resulting = optimise_full_squad(
-            selected,
-            budget_tenths=sum(player.price_tenths for player in selected),
-            rules=rules,
-        )
-        routes.append(
-            _route(
-                selected,
-                resulting,
+        excluded_squads: list[frozenset[str]] = []
+        for _ in range(candidate_pool_size):
+            selected_ids = _best_transfer_squad(
+                candidates,
                 current,
+                transfer_count,
                 rules,
-                transfer_count=transfer_count,
-                transfers_out=tuple(by_id[player_id] for player_id in outgoing),
-                transfers_in=tuple(by_id[player_id] for player_id in incoming),
-                bank_tenths=money_available
-                - sum(by_id[player_id].price_tenths for player_id in incoming),
-                baseline=baseline,
-                future_transfer_needs=future_transfer_needs,
+                pulp,
+                excluded_squads=tuple(excluded_squads),
             )
-        )
+            if selected_ids is None:
+                break
+            excluded_squads.append(selected_ids)
+            selected = tuple(by_id[player_id] for player_id in selected_ids)
+            incoming = selected_ids - current.player_ids
+            outgoing = current.player_ids - selected_ids
+            money_available = current.bank_tenths + sum(
+                current.selling_prices_tenths[player_id]
+                for player_id in outgoing
+            )
+            resulting = optimise_full_squad(
+                selected,
+                budget_tenths=sum(player.price_tenths for player in selected),
+                rules=rules,
+            )
+            routes.append(
+                _route(
+                    selected,
+                    resulting,
+                    current,
+                    rules,
+                    transfer_count=transfer_count,
+                    transfers_out=tuple(
+                        by_id[player_id] for player_id in outgoing
+                    ),
+                    transfers_in=tuple(
+                        by_id[player_id] for player_id in incoming
+                    ),
+                    bank_tenths=money_available
+                    - sum(
+                        by_id[player_id].price_tenths
+                        for player_id in incoming
+                    ),
+                    baseline=baseline,
+                    future_transfer_needs=future_transfer_needs,
+                )
+            )
     ordered = tuple(
         sorted(
             routes,
@@ -148,10 +163,11 @@ def recommend_transfers(
     return TransferRecommendation(
         primary=ordered[0],
         routes=ordered,
-        baseline_horizon_points=baseline.horizon_expected_points,
+        baseline_horizon_points=baseline.decision_value,
         search_scope=(
-            f"Roll and exact best legal routes for 1–{max_transfers} transfers; "
-            "one optimum per transfer count; "
+            f"Roll and up to {candidate_pool_size} distinct solver-optimal legal "
+            f"routes for each of 1–{max_transfers} transfers, all exactly rescored "
+            "for autosubs and captain fallback; "
             + (
                 "free-transfer option value uses the supplied empirical future-need distribution"
                 if future_transfer_needs is not None
@@ -168,6 +184,8 @@ def _best_transfer_squad(
     transfer_count: int,
     rules: SeasonRules,
     pulp: object,
+    *,
+    excluded_squads: tuple[frozenset[str], ...] = (),
 ) -> frozenset[str] | None:
     ordered = tuple(sorted(candidates, key=lambda player: player.source_player_id))
     problem = pulp.LpProblem(f"transfer_route_{transfer_count}", pulp.LpMaximize)
@@ -197,6 +215,9 @@ def _best_transfer_squad(
         )
         * _value_for_gameweek(player, gameweek).expected_points
         for gameweek in gameweeks
+        for player in ordered
+    ) + pulp.lpSum(
+        selected[player.source_player_id] * player.residual_value
         for player in ordered
     )
     problem += pulp.lpSum(selected.values()) == rules.squad.squad_size
@@ -250,6 +271,15 @@ def _best_transfer_squad(
             )
             <= rules.squad.max_players_per_team
         )
+    candidate_ids = set(selected)
+    for index, excluded in enumerate(excluded_squads):
+        excluded_here = excluded & candidate_ids
+        if len(excluded_here) == rules.squad.squad_size:
+            problem += (
+                pulp.lpSum(selected[player_id] for player_id in excluded_here)
+                <= rules.squad.squad_size - 1,
+                f"exclude_squad_{index}",
+            )
     status_code = problem.solve(pulp.PULP_CBC_CMD(msg=False))
     if pulp.LpStatus[status_code] == "Infeasible":
         return None
@@ -290,7 +320,7 @@ def _route(
             rules,
         )
     )
-    gain = resulting.horizon_expected_points - baseline_result.horizon_expected_points
+    gain = resulting.decision_value - baseline_result.decision_value
     score = gain - hit + flexibility
     action = (
         "Roll the transfer"

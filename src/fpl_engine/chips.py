@@ -40,6 +40,7 @@ class ChipTimingRecommendation:
     options: tuple[ChipTimingOption, ...]
     recommendation: ChipRecommendation
     explanation: str
+    horizon_reaches_set_expiry: bool = False
 
 
 def recommend_chip_timing(
@@ -51,12 +52,27 @@ def recommend_chip_timing(
     budget_tenths: int,
     rules: SeasonRules,
     current_player_ids: frozenset[str],
+    candidate_pool_size: int = 4,
 ) -> ChipTimingRecommendation:
     """Value a chip at every supplied horizon step instead of manual cost."""
 
     gameweeks = tuple(sorted(set(candidate_gameweeks)))
     if not gameweeks:
         raise ValueError("At least one candidate Gameweek is required")
+    first_half = gameweeks[0] <= rules.chips.first_set_expiry_gameweek
+    gameweeks = tuple(
+        gameweek
+        for gameweek in gameweeks
+        if (gameweek <= rules.chips.first_set_expiry_gameweek) == first_half
+        and not _chip_use_errors(
+            chip,
+            gameweek,
+            previous_chip_gameweeks,
+            rules,
+        )
+    )
+    if not gameweeks:
+        raise ValueError("The chip is not legal in any projected Gameweek in this set")
     gross: dict[int, ChipRecommendation] = {}
     for gameweek in gameweeks:
         eligible = _candidates_from_gameweek(candidates, gameweek)
@@ -68,6 +84,7 @@ def recommend_chip_timing(
             budget_tenths=budget_tenths,
             rules=rules,
             current_player_ids=current_player_ids,
+            candidate_pool_size=candidate_pool_size,
         )
     best_gameweek = max(
         gameweeks,
@@ -93,6 +110,8 @@ def recommend_chip_timing(
                 ),
             )
         )
+    set_expiry = rules.chips.first_set_expiry_gameweek if first_half else 38
+    reaches_expiry = max(gameweeks) >= set_expiry
     return ChipTimingRecommendation(
         chip=chip,
         recommended_gameweek=best_gameweek,
@@ -101,7 +120,13 @@ def recommend_chip_timing(
         explanation=(
             f"{chip.value} is strongest in GW{best_gameweek}; every option "
             "is compared with the best still-available later opportunity."
+            + (
+                " The projection reaches this chip set's expiry."
+                if reaches_expiry
+                else f" This is provisional because the projection stops before GW{set_expiry}."
+            )
         ),
+        horizon_reaches_set_expiry=reaches_expiry,
     )
 
 
@@ -115,24 +140,17 @@ def recommend_chip(
     rules: SeasonRules,
     current_player_ids: frozenset[str] | None = None,
     future_opportunity_cost: float = 0.0,
+    candidate_pool_size: int = 1,
 ) -> ChipRecommendation:
     if future_opportunity_cost < 0:
         raise ValueError("Future chip opportunity cost cannot be negative")
-    errors = validate_chip_use(
+    if candidate_pool_size < 1:
+        raise ValueError("Candidate pool size must be positive")
+    errors = _chip_use_errors(
         chip,
         gameweek_number,
+        previous_chip_gameweeks,
         rules,
-        already_used_in_half=(
-            frozenset({chip})
-            if any(
-                (previous <= rules.chips.first_set_expiry_gameweek)
-                == (gameweek_number <= rules.chips.first_set_expiry_gameweek)
-                for previous in previous_chip_gameweeks
-            )
-            else frozenset()
-        ),
-        previous_gameweek_chip=(chip if gameweek_number - 1 in previous_chip_gameweeks else None),
-        last_used_gameweek=(max(previous_chip_gameweeks) if previous_chip_gameweeks else None),
     )
     if errors:
         raise ValueError("; ".join(error.message for error in errors))
@@ -173,6 +191,7 @@ def recommend_chip(
             budget_tenths=budget_tenths,
             rules=rules,
             alternative_count=0,
+            candidate_pool_size=candidate_pool_size,
         ).primary
         value = (
             squad.horizon_expected_points
@@ -205,10 +224,20 @@ def recommend_chip(
         )
         for player in eligible
     )
-    squad = optimise_full_squad(
-        weekly_candidates,
-        budget_tenths=budget_tenths,
-        rules=rules,
+    squad = (
+        optimise_full_squad(
+            weekly_candidates,
+            budget_tenths=budget_tenths,
+            rules=rules,
+        )
+        if chip == Chip.BENCH_BOOST
+        else optimise_opening_squads(
+            weekly_candidates,
+            budget_tenths=budget_tenths,
+            rules=rules,
+            alternative_count=0,
+            candidate_pool_size=candidate_pool_size,
+        ).primary
     )
     if chip == Chip.BENCH_BOOST:
         all_fifteen = (
@@ -238,6 +267,32 @@ def recommend_chip(
         expected_incremental_points=round(value, 3),
         squad=squad,
         explanation=explanation,
+    )
+
+
+def _chip_use_errors(
+    chip: Chip,
+    gameweek_number: int,
+    previous_chip_gameweeks: tuple[int, ...],
+    rules: SeasonRules,
+):
+    same_half_uses = tuple(
+        previous
+        for previous in previous_chip_gameweeks
+        if (previous <= rules.chips.first_set_expiry_gameweek)
+        == (gameweek_number <= rules.chips.first_set_expiry_gameweek)
+    )
+    return validate_chip_use(
+        chip,
+        gameweek_number,
+        rules,
+        already_used_in_half=(
+            frozenset({chip}) if same_half_uses else frozenset()
+        ),
+        previous_gameweek_chip=(
+            chip if gameweek_number - 1 in same_half_uses else None
+        ),
+        last_used_gameweek=max(same_half_uses) if same_half_uses else None,
     )
 
 

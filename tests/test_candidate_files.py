@@ -26,6 +26,15 @@ from fpl_engine.promotion import declared_challenger_declaration
 CANDIDATE_DIRECTORY = Path("config/model_candidates")
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
 def _projection_candidates() -> list[Path]:
     paths = []
     for path in sorted(CANDIDATE_DIRECTORY.glob("*.json")):
@@ -38,6 +47,16 @@ def _projection_candidates() -> list[Path]:
 
 def test_the_candidate_directory_is_not_empty() -> None:
     assert _projection_candidates()
+
+
+@pytest.mark.parametrize(
+    "path", sorted(CANDIDATE_DIRECTORY.glob("*.json")), ids=lambda path: path.stem
+)
+def test_candidate_files_do_not_contain_duplicate_json_keys(path: Path) -> None:
+    json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+    )
 
 
 @pytest.mark.parametrize(

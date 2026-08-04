@@ -455,6 +455,12 @@ def validate_package_against_database(
     package_hash = result.get("input_package_hash")
     if not isinstance(package_id, str) or not isinstance(package_hash, str):
         raise ValueError("v3 result must echo input_package_id and input_package_hash")
+    if package_id in {"inp-package-id", "tnp-package-id", "input-package-id"}:
+        raise ValueError(
+            "The JSON still contains a template package ID. Generate a research "
+            "package in this app and preserve its exact input_package_id and "
+            "input_package_hash in the ChatGPT result."
+        )
     package_row = database.connection.execute(
         "SELECT * FROM team_news_input_packages WHERE package_id = ?", (package_id,)
     ).fetchone()

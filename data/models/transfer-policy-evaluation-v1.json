@@ -1,0 +1,75 @@
+{
+  "backtest_run_ids": [
+    355
+  ],
+  "candidate_pool_size": 1,
+  "diagnostic_transfer_need_distribution": {
+    "2": 1.0
+  },
+  "first_gameweek": 2,
+  "future_transfer_need_distribution": null,
+  "last_gameweek": 31,
+  "limitations": [
+    "Transfer need is the same-state one-Gameweek hindsight optimum after every solved route is re-priced from a reference state with one free transfer; it is not observed manager behaviour.",
+    "It prices the option to avoid future hits; it does not price every benefit of bank, team structure or waiting for information.",
+    "Historical metadata fixes the player universe at the opening origin, so mid-window arrivals cannot become transfer targets.",
+    "Use this empirical distribution only with the same transfer cap and season-rule family recorded in the artifact.",
+    "A distribution concentrated at the searched transfer cap fails closed because it measures hindsight search appetite, not usable option value."
+  ],
+  "max_transfers_per_week": 2,
+  "maximum_cap_share": 0.75,
+  "minimum_samples": 50,
+  "qualification_failures": [
+    "Only 29 samples are available; 50 are required.",
+    "The transfer cap was selected in 100.0% of samples; the maximum qualified share is 75.0%.",
+    "The estimated need distribution has no variation."
+  ],
+  "qualified": false,
+  "samples": 29,
+  "season_summaries": [
+    {
+      "backtest_run_id": 355,
+      "final_free_transfers": 1,
+      "gameweeks": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31
+      ],
+      "model_version": "rates-rules-corrected-v4-h8-evaluation",
+      "reference_one_ft_hindsight_transfer_need_counts": {
+        "2": 29
+      },
+      "season_code": "2021-22",
+      "season_points": 1607,
+      "total_hits": 56,
+      "total_regret": 1197
+    }
+  ]
+}

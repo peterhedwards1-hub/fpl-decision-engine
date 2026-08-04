@@ -120,6 +120,19 @@ The app provides team entry, a saved pitch view, projections, optimal XI, openin
 transfer comparison, structured team-news import/review, paired pre/post-news projections
 and model-health views.
 
+For the shortest auditable pre-season check, run:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 preseason-readiness 2026-27 `
+  --horizon 8 --candidate-pool-size 8 `
+  --output data/models/preseason-readiness-2026-27.json
+```
+
+This selects only a qualified incumbent-family projection, exactly rescores a frontier of
+legal squads for multiweek autosubs and captain fallback, and reports whether the result is
+merely provisional or ready to submit. It deliberately remains provisional until the final
+post-news weekly decision is frozen. See [the operating playbook](docs/14_OperatingPlaybook.md).
+
 For the decision-focused manual team-news workflow, use schema v3 packages:
 
 ```bash
@@ -464,6 +477,25 @@ first-half chip cannot be played in the second.
 
 Each replayed week records how far the look-ahead could see and whether that reached the
 expiry, so a short projection horizon is visible rather than silently assumed sufficient.
+
+Opening-squad and saved-transfer policy evidence can be rebuilt across seasons with:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 compile-squad-policy-evaluation `
+  355 356 357 358 359 --origins 2 14 26 --candidate-pool-size 2 `
+  --appearance-floors 0.6 --output data/models/squad-policy-evaluation-v1.json
+
+fpl-history --database data/fpl.sqlite3 compile-transfer-policy-evaluation `
+  355 356 357 358 359 --max-transfers-per-week 2 `
+  --output data/models/transfer-policy-evaluation-v1.json
+```
+
+The first tests cheap/available bench construction using realised autosubs and paired
+season-cluster evidence. The second audits whether same-state historical hindsight can
+estimate future-transfer need. It fails closed when the estimate concentrates at the
+searched transfer cap; only a qualified artifact is used by the live app. The current
+five-season hindsight audit is degenerate, so production option value remains zero and the
+app warns until enough prospective actual actions exist.
 
 `evaluate-chip-regret` scores chip *timing*:
 

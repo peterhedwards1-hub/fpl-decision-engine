@@ -22,11 +22,15 @@ from ..diagnostics import (
     write_stage_one_diagnostics,
 )
 from ..evaluation import (
+    SquadConstructionPolicy,
     build_evaluation_suite,
     compare_backtest_to_baselines,
+    compile_squad_policy_evaluations,
+    compile_transfer_policy_evaluation,
     evaluate_chip_regret,
     evaluate_legal_squad_regret,
     evaluate_owned_captain_regret,
+    evaluate_squad_construction_policies,
     evaluate_transfer_regret,
     replay_backtest_transfer_continuity,
     write_json_report,
@@ -52,6 +56,7 @@ from ..promotion import (
     run_forward_candidate_pair,
 )
 from ..prospective import build_prospective_capture_status
+from ..readiness import build_preseason_readiness_report
 from ..research_decision import (
     compare_opening_squad_decision,
     compare_transfer_decision,
@@ -390,6 +395,17 @@ def main() -> None:
         "backtest-report", help="Show a completed persisted backtest scorecard"
     )
     report_parser.add_argument("run_id", type=int)
+    readiness_parser = subparsers.add_parser(
+        "preseason-readiness",
+        help="Produce one qualified projection and robust opening-squad report",
+    )
+    readiness_parser.add_argument("season_code")
+    readiness_parser.add_argument("--gameweek", type=int, default=1)
+    readiness_parser.add_argument("--horizon", type=int, default=8)
+    readiness_parser.add_argument("--candidate-pool-size", type=int, default=8)
+    readiness_parser.add_argument("--appearance-floor", type=float, default=0.6)
+    readiness_parser.add_argument("--rules")
+    readiness_parser.add_argument("--output")
     baseline_parser = subparsers.add_parser(
         "compare-backtest-baselines",
         help="Compare one completed backtest with leakage-controlled simple baselines",
@@ -426,6 +442,62 @@ def main() -> None:
             "position_points_per_fixture",
         ),
     )
+    squad_policy_parser = subparsers.add_parser(
+        "evaluate-squad-policies",
+        help=(
+            "Compare unrestricted and appearance-qualified opening-squad policies"
+        ),
+    )
+    squad_policy_parser.add_argument("run_id", type=int)
+    squad_policy_parser.add_argument(
+        "--rules",
+        help="Season rules JSON (defaults to the backtest season)",
+    )
+    squad_policy_parser.add_argument(
+        "--origins",
+        nargs="+",
+        type=int,
+        help="Optional subset of historical origin Gameweeks",
+    )
+    squad_policy_parser.add_argument(
+        "--candidate-pool-size",
+        type=int,
+        default=4,
+        help="Distinct solver candidates exactly rescored for each frontier policy",
+    )
+    squad_policy_parser.add_argument(
+        "--appearance-floors",
+        nargs="+",
+        type=float,
+        default=(0.6,),
+        help="Mean projected appearance floors to compare with the baseline",
+    )
+    squad_policy_parser.add_argument("--output")
+    squad_policy_suite_parser = subparsers.add_parser(
+        "compile-squad-policy-evaluation",
+        help="Pool opening-squad policy evidence across historical seasons",
+    )
+    squad_policy_suite_parser.add_argument("run_ids", nargs="+", type=int)
+    squad_policy_suite_parser.add_argument(
+        "--origins",
+        nargs="+",
+        type=int,
+        help="Optional common subset of origin Gameweeks",
+    )
+    squad_policy_suite_parser.add_argument(
+        "--candidate-pool-size",
+        type=int,
+        default=4,
+    )
+    squad_policy_suite_parser.add_argument(
+        "--appearance-floors",
+        nargs="+",
+        type=float,
+        default=(0.6,),
+    )
+    squad_policy_suite_parser.add_argument("--bootstrap-samples", type=int, default=2000)
+    squad_policy_suite_parser.add_argument("--seed", type=int, default=20260804)
+    squad_policy_suite_parser.add_argument("--output")
     continuity_parser = subparsers.add_parser(
         "replay-transfer-continuity",
         help="Replay a backtest as one persistent squad with hits and autosubs",
@@ -438,7 +510,18 @@ def main() -> None:
     continuity_parser.add_argument("--first-gameweek", type=int)
     continuity_parser.add_argument("--last-gameweek", type=int)
     continuity_parser.add_argument("--max-transfers-per-week", type=int, default=2)
+    continuity_parser.add_argument("--candidate-pool-size", type=int, default=1)
     continuity_parser.add_argument("--output")
+    transfer_policy_parser = subparsers.add_parser(
+        "compile-transfer-policy-evaluation",
+        help="Replay seasons and estimate saved-transfer option value",
+    )
+    transfer_policy_parser.add_argument("run_ids", nargs="+", type=int)
+    transfer_policy_parser.add_argument("--first-gameweek", type=int)
+    transfer_policy_parser.add_argument("--last-gameweek", type=int)
+    transfer_policy_parser.add_argument("--max-transfers-per-week", type=int, default=2)
+    transfer_policy_parser.add_argument("--candidate-pool-size", type=int, default=1)
+    transfer_policy_parser.add_argument("--output")
     captain_parser = subparsers.add_parser(
         "evaluate-captain-regret",
         help="Score captaincy against the best armband in the model's own squad",
@@ -460,6 +543,7 @@ def main() -> None:
         type=int,
         default=1,
     )
+    transfer_regret_parser.add_argument("--candidate-pool-size", type=int, default=1)
     transfer_regret_parser.add_argument("--output")
     chip_regret_parser = subparsers.add_parser(
         "evaluate-chip-regret",
@@ -469,6 +553,7 @@ def main() -> None:
     chip_regret_parser.add_argument("--rules")
     chip_regret_parser.add_argument("--first-gameweek", type=int)
     chip_regret_parser.add_argument("--last-gameweek", type=int)
+    chip_regret_parser.add_argument("--candidate-pool-size", type=int, default=1)
     chip_regret_parser.add_argument(
         "--max-transfers-per-week",
         type=int,
@@ -1039,6 +1124,117 @@ def main() -> None:
             print(json.dumps(regret.as_dict(), indent=2))
             return
 
+        if args.command == "preseason-readiness":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            readiness = build_preseason_readiness_report(
+                database,
+                rules,
+                season_code=args.season_code,
+                gameweek_number=args.gameweek,
+                horizon_gameweeks=args.horizon,
+                candidate_pool_size=args.candidate_pool_size,
+                minimum_mean_appearance=args.appearance_floor,
+            )
+            if args.output:
+                write_json_report(readiness, args.output)
+            print(json.dumps(readiness, indent=2))
+            return
+
+        if args.command == "evaluate-squad-policies":
+            season = database.connection.execute(
+                """
+                SELECT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id = ?
+                """,
+                (args.run_id,),
+            ).fetchone()
+            if season is None:
+                raise ValueError(f"Backtest run {args.run_id} is unavailable")
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{season['code']}.json")
+            )
+            policies = (
+                SquadConstructionPolicy("unrestricted-single"),
+                SquadConstructionPolicy(
+                    "unrestricted-frontier",
+                    candidate_pool_size=args.candidate_pool_size,
+                ),
+                *(
+                    SquadConstructionPolicy(
+                        f"appearance-{floor:.2f}-frontier",
+                        minimum_mean_appearance=floor,
+                        candidate_pool_size=args.candidate_pool_size,
+                    )
+                    for floor in args.appearance_floors
+                ),
+            )
+            report = evaluate_squad_construction_policies(
+                database,
+                args.run_id,
+                rules,
+                policies,
+                origin_gameweeks=(
+                    None if args.origins is None else tuple(args.origins)
+                ),
+            )
+            if args.output:
+                write_json_report(report.as_dict(), args.output)
+            print(json.dumps(report.as_dict(), indent=2))
+            return
+
+        if args.command == "compile-squad-policy-evaluation":
+            season_rows = database.connection.execute(
+                f"""
+                SELECT DISTINCT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id IN (
+                    {','.join('?' for _ in args.run_ids)}
+                )
+                """,
+                tuple(args.run_ids),
+            ).fetchall()
+            rules_by_season = {
+                str(row["code"]): load_season_rules(
+                    Path(f"config/seasons/{row['code']}.json")
+                )
+                for row in season_rows
+            }
+            policies = (
+                SquadConstructionPolicy("unrestricted-single"),
+                SquadConstructionPolicy(
+                    "unrestricted-frontier",
+                    candidate_pool_size=args.candidate_pool_size,
+                ),
+                *(
+                    SquadConstructionPolicy(
+                        f"appearance-{floor:.2f}-frontier",
+                        minimum_mean_appearance=floor,
+                        candidate_pool_size=args.candidate_pool_size,
+                    )
+                    for floor in args.appearance_floors
+                ),
+            )
+            report = compile_squad_policy_evaluations(
+                database,
+                tuple(args.run_ids),
+                rules_by_season,
+                policies,
+                origin_gameweeks=(
+                    None if args.origins is None else tuple(args.origins)
+                ),
+                bootstrap_samples=args.bootstrap_samples,
+                random_seed=args.seed,
+            )
+            if args.output:
+                write_json_report(report, args.output)
+            print(json.dumps(report, indent=2))
+            return
+
         if args.command == "fit-preseason-priors":
             rules_by_season = {
                 season_code: load_season_rules(Path(f"config/seasons/{season_code}.json"))
@@ -1215,6 +1411,7 @@ def main() -> None:
                 first_gameweek=args.first_gameweek,
                 last_gameweek=args.last_gameweek,
                 max_transfers_per_week=args.max_transfers_per_week,
+                candidate_pool_size=args.candidate_pool_size,
             )
             if args.output:
                 write_json_report(transfer.as_dict(), args.output)
@@ -1261,6 +1458,7 @@ def main() -> None:
                 last_gameweek=args.last_gameweek,
                 max_transfers_per_week=args.max_transfers_per_week,
                 chip_policy=policy,
+                candidate_pool_size=args.candidate_pool_size,
             )
             if args.output:
                 write_json_report(chip_report.as_dict(), args.output)
@@ -1287,10 +1485,43 @@ def main() -> None:
                 first_gameweek=args.first_gameweek,
                 last_gameweek=args.last_gameweek,
                 max_transfers_per_week=args.max_transfers_per_week,
+                candidate_pool_size=args.candidate_pool_size,
             )
             if args.output:
                 write_json_report(continuity, args.output)
             print(json.dumps(continuity, indent=2))
+            return
+
+        if args.command == "compile-transfer-policy-evaluation":
+            season_rows = database.connection.execute(
+                f"""
+                SELECT DISTINCT seasons.code
+                FROM projection_backtest_runs
+                JOIN seasons ON seasons.id = projection_backtest_runs.season_id
+                WHERE projection_backtest_runs.id IN (
+                    {','.join('?' for _ in args.run_ids)}
+                )
+                """,
+                tuple(args.run_ids),
+            ).fetchall()
+            rules_by_season = {
+                str(row["code"]): load_season_rules(
+                    Path(f"config/seasons/{row['code']}.json")
+                )
+                for row in season_rows
+            }
+            evaluation = compile_transfer_policy_evaluation(
+                database,
+                tuple(args.run_ids),
+                rules_by_season,
+                first_gameweek=args.first_gameweek,
+                last_gameweek=args.last_gameweek,
+                max_transfers_per_week=args.max_transfers_per_week,
+                candidate_pool_size=args.candidate_pool_size,
+            )
+            if args.output:
+                write_json_report(evaluation, args.output)
+            print(json.dumps(evaluation, indent=2))
             return
 
         if args.command == "compile-model-evaluation":

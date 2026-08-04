@@ -1,7 +1,7 @@
 # Milestone implementation status
 
 **Roadmap:** `02_ImplementationRoadmap.md`  
-**Status date:** 2026-07-30
+**Status date:** 2026-08-04
 **Database schema:** 15
 
 This is the implementation-status companion to the canonical roadmap. It does not redefine
@@ -57,6 +57,16 @@ ensembles, continuous transfer replay, evidence-derived free-transfer value, aut
 chip timing and immutable forward promotion declarations. It passes Ruff and all 109
 tests, including schema-14 migration and full synthetic promotion-gate coverage.
 Historical results remain design evidence; the incumbent is unchanged.
+
+The 2026-08-04 readiness hardening prevents short diagnostic or unqualified challenger
+runs from driving production decisions, preserves the full horizon through reviewed-news
+reruns, exactly rescores multiweek autosubs and captain fallback across bounded opening and
+transfer frontiers, and applies a historically evaluated 60% mean-appearance opening
+guardrail. A five-season, 15-origin policy replay found +3.87 realised points per eight-week
+window for that guardrail, but with a season-cluster 95% interval of -5.33 to +14.27; it is
+therefore a robustness default rather than a claimed universal improvement. The one-command
+preseason readiness report remains fail-closed until a matching final post-news decision is
+frozen.
 
 The original tuning experiment is documented in `05_ProjectionTuningRecord.md`; it remains
 a one-season experiment even though the database now contains five seasons. The implemented

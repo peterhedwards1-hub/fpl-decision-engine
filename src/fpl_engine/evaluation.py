@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,9 @@ from .optimisation import (
     CandidatePlayer,
     FullSquadResult,
     GameweekPlayerValue,
+    OptimisationError,
     optimise_full_squad,
+    optimise_opening_squads,
 )
 from .transfers import CurrentSquad
 
@@ -111,6 +114,86 @@ class LegalSquadRegretReport:
             "origins": [asdict(origin) for origin in self.origins],
             "mean_regret_by_method": self.mean_regret_by_method,
             "total_regret_by_method": self.total_regret_by_method,
+            "limitations": list(self.limitations),
+        }
+
+
+@dataclass(frozen=True)
+class SquadConstructionPolicy:
+    """A reproducible opening-squad search policy to compare historically."""
+
+    name: str
+    minimum_mean_appearance: float = 0.0
+    candidate_pool_size: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("Squad-construction policy name cannot be empty")
+        if not 0.0 <= self.minimum_mean_appearance <= 1.0:
+            raise ValueError("Minimum mean appearance must be between zero and one")
+        if self.candidate_pool_size < 1:
+            raise ValueError("Candidate pool size must be positive")
+
+
+@dataclass(frozen=True)
+class SquadPolicyOriginResult:
+    """Forecast and realised evidence for one policy at one historical origin."""
+
+    policy_name: str
+    origin_gameweek: int
+    target_gameweeks: tuple[int, ...]
+    eligible_players: int
+    status: str
+    failure_reason: str | None = None
+    predicted_decision_value: float | None = None
+    predicted_horizon_points: float | None = None
+    realised_points: float | None = None
+    realised_autosub_points: float | None = None
+    squad_cost_tenths: int | None = None
+    bench_cost_tenths: int | None = None
+    squad_mean_appearance: float | None = None
+    bench_mean_appearance: float | None = None
+    bench_projected_points: float | None = None
+    selected_player_ids: tuple[str, ...] = ()
+    bench_player_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SquadPolicySummary:
+    policy_name: str
+    origins_succeeded: int
+    origins_failed: int
+    total_realised_points: float | None
+    mean_realised_points: float | None
+    mean_delta_vs_baseline: float | None
+    paired_wins: int
+    paired_losses: int
+    paired_ties: int
+    mean_bench_cost_tenths: float | None
+    mean_bench_appearance: float | None
+    mean_realised_autosub_points: float | None
+
+
+@dataclass(frozen=True)
+class SquadPolicyEvaluationReport:
+    backtest_run_id: int
+    season_code: str
+    model_version: str
+    baseline_policy: str
+    policies: tuple[SquadConstructionPolicy, ...]
+    origins: tuple[SquadPolicyOriginResult, ...]
+    summaries: tuple[SquadPolicySummary, ...]
+    limitations: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "backtest_run_id": self.backtest_run_id,
+            "season_code": self.season_code,
+            "model_version": self.model_version,
+            "baseline_policy": self.baseline_policy,
+            "policies": [asdict(policy) for policy in self.policies],
+            "origins": [asdict(origin) for origin in self.origins],
+            "summaries": [asdict(summary) for summary in self.summaries],
             "limitations": list(self.limitations),
         }
 
@@ -708,6 +791,7 @@ def evaluate_chip_regret(
     last_gameweek: int | None = None,
     max_transfers_per_week: int = 1,
     chip_policy: ScoringChipPolicy | None = None,
+    candidate_pool_size: int = 1,
 ) -> ChipRegretReport:
     """Score chip timing against the best week it could have been played in.
 
@@ -729,6 +813,7 @@ def evaluate_chip_regret(
         last_gameweek=last_gameweek,
         max_transfers_per_week=max_transfers_per_week,
         chip_policy=chip_policy,
+        candidate_pool_size=candidate_pool_size,
     )
     weeks = replay["weeks"]
     if not weeks:
@@ -838,6 +923,7 @@ def evaluate_transfer_regret(
     first_gameweek: int | None = None,
     last_gameweek: int | None = None,
     max_transfers_per_week: int = 1,
+    candidate_pool_size: int = 1,
 ) -> TransferRegretReport:
     """Score each transfer action against the best one from the same state.
 
@@ -853,6 +939,7 @@ def evaluate_transfer_regret(
         first_gameweek=first_gameweek,
         last_gameweek=last_gameweek,
         max_transfers_per_week=max_transfers_per_week,
+        candidate_pool_size=candidate_pool_size,
     )
     weeks = replay["weeks"]
     if not weeks:
@@ -1186,6 +1273,412 @@ def evaluate_legal_squad_regret(
     )
 
 
+def evaluate_squad_construction_policies(
+    database: HistoricalDatabase,
+    backtest_run_id: int,
+    rules: SeasonRules,
+    policies: tuple[SquadConstructionPolicy, ...],
+    *,
+    origin_gameweeks: tuple[int, ...] | None = None,
+) -> SquadPolicyEvaluationReport:
+    """Compare opening-squad construction policies without future leakage.
+
+    Every policy sees the same persisted forecasts and price/team metadata that
+    were available at the historical origin. Realised points are then scored
+    with the selected Gameweek lineups, legal autosubs and captain fallback.
+    The first policy is the paired baseline for wins, losses and point deltas.
+    """
+
+    if not policies:
+        raise ValueError("At least one squad-construction policy is required")
+    policy_names = tuple(policy.name for policy in policies)
+    if len(set(policy_names)) != len(policy_names):
+        raise ValueError("Squad-construction policy names must be unique")
+    if origin_gameweeks is not None:
+        if not origin_gameweeks:
+            raise ValueError("At least one origin Gameweek is required")
+        if len(set(origin_gameweeks)) != len(origin_gameweeks):
+            raise ValueError("Origin Gameweeks must be unique")
+        requested_origins = set(origin_gameweeks)
+    else:
+        requested_origins = None
+
+    run, by_origin, player_history, position_history = _regret_run_context(
+        database,
+        backtest_run_id,
+        rules,
+    )
+    origins = tuple(
+        origin
+        for origin in _origin_candidate_sets(
+            database,
+            run,
+            by_origin,
+            player_history,
+            position_history,
+            ("model",),
+        )
+        if requested_origins is None
+        or origin.origin_gameweek in requested_origins
+    )
+    found_origins = {origin.origin_gameweek for origin in origins}
+    if requested_origins is not None and found_origins != requested_origins:
+        missing = sorted(requested_origins - found_origins)
+        raise ValueError(f"Backtest run has no predictions for origins {missing}")
+    if not origins:
+        raise ValueError("Backtest run has no origins to evaluate")
+
+    results: list[SquadPolicyOriginResult] = []
+    for origin in origins:
+        model_candidates = tuple(origin.candidates_by_method["model"])
+        for policy in policies:
+            eligible = tuple(
+                player
+                for player in model_candidates
+                if _candidate_mean_appearance(player)
+                >= policy.minimum_mean_appearance
+            )
+            try:
+                recommendation = optimise_opening_squads(
+                    eligible,
+                    budget_tenths=rules.squad.budget_tenths,
+                    rules=rules,
+                    alternative_count=0,
+                    candidate_pool_size=policy.candidate_pool_size,
+                )
+            except OptimisationError as error:
+                results.append(
+                    SquadPolicyOriginResult(
+                        policy_name=policy.name,
+                        origin_gameweek=origin.origin_gameweek,
+                        target_gameweeks=origin.target_gameweeks,
+                        eligible_players=len(eligible),
+                        status="infeasible",
+                        failure_reason=str(error),
+                    )
+                )
+                continue
+
+            selected = recommendation.primary
+            selected_by_id = {
+                player.source_player_id: player for player in selected.players
+            }
+            bench = tuple(
+                selected_by_id[player_id]
+                for player_id in selected.bench_player_ids
+            )
+            realised, realised_autosubs = _replayed_squad_score_breakdown(
+                selected,
+                origin.actual_lookup,
+                origin.target_gameweeks,
+                rules,
+            )
+            results.append(
+                SquadPolicyOriginResult(
+                    policy_name=policy.name,
+                    origin_gameweek=origin.origin_gameweek,
+                    target_gameweeks=origin.target_gameweeks,
+                    eligible_players=len(eligible),
+                    status="ok",
+                    predicted_decision_value=selected.decision_value,
+                    predicted_horizon_points=selected.horizon_expected_points,
+                    realised_points=round(realised, 3),
+                    realised_autosub_points=round(realised_autosubs, 3),
+                    squad_cost_tenths=selected.total_cost_tenths,
+                    bench_cost_tenths=sum(player.price_tenths for player in bench),
+                    squad_mean_appearance=round(
+                        sum(
+                            _candidate_mean_appearance(player)
+                            for player in selected.players
+                        )
+                        / len(selected.players),
+                        4,
+                    ),
+                    bench_mean_appearance=round(
+                        sum(_candidate_mean_appearance(player) for player in bench)
+                        / len(bench),
+                        4,
+                    ),
+                    bench_projected_points=round(
+                        sum(player.expected_points for player in bench),
+                        3,
+                    ),
+                    selected_player_ids=tuple(
+                        sorted(player.source_player_id for player in selected.players)
+                    ),
+                    bench_player_ids=tuple(selected.bench_player_ids),
+                )
+            )
+
+    return SquadPolicyEvaluationReport(
+        backtest_run_id=backtest_run_id,
+        season_code=str(run["season_code"]),
+        model_version=str(run["model_version"]),
+        baseline_policy=policies[0].name,
+        policies=policies,
+        origins=tuple(results),
+        summaries=_summarise_squad_policies(tuple(results), policies),
+        limitations=(
+            "Each origin is a fresh opening-squad decision with no transfer cost; "
+            "this isolates construction and bench policy rather than measuring a "
+            "complete carried season.",
+            "Inputs are the forecasts and metadata persisted at each origin. Legacy "
+            "historical feeds cannot reconstruct every injury, press-conference or "
+            "deadline snapshot that a live process would know.",
+            "Appearance floors are applied to the mean forecast probability across "
+            "the available horizon, not to realised appearances.",
+            "Realised points include exact legal autosubs and captain fallback. The "
+            "candidate-pool search compares distinct solver-optimal linear squads; "
+            "it is not a proof of the global nonlinear autosub optimum.",
+            "A policy that cannot form a legal squad is reported as infeasible and "
+            "excluded from paired point comparisons, never silently discarded.",
+        ),
+    )
+
+
+def compile_squad_policy_evaluations(
+    database: HistoricalDatabase,
+    backtest_run_ids: tuple[int, ...],
+    rules_by_season: dict[str, SeasonRules],
+    policies: tuple[SquadConstructionPolicy, ...],
+    *,
+    origin_gameweeks: tuple[int, ...] | None = None,
+    bootstrap_samples: int = 2000,
+    random_seed: int = 20260804,
+) -> dict[str, object]:
+    """Compile comparable squad-policy evidence across historical seasons."""
+
+    if not backtest_run_ids:
+        raise ValueError("At least one backtest run is required")
+    if len(set(backtest_run_ids)) != len(backtest_run_ids):
+        raise ValueError("Backtest run IDs must be unique")
+    if bootstrap_samples < 1:
+        raise ValueError("Bootstrap samples must be positive")
+    reports = []
+    for run_id in backtest_run_ids:
+        row = database.connection.execute(
+            """
+            SELECT seasons.code
+            FROM projection_backtest_runs runs
+            JOIN seasons ON seasons.id = runs.season_id
+            WHERE runs.id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Backtest run {run_id} is unavailable")
+        season_code = str(row["code"])
+        rules = rules_by_season.get(season_code)
+        if rules is None:
+            raise ValueError(f"Rules are missing for season {season_code}")
+        reports.append(
+            evaluate_squad_construction_policies(
+                database,
+                run_id,
+                rules,
+                policies,
+                origin_gameweeks=origin_gameweeks,
+            )
+        )
+    pooled, intervals = _pool_squad_policy_reports(
+        tuple(reports),
+        policies,
+        bootstrap_samples=bootstrap_samples,
+        random_seed=random_seed,
+    )
+    return {
+        "backtest_run_ids": list(backtest_run_ids),
+        "baseline_policy": policies[0].name,
+        "policies": [asdict(policy) for policy in policies],
+        "season_reports": [report.as_dict() for report in reports],
+        "pooled_summaries": pooled,
+        "season_cluster_bootstrap_delta_ci95": intervals,
+        "bootstrap_samples": bootstrap_samples,
+        "random_seed": random_seed,
+        "limitations": [
+            "The confidence interval resamples whole seasons, preserving the "
+            "dependence among overlapping origins within a season.",
+            "Five historical seasons are design evidence, not five hundred "
+            "independent experiments; wide intervals should be expected.",
+            "Use spaced origins at least one forecast horizon apart when the goal "
+            "is a less-overlapping estimate rather than exhaustive diagnostics.",
+            *reports[0].limitations,
+        ],
+    }
+
+
+def _pool_squad_policy_reports(
+    reports: tuple[SquadPolicyEvaluationReport, ...],
+    policies: tuple[SquadConstructionPolicy, ...],
+    *,
+    bootstrap_samples: int,
+    random_seed: int,
+) -> tuple[list[dict[str, object]], dict[str, dict[str, object] | None]]:
+    baseline = {
+        (report.backtest_run_id, origin.origin_gameweek): origin
+        for report in reports
+        for origin in report.origins
+        if origin.policy_name == policies[0].name
+        and origin.status == "ok"
+        and origin.realised_points is not None
+    }
+    pooled: list[dict[str, object]] = []
+    intervals: dict[str, dict[str, object] | None] = {}
+    random_generator = random.Random(random_seed)
+    for policy in policies:
+        policy_origins = [
+            (report.backtest_run_id, origin)
+            for report in reports
+            for origin in report.origins
+            if origin.policy_name == policy.name
+        ]
+        succeeded = [
+            (run_id, origin)
+            for run_id, origin in policy_origins
+            if origin.status == "ok" and origin.realised_points is not None
+        ]
+        deltas_by_run: dict[int, list[float]] = {}
+        for run_id, origin in succeeded:
+            base = baseline.get((run_id, origin.origin_gameweek))
+            if base is None:
+                continue
+            deltas_by_run.setdefault(run_id, []).append(
+                float(origin.realised_points) - float(base.realised_points)
+            )
+        deltas = [delta for values in deltas_by_run.values() for delta in values]
+
+        def mean_optional(
+            field: str,
+            source: list[tuple[int, SquadPolicyOriginResult]] = succeeded,
+        ) -> float | None:
+            values = [
+                float(value)
+                for _, origin in source
+                if (value := getattr(origin, field)) is not None
+            ]
+            return None if not values else round(sum(values) / len(values), 4)
+
+        realised = [float(origin.realised_points) for _, origin in succeeded]
+        pooled.append(
+            {
+                "policy_name": policy.name,
+                "seasons_succeeded": len(deltas_by_run),
+                "origins_succeeded": len(succeeded),
+                "origins_failed": len(policy_origins) - len(succeeded),
+                "total_realised_points": (
+                    None if not realised else round(sum(realised), 4)
+                ),
+                "mean_realised_points": mean_optional("realised_points"),
+                "mean_delta_vs_baseline": (
+                    None if not deltas else round(sum(deltas) / len(deltas), 4)
+                ),
+                "paired_wins": sum(delta > 1e-9 for delta in deltas),
+                "paired_losses": sum(delta < -1e-9 for delta in deltas),
+                "paired_ties": sum(abs(delta) <= 1e-9 for delta in deltas),
+                "mean_bench_cost_tenths": mean_optional("bench_cost_tenths"),
+                "mean_bench_appearance": mean_optional("bench_mean_appearance"),
+                "mean_realised_autosub_points": mean_optional(
+                    "realised_autosub_points"
+                ),
+            }
+        )
+        if len(deltas_by_run) < 2:
+            intervals[policy.name] = None
+            continue
+        run_ids = tuple(sorted(deltas_by_run))
+        draws = []
+        for _ in range(bootstrap_samples):
+            sampled = [
+                random_generator.choice(run_ids) for _ in range(len(run_ids))
+            ]
+            sampled_deltas = [
+                delta for run_id in sampled for delta in deltas_by_run[run_id]
+            ]
+            draws.append(sum(sampled_deltas) / len(sampled_deltas))
+        draws.sort()
+        lower = draws[max(0, int(0.025 * bootstrap_samples) - 1)]
+        upper = draws[min(bootstrap_samples - 1, int(0.975 * bootstrap_samples))]
+        intervals[policy.name] = {
+            "low": round(lower, 4),
+            "high": round(upper, 4),
+            "season_clusters": len(run_ids),
+        }
+    return pooled, intervals
+
+
+def _candidate_mean_appearance(player: CandidatePlayer) -> float:
+    values = player.gameweek_values
+    if not values:
+        return player.appearance_probability
+    return sum(value.appearance_probability for value in values) / len(values)
+
+
+def _summarise_squad_policies(
+    origins: tuple[SquadPolicyOriginResult, ...],
+    policies: tuple[SquadConstructionPolicy, ...],
+) -> tuple[SquadPolicySummary, ...]:
+    baseline = {
+        origin.origin_gameweek: origin
+        for origin in origins
+        if origin.policy_name == policies[0].name
+        and origin.status == "ok"
+        and origin.realised_points is not None
+    }
+    summaries = []
+    for policy in policies:
+        policy_origins = [
+            origin for origin in origins if origin.policy_name == policy.name
+        ]
+        succeeded = [
+            origin
+            for origin in policy_origins
+            if origin.status == "ok" and origin.realised_points is not None
+        ]
+        paired = [
+            (origin, baseline[origin.origin_gameweek])
+            for origin in succeeded
+            if origin.origin_gameweek in baseline
+        ]
+        deltas = [
+            float(origin.realised_points) - float(base.realised_points)
+            for origin, base in paired
+        ]
+
+        def mean(
+            field: str,
+            source: list[SquadPolicyOriginResult] = succeeded,
+        ) -> float | None:
+            values = [
+                float(value)
+                for origin in source
+                if (value := getattr(origin, field)) is not None
+            ]
+            return None if not values else round(sum(values) / len(values), 4)
+
+        realised_values = [float(origin.realised_points) for origin in succeeded]
+        summaries.append(
+            SquadPolicySummary(
+                policy_name=policy.name,
+                origins_succeeded=len(succeeded),
+                origins_failed=len(policy_origins) - len(succeeded),
+                total_realised_points=(
+                    None if not realised_values else round(sum(realised_values), 4)
+                ),
+                mean_realised_points=mean("realised_points"),
+                mean_delta_vs_baseline=(
+                    None if not deltas else round(sum(deltas) / len(deltas), 4)
+                ),
+                paired_wins=sum(delta > 1e-9 for delta in deltas),
+                paired_losses=sum(delta < -1e-9 for delta in deltas),
+                paired_ties=sum(abs(delta) <= 1e-9 for delta in deltas),
+                mean_bench_cost_tenths=mean("bench_cost_tenths"),
+                mean_bench_appearance=mean("bench_mean_appearance"),
+                mean_realised_autosub_points=mean("realised_autosub_points"),
+            )
+        )
+    return tuple(summaries)
+
+
 def replay_backtest_transfer_continuity(
     database: HistoricalDatabase,
     backtest_run_id: int,
@@ -1195,6 +1688,7 @@ def replay_backtest_transfer_continuity(
     last_gameweek: int | None = None,
     max_transfers_per_week: int = 2,
     chip_policy: ScoringChipPolicy | None = None,
+    candidate_pool_size: int = 1,
 ) -> dict[str, Any]:
     """Replay a backtest as one persistent squad carried across Gameweeks.
 
@@ -1368,11 +1862,13 @@ def replay_backtest_transfer_continuity(
             )
         )
 
-    opening = optimise_full_squad(
+    opening = optimise_opening_squads(
         weeks[0].forecast_candidates,
         budget_tenths=rules.squad.budget_tenths,
         rules=rules,
-    )
+        alternative_count=0,
+        candidate_pool_size=candidate_pool_size,
+    ).primary
     opening_ids = frozenset(
         player.source_player_id for player in opening.players
     )
@@ -1394,6 +1890,7 @@ def replay_backtest_transfer_continuity(
         rules=rules,
         max_transfers_per_week=max_transfers_per_week,
         chip_policy=chip_policy,
+        candidate_pool_size=candidate_pool_size,
     )
     opening_outcomes = {
         outcome.source_player_id: outcome for outcome in weeks[0].realised_outcomes
@@ -1405,11 +1902,17 @@ def replay_backtest_transfer_continuity(
         weeks[0].gameweek_number,
     )
     result = report.as_dict()
+    chip_limitation = (
+        "Chips are not played; every Gameweek uses the base scoring rules."
+        if chip_policy is None or not chip_policy.plays_anything
+        else "Bench Boost and Triple Captain follow the explicitly supplied "
+        f"policy: {chip_policy.as_dict()}. Wildcard and Free Hit are not replayed."
+    )
     result["limitations"] = [
         *report.limitations,
         "The opening squad is selected at the first replayed Gameweek and is "
         "scored without a transfer decision.",
-        "Chips are not played; every Gameweek uses the base scoring rules.",
+        chip_limitation,
         "The candidate universe is fixed at the opening Gameweek, so players "
         "who first appear later are never signed.",
         "Sale values apply the season's configured profit-sharing rule to a "
@@ -1428,6 +1931,130 @@ def replay_backtest_transfer_continuity(
         "opening_squad_cost_tenths": opening.total_cost_tenths,
         "season_points": opening_points + report.total_net_points,
         **result,
+    }
+
+
+def compile_transfer_policy_evaluation(
+    database: HistoricalDatabase,
+    backtest_run_ids: tuple[int, ...],
+    rules_by_season: dict[str, SeasonRules],
+    *,
+    first_gameweek: int | None = None,
+    last_gameweek: int | None = None,
+    max_transfers_per_week: int = 2,
+    candidate_pool_size: int = 1,
+    minimum_samples: int = 50,
+    maximum_cap_share: float = 0.75,
+) -> dict[str, Any]:
+    """Replay several seasons and estimate the option value of saved transfers."""
+
+    if not backtest_run_ids:
+        raise ValueError("At least one backtest run is required")
+    if len(set(backtest_run_ids)) != len(backtest_run_ids):
+        raise ValueError("Backtest run IDs must be unique")
+    if minimum_samples < 1:
+        raise ValueError("Minimum transfer-policy samples must be positive")
+    if not 0.0 < maximum_cap_share < 1.0:
+        raise ValueError("Maximum transfer-cap share must be between zero and one")
+    season_summaries = []
+    need_counts: list[int] = []
+    for run_id in backtest_run_ids:
+        row = database.connection.execute(
+            """
+            SELECT seasons.code
+            FROM projection_backtest_runs runs
+            JOIN seasons ON seasons.id = runs.season_id
+            WHERE runs.id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Backtest run {run_id} is unavailable")
+        season_code = str(row["code"])
+        rules = rules_by_season.get(season_code)
+        if rules is None:
+            raise ValueError(f"Rules are missing for season {season_code}")
+        replay = replay_backtest_transfer_continuity(
+            database,
+            run_id,
+            rules,
+            first_gameweek=first_gameweek,
+            last_gameweek=last_gameweek,
+            max_transfers_per_week=max_transfers_per_week,
+            candidate_pool_size=candidate_pool_size,
+        )
+        season_needs = [
+            int(week["reference_one_ft_hindsight_transfers"])
+            for week in replay["weeks"]
+        ]
+        need_counts.extend(season_needs)
+        season_summaries.append(
+            {
+                "backtest_run_id": run_id,
+                "season_code": season_code,
+                "model_version": replay["model_version"],
+                "gameweeks": replay["gameweeks"],
+                "season_points": replay["season_points"],
+                "total_hits": replay["total_hits"],
+                "total_regret": replay["total_regret"],
+                "final_free_transfers": replay["final_free_transfers"],
+                "reference_one_ft_hindsight_transfer_need_counts": {
+                    str(count): season_needs.count(count)
+                    for count in sorted(set(season_needs))
+                },
+            }
+        )
+    if not need_counts:
+        raise ValueError("The transfer-policy replays produced no decisions")
+    diagnostic_distribution = {
+        str(count): round(need_counts.count(count) / len(need_counts), 8)
+        for count in sorted(set(need_counts))
+    }
+    cap_share = need_counts.count(max_transfers_per_week) / len(need_counts)
+    qualification_failures = []
+    if len(need_counts) < minimum_samples:
+        qualification_failures.append(
+            f"Only {len(need_counts)} samples are available; {minimum_samples} are required."
+        )
+    if cap_share > maximum_cap_share:
+        qualification_failures.append(
+            f"The transfer cap was selected in {cap_share:.1%} of samples; "
+            f"the maximum qualified share is {maximum_cap_share:.1%}."
+        )
+    if len(diagnostic_distribution) < 2:
+        qualification_failures.append(
+            "The estimated need distribution has no variation."
+        )
+    qualified = not qualification_failures
+    return {
+        "backtest_run_ids": list(backtest_run_ids),
+        "first_gameweek": first_gameweek,
+        "last_gameweek": last_gameweek,
+        "max_transfers_per_week": max_transfers_per_week,
+        "candidate_pool_size": candidate_pool_size,
+        "samples": len(need_counts),
+        "qualified": qualified,
+        "qualification_failures": qualification_failures,
+        "minimum_samples": minimum_samples,
+        "maximum_cap_share": maximum_cap_share,
+        "diagnostic_transfer_need_distribution": diagnostic_distribution,
+        "future_transfer_need_distribution": (
+            diagnostic_distribution if qualified else None
+        ),
+        "season_summaries": season_summaries,
+        "limitations": [
+            "Transfer need is the same-state one-Gameweek hindsight optimum after "
+            "every solved route is re-priced from a reference state with one free "
+            "transfer; it is not observed manager behaviour.",
+            "It prices the option to avoid future hits; it does not price every "
+            "benefit of bank, team structure or waiting for information.",
+            "Historical metadata fixes the player universe at the opening origin, "
+            "so mid-window arrivals cannot become transfer targets.",
+            "Use this empirical distribution only with the same transfer cap and "
+            "season-rule family recorded in the artifact.",
+            "A distribution concentrated at the searched transfer cap fails closed "
+            "because it measures hindsight search appetite, not usable option value.",
+        ],
     }
 
 
@@ -1540,14 +2167,38 @@ def _replayed_squad_points(
     worth.
     """
 
+    realised, _ = _replayed_squad_score_breakdown(
+        result,
+        actual_lookup,
+        target_gameweeks,
+        rules,
+    )
+    return realised
+
+
+def _replayed_squad_score_breakdown(
+    result: FullSquadResult,
+    actual_lookup: dict[tuple[str, int], GameweekPlayerValue],
+    target_gameweeks: tuple[int, ...],
+    rules: SeasonRules,
+) -> tuple[float, float]:
+    """Return realised total and the part supplied by automatic substitutes."""
+
     realised = 0
+    autosub_points = 0
     for gameweek in target_gameweeks:
         # Only the played/blanked distinction drives autosubs; the backtest
         # row's own minutes are not carried on these values.
         outcomes = _realised_outcomes(result, actual_lookup, gameweek)
-        points, _, _ = score_squad_gameweek(result, outcomes, rules, gameweek)
+        points, autosubs, _ = score_squad_gameweek(
+            result,
+            outcomes,
+            rules,
+            gameweek,
+        )
         realised += points
-    return float(realised)
+        autosub_points += autosubs
+    return float(realised), float(autosub_points)
 
 
 def _historical_prefixes(

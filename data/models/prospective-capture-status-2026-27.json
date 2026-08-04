@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-08-02T18:40:16.545629+00:00",
+  "checked_at": "2026-08-04T12:08:20.127262+00:00",
   "gameweeks": [
     {
       "candidate_projections": {
@@ -22,8 +22,8 @@
       "counts": {
         "actual_action": 0,
         "final_decision": 0,
-        "manager_snapshot": 0,
-        "paired_news_projections": 0,
+        "manager_snapshot": 3,
+        "paired_news_projections": 3,
         "post_gameweek_snapshot": 0,
         "pre_deadline_snapshot": 2,
         "recorded_outcomes": 0,

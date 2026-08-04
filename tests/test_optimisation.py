@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from itertools import combinations, permutations
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from fpl_engine.optimisation import (
     _expected_weekly_score,
     _optimal_captaincy,
     _used_outfield_bench_indexes,
+    appearance_qualified_candidates,
     optimise_full_squad,
     optimise_opening_squads,
     optimise_starting_xi,
@@ -19,10 +21,38 @@ from fpl_engine.optimisation import (
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
 
-# The legal-XI-plus-captain objective ignores bench composition entirely, so
-# every legal bench ties at the optimum. These candidates make that degeneracy
-# explicit: eleven clearly superior starters, then a matched cheap and strong
-# option for each of the four bench slots, with the budget to afford either.
+
+def test_opening_appearance_guardrail_uses_the_whole_horizon() -> None:
+    reliable = CandidatePlayer(
+        "reliable",
+        "Reliable",
+        "1",
+        "T1",
+        Position.MID,
+        50,
+        10.0,
+        gameweek_values=(
+            GameweekPlayerValue(1, 5.0, 0.8),
+            GameweekPlayerValue(2, 5.0, 0.6),
+        ),
+    )
+    risky = replace(
+        reliable,
+        source_player_id="risky",
+        web_name="Risky",
+        gameweek_values=(
+            GameweekPlayerValue(1, 5.0, 1.0),
+            GameweekPlayerValue(2, 5.0, 0.0),
+        ),
+    )
+
+    qualified = appearance_qualified_candidates((reliable, risky))
+
+    assert qualified == (reliable,)
+
+# These candidates make reserve selection explicit: eleven clearly superior
+# starters, then a matched cheap and strong option for every bench slot, with
+# the budget to afford either.
 _STAR_SHAPE = (
     Position.GK,
     *(Position.DEF for _ in range(3)),
@@ -303,6 +333,38 @@ def test_vice_captain_is_chosen_jointly_with_the_captain() -> None:
     assert (captain, vice) == ("a", "b")
 
 
+def test_captaincy_can_prefer_lower_raw_points_for_fallback_value() -> None:
+    starters = tuple(
+        CandidatePlayer(
+            source_player_id=identifier,
+            web_name=identifier,
+            team_id=identifier,
+            team_short_name=identifier,
+            position=Position.MID,
+            price_tenths=50,
+            expected_points=points,
+            gameweek_expected_points=points,
+            appearance_probability=appearance,
+        )
+        for identifier, points, appearance in (
+            ("highest", 5.0, 0.99),
+            ("fallback", 4.9, 0.50),
+            ("third", 2.0, 1.0),
+        )
+    )
+
+    captain, vice = _optimal_captaincy(
+        starters,
+        points={player.source_player_id: player.expected_points for player in starters},
+        appearance={
+            player.source_player_id: player.appearance_probability
+            for player in starters
+        },
+    )
+
+    assert (captain, vice) == ("fallback", "highest")
+
+
 def test_bench_is_optimised_rather_than_filled_with_the_cheapest_legal_players() -> (
     None
 ):
@@ -319,6 +381,45 @@ def test_bench_is_optimised_rather_than_filled_with_the_cheapest_legal_players()
     ), [player.source_player_id for player in bench]
     # 11 starters at 70 plus four bench players at 55.
     assert result.total_cost_tenths == 990
+
+
+def test_bench_quality_is_valued_across_the_full_horizon() -> None:
+    candidates = []
+    for player in _degenerate_bench_candidates():
+        if player.source_player_id.startswith("star"):
+            points = (player.expected_points, player.expected_points)
+        elif player.source_player_id.startswith("strong"):
+            points = (0.1, 3.0)
+        elif player.source_player_id.startswith("spare"):
+            points = (0.1, 2.9)
+        else:
+            points = (0.1, 0.1)
+        candidates.append(
+            replace(
+                player,
+                expected_points=sum(points),
+                gameweek_expected_points=points[0],
+                gameweek_values=(
+                    GameweekPlayerValue(1, points[0], player.appearance_probability),
+                    GameweekPlayerValue(2, points[1], player.appearance_probability),
+                ),
+            )
+        )
+
+    result = optimise_full_squad(
+        tuple(candidates),
+        budget_tenths=1000,
+        rules=RULES,
+    )
+
+    selected = {player.source_player_id: player for player in result.players}
+    future_bench = [
+        selected[player_id]
+        for player_id in result.gameweek_plans[1].bench_player_ids
+    ]
+    assert all(player.source_player_id.startswith("strong") for player in future_bench)
+    assert result.horizon_expected_bench_contribution > 0
+    assert result.horizon_expected_points > result.lineup_expected_points
 
 
 def test_bench_order_beats_every_other_permutation() -> None:
@@ -480,3 +581,17 @@ def test_a_rotated_lineup_gets_a_rotated_bench() -> None:
     assert "mid3" in second.bench_player_ids
     assert "mid4" in first.bench_player_ids
     assert "mid4" in second.starting_player_ids
+
+
+def test_declared_terminal_value_is_added_once_beyond_the_horizon() -> None:
+    candidates = list(_rotating_candidates())
+    candidates[0] = replace(candidates[0], residual_value=2.5)
+
+    result = optimise_full_squad(
+        tuple(candidates),
+        budget_tenths=1000,
+        rules=RULES,
+    )
+
+    assert result.terminal_value == 2.5
+    assert result.decision_value == result.horizon_expected_points + 2.5

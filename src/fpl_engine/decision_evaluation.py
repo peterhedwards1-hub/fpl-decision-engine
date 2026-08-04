@@ -20,7 +20,7 @@ from .optimisation import (
     chip_values_for_gameweek,
 )
 from .pricing import PurchaseLedger
-from .rules import calculate_team_score
+from .rules import calculate_team_score, calculate_transfer_cost
 from .transfers import CurrentSquad, recommend_transfers
 
 
@@ -65,6 +65,8 @@ class TransferReplayResult:
     gross_points: int
     net_points: int
     same_state_hindsight_net_points: int
+    same_state_hindsight_transfers: int
+    reference_one_ft_hindsight_transfers: int
     regret: int
     transfers_out: tuple[str, ...]
     transfers_in: tuple[str, ...]
@@ -116,6 +118,7 @@ def replay_transfer_continuity(
     initial_ledger: PurchaseLedger | None = None,
     chip_policy: Any | None = None,
     initial_chip_ledger: ChipLedger | None = None,
+    candidate_pool_size: int = 1,
 ) -> TransferContinuityReport:
     """Replay one persistent model-owned squad over consecutive Gameweeks.
 
@@ -190,6 +193,7 @@ def replay_transfer_continuity(
             current,
             rules=rules,
             max_transfers=max_transfers_per_week,
+            candidate_pool_size=candidate_pool_size,
         )
         route = recommendation.primary
         # The chip is chosen from the forecast, like every other decision, and
@@ -277,12 +281,26 @@ def replay_transfer_continuity(
             )
             for player in week.forecast_candidates
         )
-        hindsight = recommend_transfers(
+        hindsight_recommendation = recommend_transfers(
             actual_candidates,
             current,
             rules=rules,
             max_transfers=max_transfers_per_week,
-        ).primary
+            candidate_pool_size=candidate_pool_size,
+        )
+        hindsight = hindsight_recommendation.primary
+        reference_need = max(
+            hindsight_recommendation.routes,
+            key=lambda candidate: (
+                candidate.horizon_points_gain
+                - calculate_transfer_cost(
+                    candidate.transfer_count,
+                    rules.transfers.initial_free_transfers,
+                    rules,
+                ),
+                -candidate.transfer_count,
+            ),
+        )
         hindsight_gross, _, _ = score_squad_gameweek(
             hindsight.resulting_squad,
             realised,
@@ -303,6 +321,10 @@ def replay_transfer_continuity(
                 gross_points=gross,
                 net_points=net,
                 same_state_hindsight_net_points=hindsight_net,
+                same_state_hindsight_transfers=hindsight.transfer_count,
+                reference_one_ft_hindsight_transfers=(
+                    reference_need.transfer_count
+                ),
                 regret=max(0, hindsight_net - net),
                 transfers_out=tuple(player.source_player_id for player in route.transfers_out),
                 transfers_in=tuple(player.source_player_id for player in route.transfers_in),

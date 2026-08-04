@@ -10,6 +10,8 @@ from .config import SeasonRules
 from .domain import Chip, Player, Position, Squad
 from .rules import validate_squad
 
+DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE = 0.6
+
 
 class OptimisationError(RuntimeError):
     """Raised when no proven optimal solution can be produced."""
@@ -67,19 +69,17 @@ class GameweekLineupPlan:
 
 @dataclass(frozen=True)
 class FullSquadResult:
-    """A selected squad and the two distinct values it is scored on.
+    """A selected squad with solver and exact appearance-state valuations.
 
-    `horizon_expected_points` is the solver's **primary objective**: legal-XI
-    plus captain points summed over every projected Gameweek. It is the
-    quantity CBC proves optimal, and it is the only figure that may be
-    compared across squads to rank them.
+    `lineup_expected_points` is the linear legal-XI-plus-captain quantity CBC
+    optimises. `horizon_expected_points` then revalues the selected squad over
+    every projected Gameweek with its own bench order, legal autosubs and
+    captain fallback. `decision_value` adds any explicitly supplied residual
+    player values once, beyond that horizon.
 
     `gameweek_expected_points` is the **exact current-Gameweek value**:
     starters, autosub activation and captain/vice fallback integrated over
-    joint appearance outcomes. It covers one Gameweek only, so it is larger
-    than the primary objective's per-Gameweek share and must never be read as
-    the objective. It is maximised lexicographically *within* the set of
-    solutions that hold `horizon_expected_points` at its optimum.
+    joint independent appearance outcomes.
     """
 
     players: tuple[CandidatePlayer, ...]
@@ -95,6 +95,10 @@ class FullSquadResult:
     gameweek_plans: tuple[GameweekLineupPlan, ...]
     solver_status: str
     proof: str
+    lineup_expected_points: float = 0.0
+    horizon_expected_bench_contribution: float = 0.0
+    terminal_value: float = 0.0
+    decision_value: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,32 @@ class OpeningSquadRecommendation:
     objective: str
     assumptions: tuple[str, ...]
     transfer_triggers: tuple[str, ...]
+
+
+def mean_appearance(player: CandidatePlayer) -> float:
+    """Mean availability over the candidate's supplied decision horizon."""
+
+    if not player.gameweek_values:
+        return player.appearance_probability
+    return sum(
+        value.appearance_probability for value in player.gameweek_values
+    ) / len(player.gameweek_values)
+
+
+def appearance_qualified_candidates(
+    candidates: tuple[CandidatePlayer, ...],
+    *,
+    minimum_mean_appearance: float = DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
+) -> tuple[CandidatePlayer, ...]:
+    """Apply the historically evaluated no-dead-fodder opening guardrail."""
+
+    if not 0.0 <= minimum_mean_appearance <= 1.0:
+        raise ValueError("Minimum mean appearance must be between zero and one")
+    return tuple(
+        player
+        for player in candidates
+        if mean_appearance(player) >= minimum_mean_appearance
+    )
 
 
 def optimise_starting_xi(
@@ -315,12 +345,13 @@ def optimise_full_squad(
         for index, player in enumerate(ordered)
     }
     # The primary objective is expected FPL points from a legal XI plus its
-    # captain in every projected Gameweek. Uncertainty, bank and terminal
-    # heuristics are reported separately rather than silently priced.
+    # captain in every projected Gameweek, with an explicitly supplied
+    # residual player value added once beyond the horizon. A zero residual is
+    # neutral; callers must not smuggle an undeclared heuristic into it.
     # Vice-captain variables are deliberately absent: the fallback term is a
     # product of two binaries, and it is resolved exactly after the solve by
     # _optimal_captaincy rather than linearised here.
-    primary_objective = pulp.lpSum(
+    lineup_objective = pulp.lpSum(
         (
             starter_vars[(gameweek, player.source_player_id)]
             + captain_vars[(gameweek, player.source_player_id)]
@@ -329,6 +360,12 @@ def optimise_full_squad(
         for gameweek in gameweeks
         for player in ordered
     )
+    terminal_objective = pulp.lpSum(
+        squad_vars[player.source_player_id]
+        * round(player.residual_value, 6)
+        for player in ordered
+    )
+    primary_objective = lineup_objective + terminal_objective
     problem += primary_objective
     problem += (
         pulp.lpSum(squad_vars.values()) == rules.squad.squad_size,
@@ -441,19 +478,21 @@ def optimise_full_squad(
         "primary_optimum",
     )
 
-    # Bench players contribute nothing to the primary objective, so without a
-    # secondary stage the solver is free to complete the squad with the
-    # cheapest legal fillers. Their projected points are a linear surrogate
-    # for the autosub value that cannot be written as a linear expression.
+    # Bench players contribute when rotated into a later XI, but a player who
+    # remains benched throughout the horizon is absent from the primary
+    # objective. Maximise reserve quality over *every* Gameweek while holding
+    # the XI/captain/terminal optimum fixed. Exact autosub value is calculated
+    # after selection because its joint appearance states are nonlinear.
     bench_objective = pulp.lpSum(
         (
             squad_vars[player.source_player_id]
-            - starter_vars[(current_gameweek, player.source_player_id)]
+            - starter_vars[(gameweek, player.source_player_id)]
         )
         * round(
-            values[(current_gameweek, player.source_player_id)].expected_points,
+            values[(gameweek, player.source_player_id)].expected_points,
             6,
         )
+        for gameweek in gameweeks
         for player in ordered
     )
     problem.setObjective(bench_objective)
@@ -595,6 +634,34 @@ def optimise_full_squad(
         bench_player_ids=bench,
     )
     gameweek_plans = tuple(plans)
+    lineup_expected = sum(
+        sum(
+            values[(plan.gameweek_number, player_id)].expected_points
+            for player_id in plan.starting_player_ids
+        )
+        + values[(plan.gameweek_number, plan.captain_id)].expected_points
+        for plan in gameweek_plans
+    )
+    horizon_expected = 0.0
+    horizon_bench_contribution = 0.0
+    for plan in gameweek_plans:
+        gameweek_points, gameweek_appearance = _gameweek_value_maps(
+            selected,
+            plan.gameweek_number,
+        )
+        exact, exact_bench, _ = _expected_weekly_score(
+            selected,
+            plan.starting_player_ids,
+            plan.bench_player_ids,
+            plan.captain_id,
+            plan.vice_captain_id,
+            rules,
+            points=gameweek_points,
+            appearance=gameweek_appearance,
+        )
+        horizon_expected += exact
+        horizon_bench_contribution += exact_bench
+    terminal_value = sum(player.residual_value for player in selected)
     squad = _domain_squad(
         selected, starter_ids, bench, captain_id, vice_id
     )
@@ -611,36 +678,32 @@ def optimise_full_squad(
         captain_id=captain_id,
         vice_captain_id=vice_id,
         total_cost_tenths=sum(player.price_tenths for player in selected),
-        horizon_expected_points=round(
-            sum(
-                sum(
-                    values[(plan.gameweek_number, player_id)].expected_points
-                    for player_id in plan.starting_player_ids
-                )
-                + values[
-                    (plan.gameweek_number, plan.captain_id)
-                ].expected_points
-                for plan in gameweek_plans
-            ),
-            3,
-        ),
+        horizon_expected_points=round(horizon_expected, 3),
         gameweek_expected_points=round(expected, 3),
         expected_bench_contribution=round(bench_contribution, 3),
         expected_captain_contribution=round(captain_contribution, 3),
         gameweek_plans=gameweek_plans,
         solver_status=status,
+        lineup_expected_points=round(lineup_expected, 3),
+        horizon_expected_bench_contribution=round(
+            horizon_bench_contribution,
+            3,
+        ),
+        terminal_value=round(terminal_value, 3),
+        decision_value=round(horizon_expected + terminal_value, 3),
         proof=(
             "CBC returned Optimal for the projected multi-Gameweek legal-XI "
-            "and captain objective, then again with that objective pinned "
-            "while current-Gameweek bench quality was maximised, and a third "
+            "and captain objective plus any declared terminal values, then "
+            "again with that objective pinned while reserve quality across "
+            "the full horizon was maximised, and a third "
             "time for a deterministic tie-break; "
-            "bench order and the captain/vice pair were then chosen by exact "
-            "enumeration, so "
-            "the reported weekly value exactly integrates independent player "
-            "appearance outcomes with legal autosubs and captain fallback. "
-            "Bench quality is a linear surrogate for autosub value, so the "
-            "squad is optimal for the primary objective and best-in-class "
-            "rather than proven optimal for the weekly value."
+            "each Gameweek's bench order and captain/vice pair were then "
+            "chosen by exact enumeration. The reported horizon value exactly "
+            "integrates independent player appearance outcomes with legal "
+            "autosubs and captain fallback for the selected squad. The squad "
+            "is proven optimal for the linear objective; exact autosub "
+            "optimality is established only among the opening-squad candidate "
+            "frontier that is explicitly compared."
         ),
     )
 
@@ -651,6 +714,7 @@ def optimise_opening_squads(
     budget_tenths: int,
     rules: SeasonRules,
     alternative_count: int = 2,
+    candidate_pool_size: int | None = None,
 ) -> OpeningSquadRecommendation:
     """Return a robust opening squad and genuinely distinct alternatives.
 
@@ -661,10 +725,19 @@ def optimise_opening_squads(
 
     if alternative_count < 0:
         raise ValueError("Alternative count cannot be negative")
+    pool_size = (
+        alternative_count + 1
+        if candidate_pool_size is None
+        else candidate_pool_size
+    )
+    if pool_size < alternative_count + 1:
+        raise ValueError(
+            "Candidate pool must contain the primary squad and every requested alternative"
+        )
     results: list[FullSquadResult] = []
     excluded_squads: list[frozenset[str]] = []
     excluded_starting_xis: list[frozenset[str]] = []
-    for _ in range(alternative_count + 1):
+    for _ in range(pool_size):
         result = optimise_full_squad(
             candidates,
             budget_tenths=budget_tenths,
@@ -677,7 +750,16 @@ def optimise_opening_squads(
             frozenset(player.source_player_id for player in result.players)
         )
         excluded_starting_xis.append(result.starting_player_ids)
-    primary = results[0]
+    ranked = sorted(
+        results,
+        key=lambda result: (
+            -result.decision_value,
+            -result.horizon_expected_points,
+            -result.lineup_expected_points,
+            tuple(player.source_player_id for player in result.players),
+        ),
+    )
+    primary = ranked[0]
     uncertain = sorted(
         (
             player
@@ -698,15 +780,17 @@ def optimise_opening_squads(
     )
     return OpeningSquadRecommendation(
         primary=primary,
-        alternatives=tuple(results[1:]),
+        alternatives=tuple(ranked[1 : alternative_count + 1]),
         objective=(
-            "Projected legal-XI and captain points across every Gameweek in "
-            "the active horizon, with exact current-week autosub valuation"
+            "Expected points from each Gameweek's legal-XI, captain fallback "
+            "and autosubs across the active horizon, plus declared terminal "
+            f"value; best of {pool_size} distinct solver-proven candidates"
         ),
         assumptions=(
-            "Uncertainty is disclosed but does not receive an arbitrary points penalty",
-            "No terminal value is added until it can be measured beyond the horizon",
-            "Alternative squads must differ by at least one player",
+            "Appearance states are independent until the joint simulator qualifies",
+            "Terminal value is zero unless explicitly supplied on candidates",
+            "Candidate-frontier comparison is exact; a global nonlinear autosub optimum "
+            "is not claimed",
         ),
         transfer_triggers=triggers,
     )
@@ -720,28 +804,19 @@ def _optimal_captaincy(
 ) -> tuple[str, str]:
     """Choose the captain and vice-captain jointly.
 
-    The armband is worth `captain + P(captain absent) x vice`, but only the
-    first term reaches the solver's objective, so the vice-captain has to be
-    resolved here. Captaincy stays restricted to starters at the maximum
-    projected points: the primary objective already counts captain points, so
-    demoting a top scorer would lower a value that has been proven optimal.
-    Within that restriction the fallback term is free, and a captain with a
-    lower appearance probability can be preferred because it puts more weight
-    on the vice-captain.
+    The armband is worth `captain + P(captain absent) x vice`. Evaluate every
+    ordered starter pair: a slightly lower raw-points captain can be superior
+    when their absence transfers the armband to a strong vice-captain often
+    enough. The MILP captain variable is only a linear selection guide; this
+    exact independent-appearance value drives the reported lineup plan.
     """
 
     if len(starters) < 2:
         raise OptimisationError(
             "Captaincy requires at least two starters"
         )
-    best_points = max(points[player.source_player_id] for player in starters)
-    eligible_captains = tuple(
-        player
-        for player in starters
-        if points[player.source_player_id] >= best_points - 1e-9
-    )
     best_key: tuple[float, str, str] | None = None
-    for captain in eligible_captains:
+    for captain in starters:
         captain_id = captain.source_player_id
         for vice in starters:
             vice_id = vice.source_player_id

@@ -10,8 +10,12 @@ from fpl_engine.backtest import ProjectionBacktester
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
 from fpl_engine.evaluation import (
+    SquadConstructionPolicy,
     _replayed_squad_points,
+    compile_squad_policy_evaluations,
+    compile_transfer_policy_evaluation,
     evaluate_legal_squad_regret,
+    evaluate_squad_construction_policies,
     replay_backtest_transfer_continuity,
 )
 from fpl_engine.history.database import HistoricalDatabase
@@ -194,6 +198,108 @@ def test_legal_squad_regret_reports_autosub_replayed_points(tmp_path) -> None:
         "replay_backtest_transfer_continuity" in limitation
         for limitation in report.limitations
     )
+
+
+def test_squad_policy_evaluation_produces_paired_bench_evidence(tmp_path) -> None:
+    database, run_id = _backtest_database(tmp_path)
+    try:
+        report = evaluate_squad_construction_policies(
+            database,
+            run_id,
+            RULES,
+            (
+                SquadConstructionPolicy("baseline"),
+                SquadConstructionPolicy("same-policy"),
+            ),
+            origin_gameweeks=(1, 2),
+        )
+    finally:
+        database.__exit__(None, None, None)
+
+    assert report.baseline_policy == "baseline"
+    assert len(report.origins) == 4
+    assert all(origin.status == "ok" for origin in report.origins)
+    assert all(origin.bench_cost_tenths is not None for origin in report.origins)
+    assert all(origin.bench_mean_appearance is not None for origin in report.origins)
+    baseline, same = report.summaries
+    assert baseline.origins_succeeded == 2
+    assert same.mean_delta_vs_baseline == 0.0
+    assert same.paired_ties == 2
+    assert any("fresh opening-squad" in item for item in report.limitations)
+
+
+def test_squad_policy_evaluation_rejects_missing_origin(tmp_path) -> None:
+    database, run_id = _backtest_database(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="no predictions for origins"):
+            evaluate_squad_construction_policies(
+                database,
+                run_id,
+                RULES,
+                (SquadConstructionPolicy("baseline"),),
+                origin_gameweeks=(99,),
+            )
+    finally:
+        database.__exit__(None, None, None)
+
+
+def test_squad_policy_compiler_pools_reproducible_reports(tmp_path) -> None:
+    database, run_id = _backtest_database(tmp_path)
+    try:
+        report = compile_squad_policy_evaluations(
+            database,
+            (run_id,),
+            {RULES.season: RULES},
+            (SquadConstructionPolicy("baseline"),),
+            origin_gameweeks=(1,),
+            bootstrap_samples=10,
+        )
+    finally:
+        database.__exit__(None, None, None)
+
+    assert report["backtest_run_ids"] == [run_id]
+    assert report["pooled_summaries"][0]["origins_succeeded"] == 1
+    assert report["season_cluster_bootstrap_delta_ci95"]["baseline"] is None
+    assert any("whole seasons" in item for item in report["limitations"])
+
+
+def test_transfer_policy_compiler_produces_an_option_value_distribution(
+    tmp_path,
+) -> None:
+    database, run_id = _backtest_database(tmp_path)
+    try:
+        report = compile_transfer_policy_evaluation(
+            database,
+            (run_id,),
+            {RULES.season: RULES},
+            max_transfers_per_week=1,
+        )
+    finally:
+        database.__exit__(None, None, None)
+
+    distribution = report["diagnostic_transfer_need_distribution"]
+    assert report["samples"] == 2
+    assert sum(distribution.values()) == pytest.approx(1.0)
+    assert set(distribution) <= {"0", "1"}
+    assert not report["qualified"]
+    assert report["future_transfer_need_distribution"] is None
+    assert report["season_summaries"][0]["season_code"] == RULES.season
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    (
+        ({"name": ""}, "name cannot be empty"),
+        (
+            {"name": "floor", "minimum_mean_appearance": 1.1},
+            "between zero and one",
+        ),
+        ({"name": "pool", "candidate_pool_size": 0}, "must be positive"),
+    ),
+)
+def test_squad_policy_validates_its_search_contract(kwargs, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        SquadConstructionPolicy(**kwargs)
 
 
 def test_continuity_replay_carries_one_squad_across_gameweeks(tmp_path) -> None:
