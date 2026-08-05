@@ -1564,6 +1564,12 @@ def main() -> None:
                 include_historical=not args.skip_historical,
                 minimum_mean_appearance=args.appearance_floor,
                 incumbent_winner=incumbent,
+                # Bank the live comparison before the historical phase starts.
+                checkpoint_path=(
+                    args.output
+                    or Path("data/models")
+                    / f"opening-squad-search-validation-{args.season_code}.json"
+                ),
             )
             base = Path("data/models")
             paths = write_search_validation_artifacts(

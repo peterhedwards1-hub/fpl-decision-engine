@@ -531,6 +531,7 @@ def validate_opening_squad_search(
     minimum_mean_appearance: float = DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
     incumbent_winner: frozenset[str] = frozenset(),
     generated_at: datetime | None = None,
+    checkpoint_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Compare the three searches on the live season and on history.
 
@@ -538,6 +539,12 @@ def validate_opening_squad_search(
     seasons are there to show the failure was structural rather than a quirk of
     one candidate set. Historical seasons also carry realised points, which are
     reported and discounted for the reasons in this module's docstring.
+
+    The live phase alone takes about an hour, and the historical phase takes
+    longer again. ``checkpoint_path`` writes the live result to disk the moment
+    it is complete, so an interrupted run — an ephemeral machine reclaimed, a
+    session restarted — leaves a usable artifact rather than nothing at all.
+    This is not a hypothetical: it has already cost two complete runs.
     """
 
     generated = generated_at or datetime.now(UTC)
@@ -571,6 +578,27 @@ def validate_opening_squad_search(
         mixed_scale=mixed_scale,
         incumbent_winner=incumbent_winner,
     )
+
+    if checkpoint_path is not None:
+        _write_checkpoint(
+            checkpoint_path,
+            {
+                "season_code": season_code,
+                "generated_at": generated.isoformat(),
+                "horizon_gameweeks": horizon_gameweeks,
+                "mixed_scale": mixed_scale,
+                "live": live,
+                "historical": [],
+                "historical_failures": [],
+                "feasibility_assessment": exact_objective_feasibility(),
+                "status": (
+                    "PARTIAL: the live comparison is complete and the "
+                    "historical comparison had not finished when this was "
+                    "written. Read the live section; the historical section is "
+                    "absent, not empty."
+                ),
+            },
+        )
 
     historical: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
@@ -709,6 +737,24 @@ def validate_opening_squad_search(
             "run."
         ),
     }
+
+
+def _write_checkpoint(path: str | Path, payload: dict[str, Any]) -> None:
+    """Write a partial result, and never let that failure kill the run."""
+
+    import json
+
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        # A checkpoint is insurance. Failing to write one must not destroy the
+        # thing it was insuring.
+        return
 
 
 def _rules_for_season(
