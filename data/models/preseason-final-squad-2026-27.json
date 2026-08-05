@@ -3177,7 +3177,7 @@
         "web_name": "Dowell"
       }
     ],
-    "projection_run_id": 1,
+    "projection_run_id": 2,
     "proof": "CBC returned Optimal for the projected multi-Gameweek legal-XI and captain objective plus any declared terminal values, then again with that objective pinned while reserve quality across the full horizon was maximised, and a third time for a deterministic tie-break; each Gameweek's bench order and captain/vice pair were then chosen by exact enumeration. The reported horizon value exactly integrates independent player appearance outcomes with legal autosubs and captain fallback for the selected squad. The squad is proven optimal for the linear objective; exact autosub optimality is established only among the opening-squad candidate frontier that is explicitly compared. Goalkeepers entered that objective once, as an exactly valued pair with its best weekly orientation, and are absent from the starter, captain and bench-quality terms.",
     "provisional": true,
     "solver_objective": 424.094,
@@ -3211,7 +3211,7 @@
     "vice_captain_id": "427"
   },
   "gameweek_number": 1,
-  "generated_at": "2026-08-05T12:09:09.956592+00:00",
+  "generated_at": "2026-08-05T12:38:32.020696+00:00",
   "goalkeeper_pair": {
     "effect_on_this_run": {
       "any_gameweek_nominates_lower_standalone": false,
@@ -3334,7 +3334,7 @@
   },
   "horizon_gameweeks": 8,
   "model_version": "rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed",
-  "projection_run_id": 1,
+  "projection_run_id": 2,
   "promoted_player_role_treatment": "none",
   "promoted_prior": {
     "clubs": [

@@ -4169,7 +4169,7 @@
         "web_name": "Dowell"
       }
     ],
-    "projection_run_id": 1,
+    "projection_run_id": 2,
     "proof": "CBC returned Optimal for the projected multi-Gameweek legal-XI and captain objective plus any declared terminal values, then again with that objective pinned while reserve quality across the full horizon was maximised, and a third time for a deterministic tie-break; each Gameweek's bench order and captain/vice pair were then chosen by exact enumeration. The reported horizon value exactly integrates independent player appearance outcomes with legal autosubs and captain fallback for the selected squad. The squad is proven optimal for the linear objective; exact autosub optimality is established only among the opening-squad candidate frontier that is explicitly compared. Goalkeepers entered that objective once, as an exactly valued pair with its best weekly orientation, and are absent from the starter, captain and bench-quality terms.",
     "provisional": true,
     "solver_objective": 424.094,
@@ -4461,7 +4461,7 @@
     "ranking_pool_note": "The frontier, every feasible bank level and every forced inclusion are ranked together on exact value. A squad the linear solver only reached under a side constraint can still be the exact optimum among everything enumerated.",
     "ranking_pool_size": 44,
     "requested": 40,
-    "runtime_seconds": 938.79,
+    "runtime_seconds": 961.97,
     "squads": [
       {
         "bank_tenths": 0,
@@ -30545,7 +30545,7 @@
   },
   "frontier_size_requested": 40,
   "gameweek_number": 1,
-  "generated_at": "2026-08-05T12:09:09.956592+00:00",
+  "generated_at": "2026-08-05T12:38:32.020696+00:00",
   "goalkeeper_pair": {
     "effect_on_this_run": {
       "any_gameweek_nominates_lower_standalone": false,
@@ -30684,10 +30684,10 @@
       "team_strength_carry_forward": true,
       "team_strength_model": "raw_goals"
     },
-    "generated_at": "2026-08-05T12:09:09.956592+00:00",
+    "generated_at": "2026-08-05T12:38:32.020696+00:00",
     "horizon_gameweeks": 8,
     "model_version": "rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed",
-    "projection_run_id": 1,
+    "projection_run_id": 2,
     "season_code": "2026-27",
     "start_gameweek": 1
   },
@@ -30719,8 +30719,16 @@
   },
   "promoted_team_priors": {
     "historical_decision_evidence": {
+      "difference": {
+        "comparison": "championship_relative_w0.25 minus fixed",
+        "mean_realised_points": -2.25
+      },
       "hindsight_regret_measures": "not run: a legal-squad and owned-captain regret replay solves a mixed-integer program per origin across a whole season, and the question here is the opening-squad effect",
       "means": {
+        "championship_relative_w0.25": {
+          "mean_realised_points": 407.25,
+          "seasons": 4
+        },
         "fixed": {
           "mean_realised_points": 409.5,
           "seasons": 4
@@ -30728,6 +30736,12 @@
       },
       "seasons": [
         {
+          "championship_relative_w0.25": {
+            "player_points_rmse": 2.3258,
+            "predicted_horizon_points": 390.695,
+            "realised_points": 370.0,
+            "squad_regret_mean": null
+          },
           "fixed": {
             "player_points_rmse": 2.3265,
             "predicted_horizon_points": 390.793,
@@ -30737,6 +30751,12 @@
           "target_season": "2022-23"
         },
         {
+          "championship_relative_w0.25": {
+            "player_points_rmse": 2.1924,
+            "predicted_horizon_points": 442.449,
+            "realised_points": 465.0,
+            "squad_regret_mean": null
+          },
           "fixed": {
             "player_points_rmse": 2.1923,
             "predicted_horizon_points": 442.838,
@@ -30746,6 +30766,12 @@
           "target_season": "2023-24"
         },
         {
+          "championship_relative_w0.25": {
+            "player_points_rmse": 2.1875,
+            "predicted_horizon_points": 445.008,
+            "realised_points": 441.0,
+            "squad_regret_mean": null
+          },
           "fixed": {
             "player_points_rmse": 2.188,
             "predicted_horizon_points": 444.688,
@@ -30755,6 +30781,12 @@
           "target_season": "2024-25"
         },
         {
+          "championship_relative_w0.25": {
+            "player_points_rmse": 2.2818,
+            "predicted_horizon_points": 414.224,
+            "realised_points": 353.0,
+            "squad_regret_mean": null
+          },
           "fixed": {
             "player_points_rmse": 2.2805,
             "predicted_horizon_points": 414.298,
@@ -32300,7 +32332,7 @@
       "selected_weight": 0.0
     }
   },
-  "runtime_seconds": 1340.33,
+  "runtime_seconds": 1498.39,
   "season_code": "2026-27",
   "selection_stability": {
     "model_sensitive": [

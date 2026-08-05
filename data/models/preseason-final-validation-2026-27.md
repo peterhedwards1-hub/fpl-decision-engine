@@ -1,6 +1,6 @@
 # Preseason final squad — 2026-27
 
-Generated 2026-08-05T12:09:09.956592+00:00. Horizon GW1–GW8. Total runtime 1340.33s.
+Generated 2026-08-05T12:38:32.020696+00:00. Horizon GW1–GW8. Total runtime 1498.39s.
 
 **This squad is provisional.** It stands until the final reliable pre-deadline team-news rerun, and no further.
 
@@ -39,6 +39,15 @@ Generated 2026-08-05T12:09:09.956592+00:00. Horizon GW1–GW8. Total runtime 134
 | championship_relative_w0.25 | 1.2237 | 0.887 | -0.0413 | 1.1658 | 0.172 |
 | championship_relative_w0.5 | 1.2314 | 0.8914 | -0.0438 | 1.1687 | 0.1721 |
 | championship_relative_w0.75 | 1.24 | 0.8967 | -0.0423 | 1.1715 | 0.1722 |
+
+Secondary evidence — what each prior's opening squad actually scored, one observation per season:
+
+| model | mean realised GW1–8 points | seasons |
+| --- | --- | --- |
+| fixed | 409.5 | 4 |
+| championship_relative_w0.25 | 407.25 | 4 |
+
+Difference (championship_relative_w0.25 minus fixed): -2.25 points per season. Four observations; this is not what the gate reads.
 
 Live priors for 2026-27 (Championship 2025-26, cohort mean attack 0.85 against a declared 0.85):
 
@@ -90,7 +99,7 @@ Substitution protection is worth P(nominated goalkeeper records no minutes) x th
 
 ## 6. Candidate frontier
 
-- Requested 40, produced 40 distinct complete squads in 938.79s
+- Requested 40, produced 40 distinct complete squads in 961.97s
 - Ranked together with the bank levels and forced inclusions: 44 squads; the recommendation came from `forced_Gabriel`
 - Distinct starting elevens among them: 1
 - Exact rescoring reorders the solver's ranking: **yes** (39 of 40 moved; largest move 38)
@@ -136,7 +145,7 @@ The baseline is the unconstrained single solve under the live model, because eve
 
 ## 10. Final squad
 
-Projection run 1 under `rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed`. Cost £100.0m, bank £0.0m. GW1 expected 55.711, exact GW1–8 decision value 449.495, linear objective 424.094.
+Projection run 2 under `rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed`. Cost £100.0m, bank £0.0m. GW1 expected 55.711, exact GW1–8 decision value 449.495, linear objective 424.094.
 
 | player | club | pos | price | GW1–8 xP | role |
 | --- | --- | --- | --- | --- | --- |
