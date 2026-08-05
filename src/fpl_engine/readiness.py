@@ -12,7 +12,11 @@ from .optimisation import (
     mean_appearance,
     optimise_opening_squads,
 )
-from .production import select_production_projection_run
+from .preseason_strength import (
+    load_preseason_validation,
+    preseason_model_is_validated,
+)
+from .production import select_decision_projection_run
 from .prospective import build_prospective_capture_status
 from .research_decision import load_projection_candidates
 
@@ -26,18 +30,32 @@ def build_preseason_readiness_report(
     horizon_gameweeks: int = 8,
     candidate_pool_size: int = 8,
     minimum_mean_appearance: float = DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
+    preseason_validation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the qualified run, robust squad frontier and deadline blockers."""
+    """Return the qualified run, robust squad frontier and deadline blockers.
+
+    At the opening Gameweek this prefers the validated preseason team-strength
+    run when a validation artifact authorises one. That preference is narrow by
+    design: it applies to the GW1 opening-squad decision only, and every other
+    Gameweek keeps the ordinary incumbent selector untouched.
+    """
 
     if rules.season != season_code:
         raise ValueError("Readiness rules must match the requested season")
     if not 0.0 <= minimum_mean_appearance <= 1.0:
         raise ValueError("Minimum mean appearance must be between zero and one")
-    production = select_production_projection_run(
+    validation = (
+        preseason_validation
+        if preseason_validation is not None
+        else load_preseason_validation(season_code)
+    )
+    validated = preseason_model_is_validated(validation, season_code=season_code)
+    production, decision_context = select_decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
         minimum_horizon_gameweeks=horizon_gameweeks,
+        preseason_model_validated=validated,
     )
     capture = build_prospective_capture_status(database, season_code)
     candidate_rows = database.connection.execute(
@@ -75,6 +93,10 @@ def build_preseason_readiness_report(
         "forward_candidates": [dict(row) for row in candidate_rows],
         "prospective_capture_summary": capture["summary"],
         "final_decision": None if final_decision is None else dict(final_decision),
+        "decision_context": decision_context,
+        "preseason_team_strength": _preseason_team_strength_summary(
+            validation, validated
+        ),
     }
     if production is None:
         return {
@@ -113,6 +135,15 @@ def build_preseason_readiness_report(
         )
     if not capture["summary"]["no_missed_required_evidence_to_date"]:
         blockers.append("Required prospective evidence has already been missed.")
+    if (
+        gameweek_number == 1
+        and decision_context != "preseason_opening_squad"
+    ):
+        blockers.append(
+            "This opening squad rests on the flat preseason team-strength "
+            "model, which gives every club the same strength before GW1. Run "
+            "validate-preseason-strength and regenerate before submitting."
+        )
     primary = recommendation.primary
     return {
         **base,
@@ -143,6 +174,39 @@ def build_preseason_readiness_report(
             "A provisional squad is useful for structure and monitoring, but the "
             "final squad must be regenerated after late injuries, roles and transfers.",
         ],
+    }
+
+
+def _preseason_team_strength_summary(
+    validation: dict[str, Any] | None,
+    validated: bool,
+) -> dict[str, Any]:
+    """What authorised the preseason model, or why nothing did."""
+
+    if not validation:
+        return {
+            "validated": False,
+            "status": "missing",
+            "message": (
+                "No preseason team-strength validation artifact was found. "
+                "The flat preseason model gives every club the same strength "
+                "before GW1, so an opening squad built on it cannot tell a "
+                "hard fixture from an easy one."
+            ),
+        }
+    gate = (validation.get("validation") or {}).get("decision_gate") or {}
+    selected = validation.get("selected_model") or {}
+    return {
+        "validated": validated,
+        "status": "passed" if validated else "failed",
+        "selected_label": selected.get("label"),
+        "selected_model_version": selected.get("model_version"),
+        "generated_at": validation.get("generated_at"),
+        "usable_transitions": (validation.get("validation") or {}).get(
+            "usable_transitions", []
+        ),
+        "failed_criteria": gate.get("failed_criteria", []),
+        "warnings": validation.get("warnings", []),
     }
 
 

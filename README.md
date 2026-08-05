@@ -120,6 +120,24 @@ The app provides team entry, a saved pitch view, projections, optimal XI, openin
 transfer comparison, structured team-news import/review, paired pre/post-news projections
 and model-health views.
 
+Before GW1 the incumbent team-strength path has no fixtures in the target season to read, so
+every club sits on the same league average and the opening squad cannot tell a trip to the
+champions from a home game against a promoted side. Validate and replace that first:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 validate-preseason-strength 2026-27 `
+  --horizon 8 --candidate-pool-size 8 `
+  --output data/models/preseason-strength-validation-2026-27.json `
+  --comparison-output data/models/preseason-squad-comparison-2026-27.json `
+  --markdown-output data/models/preseason-strength-validation-2026-27.md
+```
+
+This scores a regressed previous-season carry-forward against the flat control across every
+usable historical season transition, applies a declared six-part decision gate, and — only if
+the gate passes — generates the live GW1 projection and revised squad from the winner. It is
+a preseason-only production choice; in-season decisions keep the incumbent. See
+[the preseason team-strength record](docs/15_PreseasonTeamStrength.md).
+
 For the shortest auditable pre-season check, run:
 
 ```powershell

@@ -7,6 +7,18 @@ from dataclasses import dataclass
 from .history.database import HistoricalDatabase
 from .projections import MODEL_VERSION
 
+#: The preseason opening-squad decision is a different decision from an
+#: ordinary in-season projection, and it is allowed a different model. Runs
+#: labelled with this version are eligible for that decision and no other.
+#: Keeping it outside the incumbent family is what stops the generic
+#: newest-qualified-run rule from picking it up in October.
+PRESEASON_MODEL_VERSION_SUFFIX = "-preseason-carry-forward"
+PRESEASON_MODEL_VERSION = f"{MODEL_VERSION}{PRESEASON_MODEL_VERSION_SUFFIX}"
+
+#: The Gameweek at which a preseason decision exists at all. After it, there is
+#: real evidence in the target season and the incumbent selector governs.
+PRESEASON_GAMEWEEK = 1
+
 
 @dataclass(frozen=True)
 class ProductionProjectionRun:
@@ -181,4 +193,107 @@ def select_production_projection_run(
         model_version=str(row["model_version"]),
         generated_at=str(row["generated_at"]),
         horizon_gameweeks=int(row["horizon_gameweeks"]),
+    )
+
+
+def select_preseason_projection_run(
+    database: HistoricalDatabase,
+    *,
+    season_code: str,
+    start_gameweek: int,
+    minimum_horizon_gameweeks: int,
+    preseason_model_version: str = PRESEASON_MODEL_VERSION,
+) -> ProductionProjectionRun | None:
+    """Return the newest validated preseason run for a GW1 opening squad.
+
+    Separate from `select_production_projection_run` on purpose. The preseason
+    question — every club has played nothing, so what do we believe about them
+    — is not the in-season question, and a model that is the right answer to
+    one is not automatically the right answer to the other. This selector only
+    ever returns a run at the preseason Gameweek; asking it about GW12 returns
+    nothing rather than quietly handing back a preseason forecast.
+    """
+
+    if not season_code.strip():
+        raise ValueError("A season code is required")
+    if not 1 <= start_gameweek <= 38:
+        raise ValueError("Start Gameweek must be between 1 and 38")
+    if minimum_horizon_gameweeks <= 0:
+        raise ValueError("Minimum projection horizon must be positive")
+    if not preseason_model_version.strip():
+        raise ValueError("A preseason model version is required")
+    if start_gameweek != PRESEASON_GAMEWEEK:
+        return None
+
+    allowed_versions = (
+        preseason_model_version,
+        f"{preseason_model_version}-post-news-v2",
+        f"{preseason_model_version}-post-research",
+        f"{preseason_model_version}-post-news-v2-post-research",
+    )
+    row = database.connection.execute(
+        """
+        SELECT projection_runs.id, projection_runs.model_version,
+               projection_runs.generated_at,
+               projection_runs.horizon_gameweeks
+        FROM projection_runs
+        JOIN seasons ON seasons.id = projection_runs.season_id
+        WHERE seasons.code = ?
+          AND projection_runs.start_gameweek = ?
+          AND projection_runs.horizon_gameweeks >= ?
+          AND projection_runs.model_version IN (?, ?, ?, ?)
+        ORDER BY datetime(projection_runs.generated_at) DESC,
+                 projection_runs.id DESC
+        LIMIT 1
+        """,
+        (
+            season_code,
+            start_gameweek,
+            minimum_horizon_gameweeks,
+            *allowed_versions,
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+    return ProductionProjectionRun(
+        run_id=int(row["id"]),
+        model_version=str(row["model_version"]),
+        generated_at=str(row["generated_at"]),
+        horizon_gameweeks=int(row["horizon_gameweeks"]),
+    )
+
+
+def select_decision_projection_run(
+    database: HistoricalDatabase,
+    *,
+    season_code: str,
+    start_gameweek: int,
+    minimum_horizon_gameweeks: int,
+    preseason_model_validated: bool = False,
+) -> tuple[ProductionProjectionRun | None, str]:
+    """Pick the run for one decision, and say which decision it was.
+
+    Returns the run and the decision context that chose it, so a caller can
+    never report a preseason forecast as an in-season one. The preseason route
+    is taken only at GW1 and only when a validation artifact has authorised
+    it; otherwise the ordinary incumbent rules apply unchanged.
+    """
+
+    if start_gameweek == PRESEASON_GAMEWEEK and preseason_model_validated:
+        preseason = select_preseason_projection_run(
+            database,
+            season_code=season_code,
+            start_gameweek=start_gameweek,
+            minimum_horizon_gameweeks=minimum_horizon_gameweeks,
+        )
+        if preseason is not None:
+            return preseason, "preseason_opening_squad"
+    return (
+        select_production_projection_run(
+            database,
+            season_code=season_code,
+            start_gameweek=start_gameweek,
+            minimum_horizon_gameweeks=minimum_horizon_gameweeks,
+        ),
+        "in_season_live_projection",
     )

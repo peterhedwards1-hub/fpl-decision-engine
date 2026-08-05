@@ -583,6 +583,16 @@ Historical seasons are **design evidence only**. `DEFAULT_MODEL_CONFIG` is uncha
 and the challenger is not promoted, not registered by default, and not reachable
 without explicitly selecting `team_strength_model="opponent_adjusted"`.
 
+> **The flat preseason defect described in §1 has since been addressed separately, and
+> not by this challenger.** `15_PreseasonTeamStrength.md` isolates the existing
+> `team_strength_carry_forward` route as the *only* difference from the incumbent,
+> evaluates it against the flat control across four season transitions, and adopts it
+> for the GW1 opening-squad decision alone. This opponent-adjusted challenger scored as
+> a secondary reference there — level on team goals, better on the noisy decision
+> measure — and was deliberately not promoted, because it changes three things at once
+> and that evaluation cannot attribute the difference to any one of them. It remains an
+> open question, not a settled one.
+
 Genuine qualification requires prospective 2026/27 evidence through the existing
 route in `11_ComponentModelsAndForwardQualification.md`: immutable pre-registration
 with a config SHA-256, matched incumbent and candidate runs from the same

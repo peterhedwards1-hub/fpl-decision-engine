@@ -357,6 +357,14 @@ almost all of the work: Haaland +1.20 and Saka +1.28 expected points at Gameweek
 moves at most +0.18, because the 2026/27 cold-start pool tops out at £6.5m and contains no
 marquee signing; the mechanism matters more in a season that has one.
 
+**The carry-forward half of this package was later separated out, evaluated on its own and
+adopted for preseason use.** `preseason-priors-v1` bundles carry-forward with
+`cold_start_prior = "position_price"`, so passing or failing it cannot say which change did
+the work. `15_PreseasonTeamStrength.md` isolates carry-forward as the only difference from
+the incumbent, scores it against the flat control across all four usable season transitions
+and a declared six-part gate, and records the resulting **preseason-only** production
+switch. The cold-start half remains an ungated forward candidate.
+
 **v1's parameter values are declared, not fitted.** No inspected season was used to choose
 them. The package is registered as the single candidate `preseason-priors-v1`
 (`config/model_candidates/preseason-priors-v1.json`) and is gated as one unit under §8.

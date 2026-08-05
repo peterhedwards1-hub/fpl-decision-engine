@@ -1470,6 +1470,7 @@ class RatesProjectionModel:
         *,
         season_code: str,
         gameweek_number: int,
+        target_gameweek: int | None = None,
         team_overrides: tuple[TeamStrengthOverride, ...] = (),
         as_of: datetime | None = None,
         maximum_ingestion_run_id: int | None = None,
@@ -1478,8 +1479,21 @@ class RatesProjectionModel:
 
         The public entry point the historical evaluation uses, so what is
         scored is what a projection at that origin would actually have used.
+
+        `gameweek_number` is the *origin*: team strength reads only evidence
+        from before it. `target_gameweek` defaults to the origin, which is the
+        one-step case the in-season evaluation scores. Supplying a later target
+        holds the origin's beliefs fixed and asks what they predicted for a
+        Gameweek further out — which is the only honest way to score a
+        preseason forecast, because a preseason forecast is not re-estimated
+        each week.
         """
 
+        target = gameweek_number if target_gameweek is None else target_gameweek
+        if target < gameweek_number:
+            raise ValueError(
+                "A forecast target cannot precede the origin it was made at"
+            )
         strengths = self._team_strengths(
             season_code,
             gameweek_number,
@@ -1498,7 +1512,7 @@ class RatesProjectionModel:
             WHERE seasons.code = ? AND gameweeks.number = ?
             ORDER BY fixtures.id
             """,
-            (season_code, gameweek_number),
+            (season_code, target),
         ).fetchall()
         fixtures = []
         for row in rows:
@@ -1512,7 +1526,8 @@ class RatesProjectionModel:
             fixtures.append(
                 {
                     "fixture_id": int(row["fixture_id"]),
-                    "gameweek_number": gameweek_number,
+                    "origin_gameweek": gameweek_number,
+                    "gameweek_number": target,
                     "home_team_id": home,
                     "away_team_id": away,
                     "home_expected_goals": home_lambda,

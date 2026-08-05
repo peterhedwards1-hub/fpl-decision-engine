@@ -37,6 +37,10 @@ from fpl_engine.optimisation import (
     optimise_opening_squads,
     optimise_starting_xi,
 )
+from fpl_engine.preseason_strength import (
+    load_preseason_validation,
+    preseason_model_is_validated,
+)
 from fpl_engine.production import (
     recommend_planning_horizon,
     select_production_projection_run,
@@ -190,6 +194,7 @@ def main() -> None:
                 "Projections",
                 "Optimal XI",
                 "Full squad",
+                "Preseason",
                 "Transfers",
                 "Chips",
                 "Weekly cycle",
@@ -224,6 +229,8 @@ def main() -> None:
                 gameweek_number,
             )
         with tabs[5]:
+            _preseason_decision(season_code, gameweek_number)
+        with tabs[6]:
             _transfer_explorer(
                 database,
                 rules,
@@ -231,7 +238,7 @@ def main() -> None:
                 season_code,
                 gameweek_number,
             )
-        with tabs[6]:
+        with tabs[7]:
             _chip_explorer(
                 database,
                 rules,
@@ -239,7 +246,7 @@ def main() -> None:
                 season_code,
                 gameweek_number,
             )
-        with tabs[7]:
+        with tabs[8]:
             _weekly_cycle(
                 database,
                 rules,
@@ -248,7 +255,7 @@ def main() -> None:
                 season_code,
                 gameweek_number,
             )
-        with tabs[8]:
+        with tabs[9]:
             _data_health(database, season_code, gameweek_number, deadline)
 
 
@@ -935,6 +942,289 @@ def _full_squad_explorer(
     st.write("Re-run triggers")
     for trigger in recommendation.transfer_triggers:
         st.warning(trigger)
+
+
+def _preseason_decision(season_code: str, gameweek_number: int) -> None:
+    """The validated preseason team-strength model and the squad it picks.
+
+    Reads the written validation artifact rather than re-running it. The
+    validation replays four historical seasons and solves dozens of squads;
+    doing that inside a page render would make the app unusable, and a
+    decision this consequential should be a deliberate command anyway.
+    """
+
+    st.subheader("Preseason team strength and opening squad")
+    validation = load_preseason_validation(season_code)
+    if validation is None:
+        st.warning(
+            "No preseason team-strength validation has been run for "
+            f"{season_code}. Until one has, the opening squad rests on the "
+            "flat preseason model, which gives every club the same strength "
+            "before GW1 — so it cannot tell a trip to the champions from a "
+            "home game against a promoted side."
+        )
+        st.code(
+            f"fpl-history validate-preseason-strength {season_code} "
+            "--horizon 8 --candidate-pool-size 8 "
+            "--output data/models/"
+            f"preseason-strength-validation-{season_code}.json",
+            language="bash",
+        )
+        return
+
+    validated = preseason_model_is_validated(validation, season_code=season_code)
+    gate = (validation.get("validation") or {}).get("decision_gate") or {}
+    selected = validation.get("selected_model") or {}
+    live = validation.get("live_projection") or {}
+
+    if not validated:
+        st.error(
+            "The carry-forward candidate did not pass its decision gate"
+            + (
+                f" ({', '.join(gate.get('failed_criteria') or [])})."
+                if gate.get("failed_criteria")
+                else "."
+            )
+            + " The squad below is a robustness comparison, not a validated "
+            "recommendation."
+        )
+    elif gameweek_number != 1:
+        st.info(
+            "This is a preseason decision. From GW2 onward the ordinary "
+            "in-season projection governs, and this tab is history."
+        )
+
+    st.markdown("#### Validated preseason model")
+    columns = st.columns(4)
+    columns[0].metric(
+        "Model", str(selected.get("label") or "unknown").replace("_", " ")
+    )
+    columns[1].metric("Validation", "passed" if validated else "failed")
+    columns[2].metric(
+        "Projection run", str(live.get("projection_run_id") or "—")
+    )
+    columns[3].metric("Horizon", f"{validation.get('horizon_gameweeks')} GW")
+    st.caption(
+        f"Model version `{selected.get('model_version')}` · scope "
+        f"{selected.get('scope')} · generated "
+        f"{validation.get('generated_at')}"
+    )
+    usable = (validation.get("validation") or {}).get("usable_transitions") or []
+    st.caption("Historical transitions used: " + (", ".join(usable) or "none"))
+
+    aggregate = (validation.get("validation") or {}).get("aggregate") or {}
+    headline = [
+        {
+            "model": label,
+            "goals RMSE": (aggregate[label]["early_team_goals"] or {}).get(
+                "goals_rmse"
+            ),
+            "goals MAE": (aggregate[label]["early_team_goals"] or {}).get(
+                "goals_mae"
+            ),
+            "goals bias": (aggregate[label]["early_team_goals"] or {}).get(
+                "goals_bias"
+            ),
+            "clean-sheet Brier": (
+                aggregate[label]["early_team_goals"] or {}
+            ).get("clean_sheet_brier"),
+            "mean realised GW1-8 points": aggregate[label].get(
+                "mean_opening_squad_realised_points"
+            ),
+        }
+        for label in ("flat", "carry_forward", "opponent_adjusted")
+        if isinstance(aggregate.get(label), dict)
+    ]
+    if headline:
+        st.markdown("**Flat versus carry-forward, pooled over GW1–GW8**")
+        st.dataframe(pd.DataFrame(headline), width="stretch", hide_index=True)
+    if gate.get("criteria"):
+        with st.expander("Decision gate", expanded=not validated):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "criterion": entry["criterion"],
+                            "passed": entry["passed"],
+                            "what it checks": entry["description"],
+                        }
+                        for entry in gate["criteria"]
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+            st.caption(gate.get("neutral_definition", ""))
+
+    squad = validation.get("revised_squad") or {}
+    if not squad:
+        st.info("The artifact holds no revised squad.")
+        return
+
+    st.markdown("#### Revised opening squad")
+    label = "Validated opening squad" if validated else "Unvalidated squad"
+    st.caption(label)
+    metrics = st.columns(4)
+    metrics[0].metric("Cost", f"£{squad.get('total_cost_tenths', 0) / 10:.1f}m")
+    metrics[1].metric("GW1 expected", squad.get("gameweek_expected_points"))
+    metrics[2].metric("Eight-GW value", squad.get("decision_value"))
+    metrics[3].metric(
+        "Bench contribution",
+        squad.get("horizon_expected_bench_contribution"),
+    )
+    players = squad.get("players") or []
+    by_id = {player["source_player_id"]: player for player in players}
+    captain = by_id.get(squad.get("captain_id"), {})
+    vice = by_id.get(squad.get("vice_captain_id"), {})
+    st.caption(
+        f"Captain {captain.get('web_name', '—')} · "
+        f"vice-captain {vice.get('web_name', '—')}"
+    )
+    robustness = (validation.get("robustness") or {}).get("classification") or {}
+    frame = pd.DataFrame(
+        [
+            {
+                "player": player["web_name"],
+                "club": player["team"],
+                "pos": player["position"],
+                "price": player["price_tenths"] / 10,
+                "GW1-8 xP": player["horizon_expected_points"],
+                "role": (
+                    "XI"
+                    if player["starts_gameweek"]
+                    else f"bench {player['bench_rank']}"
+                )
+                + (" (C)" if player["captain"] else "")
+                + (" (V)" if player["vice_captain"] else ""),
+                "robustness": robustness.get(
+                    player["source_player_id"], "not tested"
+                ),
+            }
+            for player in players
+        ]
+    )
+    st.dataframe(frame, width="stretch", hide_index=True)
+
+    comparison = validation.get("flat_comparison") or {}
+    changed = comparison.get("changed_players") or []
+    if changed:
+        st.markdown("#### Why this differs from the flat model")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "player": entry["web_name"],
+                        "club": entry["club"],
+                        "pos": entry["position"],
+                        "GW1 fixture": _fixture_label(entry),
+                        "flat GW1-8 xP": (
+                            entry["models"].get("flat") or {}
+                        ).get("horizon_expected_points"),
+                        "carry-forward GW1-8 xP": (
+                            entry["models"].get("carry_forward") or {}
+                        ).get("horizon_expected_points"),
+                        "change": entry.get("horizon_points_change"),
+                        "in flat squad": (
+                            entry["models"].get("flat") or {}
+                        ).get("in_squad"),
+                        "in revised squad": (
+                            entry["models"].get("carry_forward") or {}
+                        ).get("in_squad"),
+                        "attributed to": entry.get("change_attributed_to"),
+                        "robustness": robustness.get(
+                            entry["source_player_id"], "not tested"
+                        ),
+                    }
+                    for entry in changed
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+    separation = comparison.get("team_strength_separation") or {}
+    if separation:
+        with st.expander("Team-strength change"):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "model": name,
+                            "distinct attack multipliers": entry.get(
+                                "distinct_attack_multipliers"
+                            ),
+                            "attack spread": entry.get("attack_spread"),
+                            "established minus promoted": entry.get(
+                                "established_minus_promoted_attack"
+                            ),
+                        }
+                        for name, entry in separation.items()
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+    focus = comparison.get("focus_players") or []
+    if focus:
+        with st.expander("Truffert, O'Shea and Muñoz"):
+            for entry in focus:
+                flat = entry["models"].get("flat") or {}
+                carry = entry["models"].get("carry_forward") or {}
+                st.markdown(
+                    f"**{entry['web_name']}** ({entry['club']}, "
+                    f"{entry['position']}) — {_fixture_label(entry)}. "
+                    f"Opponent expected goals {flat.get('opponent_expected_goals')} "
+                    f"→ {carry.get('opponent_expected_goals')}; clean sheet "
+                    f"{flat.get('clean_sheet_probability')} → "
+                    f"{carry.get('clean_sheet_probability')}; GW1–8 "
+                    f"{flat.get('horizon_expected_points')} → "
+                    f"{carry.get('horizon_expected_points')}. "
+                    f"In squad {flat.get('in_squad')} → {carry.get('in_squad')}."
+                )
+
+    alternatives = validation.get("alternatives") or []
+    if alternatives:
+        st.markdown("#### Near-optimal alternatives")
+        for index, alternative in enumerate(alternatives, start=1):
+            gap = alternative.get("decision_value_gap")
+            with st.expander(
+                f"Alternative {index} — {gap} points below the primary"
+            ):
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "player": player["web_name"],
+                                "club": player["team"],
+                                "pos": player["position"],
+                                "price": player["price_tenths"] / 10,
+                                "role": (
+                                    "XI"
+                                    if player["starts_gameweek"]
+                                    else f"bench {player['bench_rank']}"
+                                ),
+                            }
+                            for player in alternative.get("players", [])
+                        ]
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
+
+    warnings = validation.get("warnings") or []
+    if warnings:
+        with st.expander("Warnings and exclusions"):
+            for warning in warnings:
+                st.write(f"- {warning}")
+
+
+def _fixture_label(entry: dict) -> str:
+    values = entry.get("models") or {}
+    side = values.get("carry_forward") or values.get("flat") or {}
+    opponent = side.get("opponent")
+    venue = side.get("venue")
+    if not opponent:
+        return "—"
+    return f"{'home to' if venue == 'home' else 'away at'} {opponent}"
 
 
 def _transfer_explorer(

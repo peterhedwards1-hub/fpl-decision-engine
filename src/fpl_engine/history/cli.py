@@ -37,8 +37,14 @@ from ..evaluation import (
 )
 from ..learned_challenger import train_and_evaluate_learned_challenger
 from ..news import ingest_structured_news
+from ..optimisation import DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE
 from ..playing_time import train_and_evaluate_hurdle_model
 from ..preseason_fit import fit_preseason_priors, profile_preseason_prior
+from ..preseason_strength import (
+    squad_comparison_artifact,
+    validate_preseason_strength,
+    write_preseason_validation_markdown,
+)
 from ..projections import (
     DEFAULT_MODEL_CONFIG,
     MODEL_VERSION,
@@ -765,6 +771,53 @@ def main() -> None:
     strength_evaluation_parser.add_argument("--origin-end", type=int, default=38)
     strength_evaluation_parser.add_argument("--rules")
     strength_evaluation_parser.add_argument("--output")
+    preseason_strength_parser = subparsers.add_parser(
+        "validate-preseason-strength",
+        help=(
+            "Compare the flat preseason team-strength model against a "
+            "regressed previous-season carry-forward, apply the decision "
+            "gate, and regenerate the opening squad from the winner"
+        ),
+    )
+    preseason_strength_parser.add_argument("season_code")
+    preseason_strength_parser.add_argument("--horizon", type=int, default=8)
+    preseason_strength_parser.add_argument("--gameweek", type=int, default=1)
+    preseason_strength_parser.add_argument(
+        "--candidate-pool-size", type=int, default=8
+    )
+    preseason_strength_parser.add_argument(
+        "--appearance-floor",
+        type=float,
+        default=DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
+    )
+    preseason_strength_parser.add_argument(
+        "--skip-reference-model",
+        action="store_true",
+        help=(
+            "Omit the opponent-adjusted secondary benchmark. It is never "
+            "promoted from here; skipping it only saves runtime."
+        ),
+    )
+    preseason_strength_parser.add_argument(
+        "--skip-robustness",
+        action="store_true",
+        help="Omit the six declared stress tests",
+    )
+    preseason_strength_parser.add_argument(
+        "--no-live-projection",
+        action="store_true",
+        help="Evaluate and gate without persisting a live projection run",
+    )
+    preseason_strength_parser.add_argument("--rules")
+    preseason_strength_parser.add_argument("--output")
+    preseason_strength_parser.add_argument(
+        "--comparison-output",
+        help="Where to write the cross-model squad comparison document",
+    )
+    preseason_strength_parser.add_argument(
+        "--markdown-output", help="Where to write the readable summary"
+    )
+
     variants_parser = subparsers.add_parser(
         "evaluate-allocation-variants",
         help=(
@@ -1326,6 +1379,33 @@ def main() -> None:
             if args.output:
                 write_json_report(evaluation, args.output)
             print(json.dumps(evaluation, indent=2))
+            return
+
+        if args.command == "validate-preseason-strength":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            result = validate_preseason_strength(
+                database,
+                rules,
+                season_code=args.season_code,
+                horizon_gameweeks=args.horizon,
+                gameweek_number=args.gameweek,
+                candidate_pool_size=args.candidate_pool_size,
+                minimum_mean_appearance=args.appearance_floor,
+                include_reference_model=not args.skip_reference_model,
+                include_robustness=not args.skip_robustness,
+                generate_live_projection=not args.no_live_projection,
+            )
+            if args.output:
+                write_json_report(result, args.output)
+            if args.comparison_output:
+                write_json_report(
+                    squad_comparison_artifact(result), args.comparison_output
+                )
+            if args.markdown_output:
+                write_preseason_validation_markdown(result, args.markdown_output)
+            print(json.dumps(result, indent=2))
             return
 
         if args.command == "evaluate-allocation-variants":

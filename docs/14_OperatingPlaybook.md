@@ -7,7 +7,20 @@ model experiments out of live advice.
 ## Before Gameweek 1
 
 1. Collect a current exact pre-deadline official snapshot.
-2. Generate an eight-Gameweek incumbent projection.
+2. Validate the preseason team-strength model and generate the projection it selects:
+
+   ```powershell
+   fpl-history --database data/fpl.sqlite3 validate-preseason-strength 2026-27 `
+     --horizon 8 --candidate-pool-size 8 `
+     --output data/models/preseason-strength-validation-2026-27.json `
+     --comparison-output data/models/preseason-squad-comparison-2026-27.json `
+     --markdown-output data/models/preseason-strength-validation-2026-27.md
+   ```
+
+   This is step two, not an optional extra. Before GW1 the incumbent team-strength path has
+   no target-season fixtures to read, so every club sits on the same league average and an
+   opening squad built on it cannot tell a trip to the champions from a home game against a
+   promoted side. See `15_PreseasonTeamStrength.md`.
 3. Run the one-command readiness report:
 
    ```powershell
@@ -16,6 +29,10 @@ model experiments out of live advice.
      --output data/models/preseason-readiness-2026-27.json
    ```
 
+   At GW1 the readiness report prefers the validated preseason run when the validation
+   artifact records a pass. Check `decision_context` — it must read
+   `preseason_opening_squad`. If it reads `in_season_live_projection`, the flat model is
+   still driving the squad and a blocker says so.
 4. Review the primary squad, two structural alternatives, all eight lineup plans, bench
    availability and rerun triggers.
 5. Complete the provisional/final team-news cycle. Freeze the final decision only after the
@@ -44,7 +61,11 @@ the historical policy evaluator first.
 
 ## Model policy
 
-- `rates-rules-corrected-v4` remains the production incumbent.
+- `rates-rules-corrected-v4` remains the production incumbent for every in-season decision.
+- `rates-rules-corrected-v4-preseason-carry-forward` drives the GW1 opening-squad decision
+  and nothing else, and only while the validation artifact records a gate pass. It is
+  deliberately outside the incumbent family the in-season selector accepts, so the generic
+  newest-qualified-run rule can never pick it up in October.
 - The learned playing-time, coherent scoring and defensive-contribution variants are forward
   candidates. Historical design evidence is useful, but none drives live advice until its
   immutable 2026/27 gates pass.
