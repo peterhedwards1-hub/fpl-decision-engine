@@ -1953,9 +1953,26 @@ def historical_decision_evidence(
             ),
             "seasons": len(realised),
         }
+    difference = None
+    labels = list(configs)
+    if len(labels) == 2:
+        first, second = labels
+        if (
+            means[first]["mean_realised_points"] is not None
+            and means[second]["mean_realised_points"] is not None
+        ):
+            difference = {
+                "comparison": f"{second} minus {first}",
+                "mean_realised_points": round(
+                    means[second]["mean_realised_points"]
+                    - means[first]["mean_realised_points"],
+                    3,
+                ),
+            }
     return {
         "seasons": seasons,
         "means": means,
+        "difference": difference,
         "status": "secondary evidence; four observations, one per season",
         "hindsight_regret_measures": (
             "not run: a legal-squad and owned-captain regret replay solves a "
@@ -2243,16 +2260,22 @@ def finalise_preseason_squad(
 
     decision_evidence: dict[str, Any] = {}
     if include_decision_evidence and usable:
+        # Both priors are replayed whatever the gate decided. A single column
+        # of realised points says what one model would have scored; it takes
+        # two to say anything about the choice between them, and the losing
+        # candidate's decision record is exactly what a reader wants when the
+        # gate rejected it on forecast accuracy.
+        candidate_label = promoted_validation.get("candidate_label")
+        evidence_configs = {FIXED_PROMOTED_LABEL: CARRY_FORWARD_PRESEASON_CONFIG}
+        if candidate_label and candidate_label != FIXED_PROMOTED_LABEL:
+            evidence_configs[candidate_label] = promoted_prior_configs()[
+                candidate_label
+            ]
         decision_evidence = historical_decision_evidence(
             database,
             usable,
             rules_for=rules_for,
-            configs={
-                FIXED_PROMOTED_LABEL: CARRY_FORWARD_PRESEASON_CONFIG,
-                promoted_validation["selected_label"]: selected_config,
-            }
-            if selected_config != CARRY_FORWARD_PRESEASON_CONFIG
-            else {FIXED_PROMOTED_LABEL: CARRY_FORWARD_PRESEASON_CONFIG},
+            configs=evidence_configs,
             horizon_gameweeks=horizon_gameweeks,
         )
 
@@ -2613,6 +2636,29 @@ def render_markdown(result: dict[str, Any]) -> str:
                 f"| {overall.get('goals_rmse')} "
                 f"| {overall.get('clean_sheet_brier')} |"
             )
+    evidence = priors.get("historical_decision_evidence") or {}
+    if evidence.get("means"):
+        lines += [
+            "",
+            "Secondary evidence — what each prior's opening squad actually "
+            "scored, one observation per season:",
+            "",
+            "| model | mean realised GW1–8 points | seasons |",
+            "| --- | --- | --- |",
+        ]
+        for label, entry in evidence["means"].items():
+            lines.append(
+                f"| {label} | {entry['mean_realised_points']} "
+                f"| {entry['seasons']} |"
+            )
+        if evidence.get("difference"):
+            lines += [
+                "",
+                f"Difference ({evidence['difference']['comparison']}): "
+                f"{evidence['difference']['mean_realised_points']} points per "
+                "season. Four observations; this is not what the gate reads.",
+            ]
+
     live = priors.get("live") or {}
     if live.get("clubs"):
         lines += [
