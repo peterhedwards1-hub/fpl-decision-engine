@@ -85,19 +85,18 @@ def realised_lookup(
 
     rows = database.connection.execute(
         """
-        SELECT players.source_player_id AS source_player_id,
+        SELECT player_seasons.source_player_id AS source_player_id,
                gameweeks.number AS gameweek_number,
                SUM(stats.total_points) AS points,
                SUM(stats.minutes) AS minutes
         FROM player_fixture_stats stats
         JOIN player_seasons ON player_seasons.id = stats.player_season_id
-        JOIN players ON players.id = player_seasons.player_id
         JOIN fixtures ON fixtures.id = stats.fixture_id
         JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
         JOIN seasons ON seasons.id = fixtures.season_id
         WHERE seasons.code = ?
           AND gameweeks.number BETWEEN ? AND ?
-        GROUP BY players.source_player_id, gameweeks.number
+        GROUP BY player_seasons.source_player_id, gameweeks.number
         """,
         (season_code, min(gameweeks), max(gameweeks)),
     ).fetchall()
@@ -574,6 +573,7 @@ def validate_opening_squad_search(
     )
 
     historical: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
     if include_historical:
         for transition in discover_season_transitions(
             database,
@@ -584,20 +584,27 @@ def validate_opening_squad_search(
                 continue
             target = transition.target_season
             season_rules = _rules_for_season(target, rules, season_code)
-            historical.append(
-                compare_search_strategies(
-                    eligible_for(target),
-                    season_rules,
-                    budget_tenths=season_rules.squad.budget_tenths,
-                    season_code=target,
-                    mixed_scale=historical_scale,
-                    realised=realised_lookup(
-                        database, season_code=target, gameweeks=horizon
-                    ),
-                    gameweeks=horizon,
-                    run_escape_check=True,
+            try:
+                historical.append(
+                    compare_search_strategies(
+                        eligible_for(target),
+                        season_rules,
+                        budget_tenths=season_rules.squad.budget_tenths,
+                        season_code=target,
+                        mixed_scale=historical_scale,
+                        realised=realised_lookup(
+                            database, season_code=target, gameweeks=horizon
+                        ),
+                        gameweeks=horizon,
+                        run_escape_check=True,
+                    )
                 )
-            )
+            except Exception as error:  # noqa: BLE001
+                # One season failing must not discard an hour of live search.
+                # The failure is recorded and the run continues, because a
+                # partial comparison that says which season is missing is worth
+                # more than no comparison at all.
+                failures.append({"season_code": target, "error": repr(error)})
 
     def strategy_rows(entry: dict[str, Any]) -> dict[str, dict[str, Any]]:
         return {row["strategy"]: row for row in entry["strategies"]}
@@ -682,6 +689,7 @@ def validate_opening_squad_search(
         "runtime_seconds": round(time.monotonic() - started, 2),
         "live": live,
         "historical": historical,
+        "historical_failures": failures,
         "summary": summary,
         "exact_value_gained_over_frontier_40": {
             "live": live["exact_value_gained_over_frontier_40"],
