@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from itertools import combinations, permutations, product
+from typing import Any
 
 from .config import SeasonRules
 from .domain import Chip, Player, Position, Squad
@@ -399,7 +400,80 @@ def goalkeeper_pair_horizon_value(
     return total, tuple(orientations)
 
 
-def optimise_full_squad(
+@dataclass
+class SquadModel:
+    """The mixed-integer model every squad search shares.
+
+    Built once and handed to whichever search wants it. Two searches used to
+    build their own copies of these constraints and would have drifted apart:
+    a squad proven legal by one and scored by the other has to be legal under
+    the same rules, or the comparison means nothing.
+    """
+
+    problem: Any
+    ordered: tuple[CandidatePlayer, ...]
+    gameweeks: tuple[int, ...]
+    values: dict[tuple[int, str], GameweekPlayerValue]
+    squad_vars: dict[str, Any]
+    starter_vars: dict[tuple[int, str], Any]
+    captain_vars: dict[tuple[int, str], Any]
+    pair_vars: dict[tuple[str, str], Any]
+    pair_values: dict[tuple[str, str], float]
+    pair_reserve_values: dict[tuple[str, str], float]
+    pair_orientations: dict[tuple[str, str], tuple[GoalkeeperOrientation, ...]]
+    scored_starters: tuple[CandidatePlayer, ...]
+    primary_objective: Any
+    lineup_objective: Any
+    pair_objective: Any
+    terminal_objective: Any
+    bench_objective: Any
+
+    @property
+    def current_gameweek(self) -> int:
+        return self.gameweeks[0]
+
+    def selected_ids(self) -> frozenset[str]:
+        return frozenset(
+            player.source_player_id
+            for player in self.ordered
+            if (self.squad_vars[player.source_player_id].value() or 0) > 0.5
+        )
+
+    def starting_ids(self, gameweek: int) -> frozenset[str]:
+        return frozenset(
+            player.source_player_id
+            for player in self.ordered
+            if (self.starter_vars[(gameweek, player.source_player_id)].value() or 0)
+            > 0.5
+        )
+
+
+@dataclass(frozen=True)
+class SquadGroupConstraint:
+    """How many of a named set of players the squad must or may contain.
+
+    Purely a *generation* device. It shapes which squads are produced, never
+    how one is valued, and every squad it produces is scored by exactly the
+    same exact objective as every other candidate.
+    """
+
+    name: str
+    player_ids: frozenset[str]
+    minimum: int | None = None
+    maximum: int | None = None
+
+
+@dataclass(frozen=True)
+class SquadSpendConstraint:
+    """How much of the budget may go to a named set of players."""
+
+    name: str
+    player_ids: frozenset[str]
+    minimum_tenths: int | None = None
+    maximum_tenths: int | None = None
+
+
+def build_squad_model(
     candidates: tuple[CandidatePlayer, ...],
     *,
     budget_tenths: int,
@@ -407,38 +481,12 @@ def optimise_full_squad(
     excluded_squads: tuple[frozenset[str], ...] = (),
     excluded_starting_xis: tuple[frozenset[str], ...] = (),
     required_player_ids: frozenset[str] = frozenset(),
+    forbidden_player_ids: frozenset[str] = frozenset(),
+    group_constraints: tuple[SquadGroupConstraint, ...] = (),
+    spend_constraints: tuple[SquadSpendConstraint, ...] = (),
     goalkeeper_pair_valuation: bool = True,
-) -> FullSquadResult:
-    """Select a legal squad and weekly lineup, then value autosubs exactly.
-
-    The legal-XI-plus-captain objective is massively degenerate: bench
-    composition, bench order and the vice-captain are all absent from it, so
-    many squads tie at the proven optimum and CBC returns an arbitrary one.
-    Selection therefore proceeds lexicographically. Stage one proves the
-    primary optimum. Stage two pins it and maximises current-Gameweek bench
-    quality, which is a linear surrogate for autosub value. Stage three pins
-    that too and breaks any remaining tie deterministically. Bench order and
-    the captain/vice pair are then chosen by exact enumeration, which needs no
-    surrogate because the state space is small.
-
-    Goalkeepers are handled as a pair rather than as two independent players.
-    A single starter variable per Gameweek would value the nominated
-    goalkeeper alone and leave the substitute contributing nothing to
-    selection, even though the substitute automatically replaces the starter
-    whenever the starter records no minutes. Instead every eligible pair is
-    enumerated, each pair's best weekly orientation and exact value computed,
-    and that value carried into the same objective the outfield players are
-    selected under. Goalkeepers therefore appear in the objective **once**, in
-    the pair term, and are excluded from the ordinary starter, captain and
-    bench-quality terms so no goalkeeper's points can be counted twice. Which
-    two goalkeepers are owned, and which one starts each Gameweek, both come
-    out of the solve; nothing is swapped afterwards.
-
-    ``required_player_ids`` forces named players into the squad, which is what
-    a counterfactual ("what if this club's defender had to be owned?") needs:
-    the optimiser then rebuilds the rest of the squad around them rather than
-    substituting them into a squad chosen without them.
-    """
+) -> SquadModel:
+    """Assemble the legal-squad model, its objectives and its side constraints."""
 
     try:
         import pulp
@@ -673,8 +721,47 @@ def optimise_full_squad(
             "Cannot force players who are not eligible candidates: "
             + ", ".join(missing)
         )
+    overlap = sorted(required_player_ids & forbidden_player_ids)
+    if overlap:
+        raise OptimisationError(
+            "Cannot both require and forbid: " + ", ".join(overlap)
+        )
     for player_id in sorted(required_player_ids):
         problem += (squad_vars[player_id] == 1, f"required_{player_id}")
+    for player_id in sorted(forbidden_player_ids & set(squad_vars)):
+        problem += (squad_vars[player_id] == 0, f"forbidden_{player_id}")
+
+    # Structural generation constraints. These shape which squads are
+    # produced and never how one is valued: a squad born under a "no defender
+    # above 5.5m" constraint is scored by exactly the same exact objective as
+    # every other candidate, and competes on that number alone.
+    for index, group in enumerate(group_constraints):
+        known = sorted(group.player_ids & set(squad_vars))
+        total = pulp.lpSum(squad_vars[player_id] for player_id in known)
+        if group.minimum is not None:
+            if group.minimum > len(known):
+                raise OptimisationError(
+                    f"Group {group.name!r} needs {group.minimum} players but "
+                    f"only {len(known)} are eligible"
+                )
+            problem += (total >= group.minimum, f"group_min_{index}")
+        if group.maximum is not None:
+            problem += (total <= group.maximum, f"group_max_{index}")
+    for index, spend in enumerate(spend_constraints):
+        known = sorted(spend.player_ids & set(squad_vars))
+        by_id = {player.source_player_id: player for player in ordered}
+        total = pulp.lpSum(
+            squad_vars[player_id] * by_id[player_id].price_tenths
+            for player_id in known
+        )
+        if spend.minimum_tenths is not None:
+            problem += (
+                total >= spend.minimum_tenths, f"spend_min_{index}"
+            )
+        if spend.maximum_tenths is not None:
+            problem += (
+                total <= spend.maximum_tenths, f"spend_max_{index}"
+            )
 
     current_gameweek = gameweeks[0]
     for index, excluded in enumerate(excluded_squads):
@@ -697,6 +784,246 @@ def optimise_full_squad(
                 f"exclude_starting_xi_{index}",
             )
 
+    bench_objective = pulp.lpSum(
+        (
+            squad_vars[player.source_player_id]
+            - starter_vars[(gameweek, player.source_player_id)]
+        )
+        * round(values[(gameweek, player.source_player_id)].expected_points, 6)
+        for gameweek in gameweeks
+        for player in scored_starters
+    ) + pulp.lpSum(
+        variable * round(pair_reserve_values[key], 6)
+        for key, variable in pair_vars.items()
+    )
+    return SquadModel(
+        problem=problem,
+        ordered=ordered,
+        gameweeks=gameweeks,
+        values=values,
+        squad_vars=squad_vars,
+        starter_vars=starter_vars,
+        captain_vars=captain_vars,
+        pair_vars=pair_vars,
+        pair_values=pair_values,
+        pair_reserve_values=pair_reserve_values,
+        pair_orientations=pair_orientations,
+        scored_starters=scored_starters,
+        primary_objective=primary_objective,
+        lineup_objective=lineup_objective,
+        pair_objective=pair_objective,
+        terminal_objective=terminal_objective,
+        bench_objective=bench_objective,
+    )
+
+
+def enumerate_squad_ids(
+    candidates: tuple[CandidatePlayer, ...],
+    *,
+    budget_tenths: int,
+    rules: SeasonRules,
+    count: int,
+    objective: str = "primary",
+    linear_slack: float | None = None,
+    exclude_starting_xis: bool = False,
+    seed_excluded_squads: tuple[frozenset[str], ...] = (),
+    perturbation: dict[str, float] | None = None,
+    required_player_ids: frozenset[str] = frozenset(),
+    forbidden_player_ids: frozenset[str] = frozenset(),
+    group_constraints: tuple[SquadGroupConstraint, ...] = (),
+    spend_constraints: tuple[SquadSpendConstraint, ...] = (),
+) -> tuple[frozenset[str], ...]:
+    """Produce many distinct legal squads from one model, cheaply.
+
+    ``optimise_full_squad`` runs three solves and an exact valuation for every
+    squad it returns, because it is answering "what is the best squad and what
+    is it worth". A candidate *search* wants neither: it wants breadth, and the
+    exact valuation happens once per unique squad afterwards. So this builds
+    the model once, solves it repeatedly with accumulating exclusions, and
+    returns bare squad memberships. One solve per candidate rather than three.
+
+    Only memberships. Every number attached to a candidate — its linear
+    objective as much as its exact value — comes from rescoring the fifteen
+    afterwards, so a squad reached under a slack band, a forced inclusion or a
+    perturbation carries numbers computed exactly the way an unconstrained
+    squad's are. A generator that reported its own objective would report the
+    band edge it was pinned against rather than the squad's own value.
+
+    Two knobs make the search find things exclusion alone cannot.
+
+    ``linear_slack`` pins the primary objective at ``optimum - slack`` instead
+    of at the optimum. This matters more than anything else here. Bench players
+    appear nowhere in the primary objective, so every squad sharing a weekly XI
+    is *exactly* tied on it, and excluding complete squads walks that tie set —
+    thousands of interchangeable cheap reserves — without ever reaching a squad
+    that trades a little XI quality for a much better bench. Only a slack band
+    can cross that gap.
+
+    ``objective="reserve"`` then maximises reserve quality inside the band,
+    which is the linear surrogate for the autosub value the primary objective
+    omits. Together they aim the search directly at the structures the
+    incumbent frontier was blind to.
+
+    ``perturbation`` adds tiny declared per-player coefficients to the
+    generation objective to shake out otherwise-identical tied structures. It
+    is removed before anything is scored: the returned linear objective and
+    every exact value are computed without it, so it can never decide a
+    ranking.
+    """
+
+    try:
+        import pulp
+    except ImportError as error:
+        raise OptimisationError(
+            "Exact optimisation requires the 'optimize' project dependency"
+        ) from error
+    if count < 1:
+        raise ValueError("Candidate count must be at least one")
+    if objective not in {"primary", "reserve"}:
+        raise ValueError("Objective must be 'primary' or 'reserve'")
+    if linear_slack is not None and linear_slack < 0:
+        raise ValueError("Linear slack cannot be negative")
+
+    model = build_squad_model(
+        candidates,
+        budget_tenths=budget_tenths,
+        rules=rules,
+        excluded_squads=seed_excluded_squads,
+        required_player_ids=required_player_ids,
+        forbidden_player_ids=forbidden_player_ids,
+        group_constraints=group_constraints,
+        spend_constraints=spend_constraints,
+    )
+    problem = model.problem
+    solver = pulp.PULP_CBC_CMD(msg=False)
+
+    def solve(name: str) -> bool:
+        status = pulp.LpStatus[problem.solve(solver)]
+        if status == "Optimal":
+            return True
+        if status in {"Infeasible", "Undefined", "Not Solved"}:
+            return False
+        raise OptimisationError(f"{name} did not resolve: {status}")
+
+    if linear_slack is not None:
+        problem.setObjective(model.primary_objective)
+        if not solve("Slack-band reference solve"):
+            return ()
+        optimum = float(pulp.value(model.primary_objective))
+        problem += (
+            model.primary_objective >= optimum - linear_slack - 1e-6,
+            "linear_slack_band",
+        )
+
+    search_objective = (
+        model.bench_objective if objective == "reserve" else model.primary_objective
+    )
+    if perturbation:
+        search_objective = search_objective + pulp.lpSum(
+            model.squad_vars[player_id] * round(weight, 9)
+            for player_id, weight in sorted(perturbation.items())
+            if player_id in model.squad_vars
+        )
+    problem.setObjective(search_objective)
+
+    found: list[frozenset[str]] = []
+    for index in range(count):
+        if not solve(f"Candidate enumeration {index}"):
+            break
+        selected = model.selected_ids()
+        found.append(selected)
+        problem += (
+            pulp.lpSum(model.squad_vars[player_id] for player_id in sorted(selected))
+            <= rules.squad.squad_size - 1,
+            f"enumerated_squad_{index}",
+        )
+        if exclude_starting_xis:
+            starting = model.starting_ids(model.current_gameweek)
+            problem += (
+                pulp.lpSum(
+                    model.starter_vars[(model.current_gameweek, player_id)]
+                    for player_id in sorted(starting)
+                )
+                <= rules.squad.starting_size - 1,
+                f"enumerated_xi_{index}",
+            )
+    return tuple(found)
+
+
+def optimise_full_squad(
+    candidates: tuple[CandidatePlayer, ...],
+    *,
+    budget_tenths: int,
+    rules: SeasonRules,
+    excluded_squads: tuple[frozenset[str], ...] = (),
+    excluded_starting_xis: tuple[frozenset[str], ...] = (),
+    required_player_ids: frozenset[str] = frozenset(),
+    forbidden_player_ids: frozenset[str] = frozenset(),
+    group_constraints: tuple[SquadGroupConstraint, ...] = (),
+    spend_constraints: tuple[SquadSpendConstraint, ...] = (),
+    goalkeeper_pair_valuation: bool = True,
+) -> FullSquadResult:
+    """Select a legal squad and weekly lineup, then value autosubs exactly.
+
+    The legal-XI-plus-captain objective is massively degenerate: bench
+    composition, bench order and the vice-captain are all absent from it, so
+    many squads tie at the proven optimum and CBC returns an arbitrary one.
+    Selection therefore proceeds lexicographically. Stage one proves the
+    primary optimum. Stage two pins it and maximises current-Gameweek bench
+    quality, which is a linear surrogate for autosub value. Stage three pins
+    that too and breaks any remaining tie deterministically. Bench order and
+    the captain/vice pair are then chosen by exact enumeration, which needs no
+    surrogate because the state space is small.
+
+    Goalkeepers are handled as a pair rather than as two independent players.
+    A single starter variable per Gameweek would value the nominated
+    goalkeeper alone and leave the substitute contributing nothing to
+    selection, even though the substitute automatically replaces the starter
+    whenever the starter records no minutes. Instead every eligible pair is
+    enumerated, each pair's best weekly orientation and exact value computed,
+    and that value carried into the same objective the outfield players are
+    selected under. Goalkeepers therefore appear in the objective **once**, in
+    the pair term, and are excluded from the ordinary starter, captain and
+    bench-quality terms so no goalkeeper's points can be counted twice. Which
+    two goalkeepers are owned, and which one starts each Gameweek, both come
+    out of the solve; nothing is swapped afterwards.
+
+    ``required_player_ids`` forces named players into the squad, which is what
+    a counterfactual ("what if this club's defender had to be owned?") needs:
+    the optimiser then rebuilds the rest of the squad around them rather than
+    substituting them into a squad chosen without them.
+    """
+
+    try:
+        import pulp
+    except ImportError as error:
+        raise OptimisationError(
+            "Exact optimisation requires the 'optimize' project dependency"
+        ) from error
+    model = build_squad_model(
+        candidates,
+        budget_tenths=budget_tenths,
+        rules=rules,
+        excluded_squads=excluded_squads,
+        excluded_starting_xis=excluded_starting_xis,
+        required_player_ids=required_player_ids,
+        forbidden_player_ids=forbidden_player_ids,
+        group_constraints=group_constraints,
+        spend_constraints=spend_constraints,
+        goalkeeper_pair_valuation=goalkeeper_pair_valuation,
+    )
+    problem = model.problem
+    ordered = model.ordered
+    gameweeks = model.gameweeks
+    values = model.values
+    squad_vars = model.squad_vars
+    starter_vars = model.starter_vars
+    pair_vars = model.pair_vars
+    pair_values = model.pair_values
+    pair_orientations = model.pair_orientations
+    primary_objective = model.primary_objective
+    bench_objective = model.bench_objective
+    current_gameweek = model.current_gameweek
     solver = pulp.PULP_CBC_CMD(msg=False)
     status_code = problem.solve(solver)
     status = pulp.LpStatus[status_code]
@@ -715,21 +1042,6 @@ def optimise_full_squad(
     # objective. Maximise reserve quality over *every* Gameweek while holding
     # the XI/captain/terminal optimum fixed. Exact autosub value is calculated
     # after selection because its joint appearance states are nonlinear.
-    bench_objective = pulp.lpSum(
-        (
-            squad_vars[player.source_player_id]
-            - starter_vars[(gameweek, player.source_player_id)]
-        )
-        * round(
-            values[(gameweek, player.source_player_id)].expected_points,
-            6,
-        )
-        for gameweek in gameweeks
-        for player in scored_starters
-    ) + pulp.lpSum(
-        variable * round(pair_reserve_values[key], 6)
-        for key, variable in pair_vars.items()
-    )
     problem.setObjective(bench_objective)
     status_code = problem.solve(solver)
     status = pulp.LpStatus[status_code]

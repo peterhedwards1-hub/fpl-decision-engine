@@ -40,6 +40,10 @@ from ..evaluation import (
     replay_backtest_transfer_continuity,
     write_json_report,
 )
+from ..frontier_validation import (
+    validate_opening_squad_search,
+    write_search_validation_artifacts,
+)
 from ..learned_challenger import train_and_evaluate_learned_challenger
 from ..news import ingest_structured_news
 from ..optimisation import DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE
@@ -47,6 +51,7 @@ from ..playing_time import train_and_evaluate_hurdle_model
 from ..preseason_final import (
     DEFAULT_FRONTIER_SIZE,
     finalise_preseason_squad,
+    load_final_squad,
     write_artifacts,
 )
 from ..preseason_fit import fit_preseason_priors, profile_preseason_prior
@@ -889,6 +894,45 @@ def main() -> None:
         help="Print a short summary instead of the whole artifact",
     )
 
+    search_parser = subparsers.add_parser(
+        "validate-opening-squad-search",
+        help=(
+            "Compare the eight-candidate frontier, the forty-candidate "
+            "frontier and the mixed candidate search on the same players, and "
+            "report diversity, convergence and whether a forced-player "
+            "diagnostic can still escape the pool"
+        ),
+    )
+    search_parser.add_argument("season_code")
+    search_parser.add_argument("--horizon", type=int, default=8)
+    search_parser.add_argument("--gameweek", type=int, default=1)
+    search_parser.add_argument(
+        "--mixed-scale",
+        type=float,
+        default=1.0,
+        help="Generation scale for the live season's mixed pool",
+    )
+    search_parser.add_argument(
+        "--historical-scale",
+        type=float,
+        default=0.1,
+        help="Generation scale for each historical season's mixed pool",
+    )
+    search_parser.add_argument(
+        "--skip-historical",
+        action="store_true",
+        help="Compare on the live season only",
+    )
+    search_parser.add_argument(
+        "--appearance-floor",
+        type=float,
+        default=DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
+    )
+    search_parser.add_argument("--rules")
+    search_parser.add_argument("--output")
+    search_parser.add_argument("--markdown-output")
+    search_parser.add_argument("--quiet", action="store_true")
+
     import_championship_parser = subparsers.add_parser(
         "import-championship",
         help=(
@@ -1496,6 +1540,57 @@ def main() -> None:
             if args.markdown_output:
                 write_preseason_validation_markdown(result, args.markdown_output)
             print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "validate-opening-squad-search":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            previous = load_final_squad(args.season_code)
+            incumbent = frozenset(
+                player["source_player_id"]
+                for player in ((previous or {}).get("final_squad") or {}).get(
+                    "players", []
+                )
+            )
+            result = validate_opening_squad_search(
+                database,
+                rules,
+                season_code=args.season_code,
+                horizon_gameweeks=args.horizon,
+                gameweek_number=args.gameweek,
+                mixed_scale=args.mixed_scale,
+                historical_scale=args.historical_scale,
+                include_historical=not args.skip_historical,
+                minimum_mean_appearance=args.appearance_floor,
+                incumbent_winner=incumbent,
+            )
+            base = Path("data/models")
+            paths = write_search_validation_artifacts(
+                result,
+                json_path=(
+                    args.output
+                    or base
+                    / f"opening-squad-search-validation-{args.season_code}.json"
+                ),
+                markdown_path=(
+                    args.markdown_output
+                    or base
+                    / f"opening-squad-search-validation-{args.season_code}.md"
+                ),
+            )
+            if args.quiet:
+                acceptance = result["acceptance"]
+                print(
+                    f"Acceptance: {'PASS' if acceptance['passed'] else 'FAIL'}; "
+                    f"live gain over the forty-candidate frontier "
+                    f"{result['live']['exact_value_gained_over_frontier_40']}; "
+                    f"converged {acceptance['live_search_converged']}."
+                )
+                for path in paths:
+                    print(f"Wrote {path}")
+            else:
+                print(json.dumps(result, indent=2, default=str))
             return
 
         if args.command == "import-championship":

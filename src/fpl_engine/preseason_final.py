@@ -44,6 +44,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .candidate_search import (
+    DEFAULT_CONVERGENCE_STAGES,
+    convergence_report,
+    declared_requests,
+    generate_pool,
+    pool_report,
+    rank_pool,
+    rescore_pool,
+)
 from .championship import (
     BASE_PROMOTED_ATTACK,
     BASE_PROMOTED_DEFENCE,
@@ -705,6 +714,12 @@ class FrontierEntry:
         )
 
 
+#: How many unique squads one unit of mixed-search scale yields, measured.
+#: Used only to turn a requested frontier size into a generation scale, so an
+#: existing ``--frontier-size 40`` still means roughly forty candidates.
+NOMINAL_POOL_AT_FULL_SCALE = 400
+
+
 def build_frontier(
     candidates: tuple[CandidatePlayer, ...],
     rules: SeasonRules,
@@ -713,47 +728,58 @@ def build_frontier(
     size: int = DEFAULT_FRONTIER_SIZE,
     required_player_ids: frozenset[str] = frozenset(),
     excluded_squads: tuple[frozenset[str], ...] = (),
+    incumbent_winner: frozenset[str] = frozenset(),
 ) -> tuple[list[FullSquadResult], dict[str, Any]]:
-    """Enumerate distinct complete legal squads and rescore every one exactly.
+    """Generate candidates from the declared families and rescore every one.
 
-    Each solve excludes every squad already produced — the complete fifteen,
-    not the starting eleven — so two squads that field the same XI behind
-    different benches are both allowed onto the frontier. They are genuinely
-    different propositions once autosubs and rotation are priced.
+    This used to enumerate distinct complete fifteens and nothing else, and
+    that is exactly what went wrong. Bench players appear nowhere in the linear
+    objective, so every completion of one starting eleven ties on it exactly;
+    excluding complete squads therefore walked a tie set of interchangeable
+    reserves and produced forty candidates with one lineup between them. The
+    squad that actually won on exact value sat *below* the linear optimum,
+    where exclusion could never reach it.
 
-    The solver ranks by its linear objective. Every candidate is then rescored
-    exactly, integrating independent appearance outcomes with legal autosubs,
-    bench order, goalkeeper-pair orientation and captain fallback, and ranked
-    again. Whether those two orders differ is reported rather than assumed.
+    Candidates now come from :mod:`fpl_engine.candidate_search`: distinct
+    squads, distinct starting elevens, linear slack bands with a reserve
+    objective, systematic forced inclusions and exclusions, structural shapes
+    and tiny perturbations. Every one of those only decides which squads get
+    *generated*. Ranking is unchanged — the same exact decision value, with
+    cost breaking ties — so a squad born under a constraint competes on the
+    same number as every other.
     """
 
     if size < 1:
         raise ValueError("Frontier size must be at least one")
-    results: list[FullSquadResult] = []
-    excluded = list(excluded_squads)
     started = time.monotonic()
-    exhausted = False
-    for _ in range(size):
-        try:
-            result = optimise_full_squad(
-                candidates,
-                budget_tenths=budget_tenths,
-                rules=rules,
-                excluded_squads=tuple(excluded),
-                required_player_ids=required_player_ids,
-            )
-        except OptimisationError:
-            exhausted = True
-            break
-        results.append(result)
-        excluded.append(
-            frozenset(player.source_player_id for player in result.players)
-        )
-    elapsed = time.monotonic() - started
-    if not results:
+    requests = declared_requests(
+        candidates,
+        budget_tenths=budget_tenths,
+        incumbent_winner=incumbent_winner,
+        scale=max(0.02, size / NOMINAL_POOL_AT_FULL_SCALE),
+    )
+    if required_player_ids:
+        requests = [
+            replace(request, required_player_ids=required_player_ids)
+            for request in requests
+            if not request.forbidden_player_ids
+        ]
+    raw_pool, generation = generate_pool(
+        candidates,
+        rules,
+        budget_tenths=budget_tenths,
+        requests=requests,
+    )
+    excluded = set(excluded_squads)
+    raw_pool = [entry for entry in raw_pool if entry.squad_ids not in excluded]
+    if not raw_pool:
         raise OptimisationError(
             "No legal squad could be produced from the candidate set"
         )
+    scored = rescore_pool(raw_pool, candidates, rules)
+    exact_order = [entry.result for entry in rank_pool(scored)]
+    in_generation_order = sorted(scored, key=lambda entry: entry.order)
+    results = [entry.result for entry in in_generation_order]
     linear_order = [
         id(result)
         for result in sorted(
@@ -764,19 +790,51 @@ def build_frontier(
             ),
         )
     ]
-    exact_order = sorted(results, key=squad_ranking_key)
     linear_rank = {value: index + 1 for index, value in enumerate(linear_order)}
+    report = pool_report(scored, generation)
     diagnostics = {
+        # The first candidate in generation order is family A's first solve,
+        # which is the unconstrained linear optimum and the right baseline for
+        # a stress test.
         "first_solve": results[0],
         "requested": size,
         "produced": len(results),
-        "exhausted_before_target": exhausted,
-        "runtime_seconds": round(elapsed, 2),
-        "distinct_squads": len({frozenset(
-            player.source_player_id for player in result.players
-        ) for result in results}),
-        "distinct_starting_xis": len({result.starting_player_ids for result in results}),
+        "exhausted_before_target": False,
+        "runtime_seconds": round(time.monotonic() - started, 2),
+        "distinct_squads": len(
+            {
+                frozenset(player.source_player_id for player in result.players)
+                for result in results
+            }
+        ),
+        "distinct_starting_xis": len(
+            {result.starting_player_ids for result in results}
+        ),
+        "distinct_goalkeeper_pairs": report["distinct_goalkeeper_pairs"],
+        "raw_candidates": report["raw_candidates"],
+        "candidates_by_family": report["candidates_by_family"],
+        "candidates_first_found_by_family": report[
+            "candidates_first_found_by_family"
+        ],
+        "family_overlap": report["family_overlap"],
+        "uplift_minimum": report["uplift_minimum"],
+        "uplift_maximum": report["uplift_maximum"],
+        "uplift_spread": report["uplift_spread"],
+        "widest_slack_band": report["widest_slack_band"],
+        "slack_band_covers_uplift_spread": report[
+            "slack_band_covers_uplift_spread"
+        ],
+        "generation_requests": report["requests"],
         "exact_versus_linear": _rank_comparison(results, exact_order, linear_rank),
+        "convergence": convergence_report(
+            scored,
+            stages=tuple(
+                stage
+                for stage in DEFAULT_CONVERGENCE_STAGES
+                if stage <= len(scored)
+            )
+            or (len(scored),),
+        ),
     }
     return exact_order, diagnostics
 
