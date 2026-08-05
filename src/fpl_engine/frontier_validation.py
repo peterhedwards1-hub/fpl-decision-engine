@@ -363,7 +363,19 @@ def compare_search_strategies(
         scale=mixed_scale,
     )
     raw_pool, diagnostics = generate_pool(
-        candidates, rules, budget_tenths=budget_tenths, requests=requests
+        candidates,
+        rules,
+        budget_tenths=budget_tenths,
+        requests=requests,
+        # The two older searches have already been run; seeding their squads
+        # makes "the mixed pool contains everything the old search found" true
+        # by construction rather than by luck, and costs nothing because they
+        # are computed either way.
+        seed_candidates=tuple(
+            (entry.squad_ids, f"reproduced_{name}")
+            for name in ("legacy_8", "frontier_40")
+            for entry in pools[name]
+        ),
     )
     mixed = rescore_pool(raw_pool, candidates, rules)
     pools["mixed"] = mixed

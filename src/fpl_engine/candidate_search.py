@@ -177,6 +177,7 @@ def declared_requests(
     incumbent_winner: frozenset[str] = frozenset(),
     linear_leaders: tuple[frozenset[str], ...] = (),
     scale: float = 1.0,
+    minimum_exclusion_candidates: int = 8,
 ) -> list[GenerationRequest]:
     """Every declared generation route, in the order the search runs them.
 
@@ -195,11 +196,18 @@ def declared_requests(
 
     # A. Distinct complete squads. The incumbent behaviour, kept so the new
     # search provably contains everything the old one could find.
+    # ``minimum_exclusion_candidates`` is the backwards-compatibility floor.
+    # Families A and B *are* the old searches, and they are also the cheapest
+    # to run, so they are never scaled below the width the caller asked for.
+    # Without that floor a reduced-scale pool can fail to contain a squad the
+    # incumbent frontier would have found, which is the one thing the new
+    # search must not be able to do.
+    exclusion_count = max(sized(50), minimum_exclusion_candidates)
     requests.append(
         GenerationRequest(
             family="A_complete_squads",
             name="complete_squad_exclusion",
-            count=sized(50),
+            count=exclusion_count,
         )
     )
 
@@ -209,7 +217,7 @@ def declared_requests(
         GenerationRequest(
             family="B_distinct_xis",
             name="distinct_starting_xi",
-            count=sized(50),
+            count=exclusion_count,
             exclude_starting_xis=True,
         )
     )
@@ -469,6 +477,7 @@ def generate_pool(
     budget_tenths: int,
     requests: list[GenerationRequest],
     target_unique: int | None = None,
+    seed_candidates: tuple[tuple[frozenset[str], str], ...] = (),
 ) -> tuple[list[RawCandidate], dict[str, Any]]:
     """Run every declared request, deduplicating by full fifteen as it goes.
 
@@ -480,6 +489,22 @@ def generate_pool(
 
     seen: dict[frozenset[str], RawCandidate] = {}
     order: list[RawCandidate] = []
+    # Squads already produced elsewhere — by a comparison run's reproduction of
+    # an older search, say — enter the pool first, so containment of the old
+    # behaviour is a fact about the pool rather than a hope about the families.
+    for squad_ids, source in seed_candidates:
+        if squad_ids in seen:
+            continue
+        candidate = RawCandidate(
+            squad_ids=squad_ids,
+            first_source=source,
+            first_family="A0_seeded",
+            order=len(order),
+            sources=[source],
+            families={"A0_seeded"},
+        )
+        seen[squad_ids] = candidate
+        order.append(candidate)
     per_request: list[dict[str, Any]] = []
     raw_total = 0
     started = time.monotonic()

@@ -757,6 +757,9 @@ def build_frontier(
         budget_tenths=budget_tenths,
         incumbent_winner=incumbent_winner,
         scale=max(0.02, size / NOMINAL_POOL_AT_FULL_SCALE),
+        # Family A alone must still reproduce a frontier of the requested
+        # width, so the new search cannot return less than the old one would.
+        minimum_exclusion_candidates=size,
     )
     if required_player_ids:
         requests = [
