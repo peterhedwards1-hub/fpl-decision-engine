@@ -37,6 +37,9 @@ from fpl_engine.optimisation import (
     optimise_opening_squads,
     optimise_starting_xi,
 )
+from fpl_engine.preseason_final import (
+    load_final_validation,
+)
 from fpl_engine.preseason_strength import (
     load_preseason_validation,
     preseason_model_is_validated,
@@ -1214,6 +1217,301 @@ def _preseason_decision(season_code: str, gameweek_number: int) -> None:
     if warnings:
         with st.expander("Warnings and exclusions"):
             for warning in warnings:
+                st.write(f"- {warning}")
+
+    _preseason_finalisation(season_code)
+
+
+def _preseason_finalisation(season_code: str) -> None:
+    """The finalised squad: promoted priors, goalkeeper pairs and the frontier.
+
+    Reads the written artifact for the same reason the section above does. A
+    finalisation solves dozens of mixed-integer programs and replays four
+    historical seasons; a page render is the wrong place for it.
+    """
+
+    st.divider()
+    st.subheader("Finalised preseason squad")
+    final = load_final_validation(season_code)
+    if final is None:
+        st.info(
+            "No finalisation has been run for "
+            f"{season_code}. The section above reflects the team-strength "
+            "decision only: promoted clubs still share one prior, goalkeepers "
+            "are still valued singly, and the squad search is eight candidates "
+            "wide."
+        )
+        st.code(
+            f"fpl-history finalise-preseason-squad {season_code} "
+            "--horizon 8 --frontier-size 40",
+            language="bash",
+        )
+        return
+
+    squad = final.get("final_squad") or {}
+    priors = final.get("promoted_team_priors") or {}
+    frontier = final.get("frontier") or {}
+    provenance = (final.get("data_coverage") or {}).get(
+        "snapshot_provenance"
+    ) or {}
+
+    if not provenance.get("official_direct_capture", True):
+        st.warning(provenance.get("warning") or "")
+
+    columns = st.columns(4)
+    columns[0].metric("Cost", f"£{squad.get('total_cost_tenths', 0) / 10:.1f}m")
+    columns[1].metric("Bank", f"£{squad.get('bank_tenths', 0) / 10:.1f}m")
+    columns[2].metric("Exact GW1–8 value", squad.get("decision_value"))
+    columns[3].metric("GW1 expected", squad.get("gameweek_expected_points"))
+    st.caption(
+        f"Projection run {squad.get('projection_run_id')} under "
+        f"`{squad.get('model_version')}` · generated "
+        f"{final.get('generated_at')} · {final.get('status')}"
+    )
+
+    players = squad.get("players") or []
+    stability = (final.get("selection_stability") or {})
+    classification = {}
+    for level in ("robust", "moderate", "model_sensitive"):
+        for name in stability.get(level) or []:
+            classification[name] = level.replace("_", " ")
+    if players:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "player": player["web_name"],
+                        "club": player["team"],
+                        "pos": player["position"],
+                        "price": player["price_tenths"] / 10,
+                        "GW1-8 xP": player["horizon_expected_points"],
+                        "role": (
+                            "XI"
+                            if player["starts_gameweek"]
+                            else f"bench {player['bench_rank']}"
+                        )
+                        + (" (C)" if player["captain"] else "")
+                        + (" (V)" if player["vice_captain"] else ""),
+                        "stability": classification.get(
+                            player["web_name"], "not tested"
+                        ),
+                    }
+                    for player in players
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+    gate = (priors.get("validation") or {}).get("gate") or {}
+    st.markdown("#### Promoted-club priors")
+    st.write(
+        f"Gate **{'passed' if gate.get('passed') else 'failed'}** — using the "
+        f"**{priors.get('selected_mode')}** prior"
+        + (
+            f" at weight {priors.get('selected_weight')}."
+            if priors.get("selected_mode") == "championship_relative"
+            else "."
+        )
+    )
+    st.caption((priors.get("validation") or {}).get("rationale", ""))
+    clubs = (priors.get("live") or {}).get("clubs") or []
+    if clubs:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "club": club["fpl_name"],
+                        "Championship attack relative": club["attack_relative"],
+                        "Championship defence relative": club["defence_relative"],
+                        "attack multiplier": club["attack_multiplier"],
+                        "defence multiplier": club["defence_multiplier"],
+                        "matched": club["matched"],
+                    }
+                    for club in clubs
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+    roles = final.get("promoted_player_roles") or {}
+    st.markdown("#### Promoted-player role evidence")
+    st.write(
+        f"Treatment: **{roles.get('treatment', 'none')}** · coverage "
+        f"{(roles.get('coverage') or {}).get('coverage')} of "
+        f"{roles.get('eligible_promoted_candidates', 0)} eligible promoted "
+        "players."
+    )
+    st.caption((roles.get("coverage") or {}).get("verdict", ""))
+
+    pair = final.get("goalkeeper_pair") or {}
+    orientations = pair.get("orientations") or []
+    if orientations:
+        st.markdown("#### Goalkeeper pair")
+        effect = pair.get("effect_on_this_run") or {}
+        st.write(
+            "Pair "
+            + " and ".join(
+                entry["web_name"] for entry in pair.get("selected_pair") or []
+            )
+            + f" · substitution protection worth "
+            f"{effect.get('total_substitution_protection_points')} points over "
+            "the horizon."
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "GW": entry["gameweek_number"],
+                        "nominated": entry["starter"],
+                        "pair value": entry["pair_value"],
+                        "other orientation": entry[
+                            "alternative_orientation_value"
+                        ],
+                        "protection": entry["uplift_over_starter_alone"],
+                    }
+                    for entry in orientations
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(effect.get("note", ""))
+
+    comparison = frontier.get("exact_versus_linear") or {}
+    st.markdown("#### Candidate frontier")
+    st.write(
+        f"{frontier.get('produced')} distinct complete squads of "
+        f"{frontier.get('requested')} requested, ranked with "
+        f"{frontier.get('ranking_pool_size')} squads in total; exact rescoring "
+        f"{'reorders' if comparison.get('changes_the_order') else 'preserves'} "
+        "the solver's ranking and "
+        f"{'changes' if comparison.get('changes_the_winner') else 'keeps'} "
+        f"the winner. Runtime {frontier.get('runtime_seconds')}s."
+    )
+
+    bank = final.get("bank_frontier") or {}
+    entries = [entry for entry in bank.get("entries") or [] if entry.get("feasible")]
+    if entries:
+        st.markdown("#### Bank frontier")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "minimum bank": entry["minimum_bank_tenths"] / 10,
+                        "exact GW1-8 value": entry["exact_horizon_value"],
+                        "cost": entry["total_cost_tenths"] / 10,
+                        "bank": entry["bank_tenths"] / 10,
+                        "changes": entry["changes_from_unrestricted"]["changes"],
+                        "value sacrificed": entry["value_sacrificed"],
+                        "flexibility-equivalent": entry["flexibility_equivalent"],
+                    }
+                    for entry in entries
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(bank.get("policy", ""))
+
+    counterfactuals = final.get("arsenal_counterfactuals") or {}
+    forced = [
+        entry for entry in counterfactuals.get("forced") or [] if entry.get("feasible")
+    ]
+    if forced:
+        st.markdown("#### Arsenal defender counterfactuals")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "defender": entry["web_name"],
+                        "price": entry["price_tenths"] / 10,
+                        "mean appearance": entry["mean_appearance"],
+                        "GW1 xP": entry["gameweek_1_xp"],
+                        "GW1-8 xP": entry["horizon_xp"],
+                        "forced squad value": entry["exact_horizon_value"],
+                        "value gap": entry["value_gap"],
+                        "squad changes": entry["displacement"]["changes"],
+                    }
+                    for entry in forced
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        conclusion = counterfactuals.get("conclusion") or {}
+        st.caption(
+            f"Verdict: {conclusion.get('conclusion')} — "
+            + str(conclusion.get("detail") or conclusion.get("note", ""))
+        )
+
+    concentration = final.get("concentration_tests") or {}
+    runs = [run for run in concentration.get("runs") or [] if not run.get("skipped")]
+    if runs:
+        st.markdown("#### Concentration tests")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "test": run["name"],
+                        "exact value": run["exact_horizon_value"],
+                        "squad changes": run["changes_from_baseline"]["changes"],
+                        **{
+                            claim.replace("_", " "): survived
+                            for claim, survived in run[
+                                "claims_that_survive"
+                            ].items()
+                        },
+                    }
+                    for run in runs
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(concentration.get("baseline_note", ""))
+    skipped = [run for run in concentration.get("runs") or [] if run.get("skipped")]
+    for run in skipped:
+        st.caption(
+            f"{run['name']}: not run — "
+            + str(run.get("reason") or run.get("description"))
+        )
+
+    alternatives = final.get("alternatives") or []
+    if alternatives:
+        st.markdown("#### Meaningful alternatives")
+        for alternative in alternatives:
+            with st.expander(
+                f"{alternative['label']} — {alternative['exact_value_gap']} "
+                "points behind, "
+                f"{alternative['changes_from_primary']['changes']} changes"
+            ):
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "player": player["web_name"],
+                                "club": player["team"],
+                                "pos": player["position"],
+                                "price": player["price_tenths"] / 10,
+                                "role": (
+                                    "XI"
+                                    if player["starts_gameweek"]
+                                    else f"bench {player['bench_rank']}"
+                                ),
+                            }
+                            for player in alternative.get("players", [])
+                        ]
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
+
+    final_warnings = final.get("warnings") or []
+    if final_warnings:
+        with st.expander("Finalisation warnings and limitations", expanded=True):
+            for warning in final_warnings:
                 st.write(f"- {warning}")
 
 

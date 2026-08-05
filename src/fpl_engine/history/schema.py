@@ -689,6 +689,61 @@ CREATE TABLE IF NOT EXISTS projection_run_modifier_links (
     PRIMARY KEY (projection_run_id, modifier_id)
 );
 
+-- Previous-division goal evidence for newly promoted clubs. Kept apart from
+-- the Premier League tables on purpose: these are Championship results, they
+-- are never joined to a Premier League fixture or player, and they exist only
+-- to vary the declared promoted-club prior around its average.
+CREATE TABLE IF NOT EXISTS championship_seasons (
+    id INTEGER PRIMARY KEY,
+    season_code TEXT NOT NULL UNIQUE,
+    competition TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    matches INTEGER NOT NULL CHECK (matches > 0),
+    source_name TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    source_revision TEXT,
+    source_sha256 TEXT NOT NULL,
+    retrieved_at TEXT NOT NULL,
+    imported_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS championship_team_seasons (
+    championship_season_id INTEGER NOT NULL REFERENCES championship_seasons(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    matches INTEGER NOT NULL CHECK (matches > 0),
+    goals_for INTEGER NOT NULL CHECK (goals_for >= 0),
+    goals_against INTEGER NOT NULL CHECK (goals_against >= 0),
+    PRIMARY KEY (championship_season_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS championship_team_aliases (
+    championship_name TEXT NOT NULL,
+    fpl_name TEXT NOT NULL,
+    PRIMARY KEY (championship_name, fpl_name)
+);
+
+-- Previous-division playing time for players who stayed with a promoted club.
+-- Role evidence only: appearances, starts, minutes and share of team minutes.
+-- There is deliberately no column for goals, assists, clean sheets or fantasy
+-- points, so a Championship scoring rate cannot be imported into a Premier
+-- League scoring projection even by accident.
+CREATE TABLE IF NOT EXISTS championship_player_roles (
+    championship_season_id INTEGER NOT NULL REFERENCES championship_seasons(id) ON DELETE CASCADE,
+    club_name TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    official_fpl_code TEXT,
+    appearances INTEGER NOT NULL CHECK (appearances >= 0),
+    starts INTEGER NOT NULL CHECK (starts >= 0),
+    substitute_appearances INTEGER NOT NULL CHECK (substitute_appearances >= 0),
+    minutes INTEGER NOT NULL CHECK (minutes >= 0),
+    team_matches INTEGER NOT NULL CHECK (team_matches > 0),
+    source_url TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    imported_at TEXT NOT NULL,
+    PRIMARY KEY (championship_season_id, club_name, player_name),
+    CHECK (starts + substitute_appearances = appearances)
+);
+
 CREATE TABLE IF NOT EXISTS research_projection_runs (
     revised_projection_run_id INTEGER PRIMARY KEY REFERENCES projection_runs(id) ON DELETE CASCADE,
     baseline_projection_run_id INTEGER NOT NULL REFERENCES projection_runs(id),

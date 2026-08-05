@@ -47,6 +47,9 @@ Implemented:
 - shared-outcome Monte Carlo squad simulation and constrained OOF ensembles;
 - continuous transfer replay, empirical free-transfer option value and automatic chip timing;
 - immutable forward-candidate registration and executable two-tier promotion gates;
+- Championship-goal differentiated promoted-club priors behind a leave-one-transition-out gate;
+- exact goalkeeper-pair valuation inside the squad optimisation, with no double counting;
+- a forty-squad exact opening-squad frontier with bank levels and forced-inclusion counterfactuals;
 - automated tests and GitHub Actions CI.
 
 Schema version 15 includes the hardened identity and observation foundation, fixture-state
@@ -137,6 +140,23 @@ usable historical season transition, applies a declared six-part decision gate, 
 the gate passes — generates the live GW1 projection and revised squad from the winner. It is
 a preseason-only production choice; in-season decisions keep the incumbent. See
 [the preseason team-strength record](docs/15_PreseasonTeamStrength.md).
+
+Carry-forward still leaves four things unresolved before an opening squad can be committed:
+every promoted club shares one prior, players promoted with their club have no record at all,
+goalkeepers are valued one at a time when only a pair can be owned, and the squad search is
+eight candidates wide. Finalise with:
+
+```powershell
+fpl-history --database data/fpl.sqlite3 import-championship
+fpl-history --database data/fpl.sqlite3 finalise-preseason-squad 2026-27 `
+  --horizon 8 --frontier-size 40
+```
+
+This varies the promoted-club prior by previous-division goals behind a leave-one-transition-out
+gate, audits promoted-player role coverage, values goalkeepers as an exactly enumerated pair
+inside the squad solve, enumerates forty distinct complete legal squads with a bank frontier and
+forced-inclusion counterfactuals, rescores every one exactly, and writes the provisional squad.
+See [the finalisation record](docs/16_PreseasonFinalisation.md).
 
 For the shortest auditable pre-season check, run:
 

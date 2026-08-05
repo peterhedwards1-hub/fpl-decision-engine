@@ -1,0 +1,3440 @@
+{
+  "alternatives": [
+    {
+      "bank_tenths": 0,
+      "bench_player_ids": [
+        "273",
+        "289",
+        "305",
+        "61"
+      ],
+      "captain_id": "411",
+      "changes_from_primary": {
+        "changes": 6,
+        "cost_change_tenths": 0,
+        "exact_value_change": -0.454,
+        "in": [
+          {
+            "horizon_xp": 18.266,
+            "position": "GK",
+            "price_tenths": 40,
+            "source_player_id": "273",
+            "team": "HUL",
+            "web_name": "Phillips"
+          },
+          {
+            "horizon_xp": 16.301,
+            "position": "MID",
+            "price_tenths": 45,
+            "source_player_id": "289",
+            "team": "HUL",
+            "web_name": "Crooks"
+          },
+          {
+            "horizon_xp": 19.641,
+            "position": "DEF",
+            "price_tenths": 40,
+            "source_player_id": "304",
+            "team": "IPS",
+            "web_name": "O'Shea"
+          },
+          {
+            "horizon_xp": 18.518,
+            "position": "DEF",
+            "price_tenths": 40,
+            "source_player_id": "305",
+            "team": "IPS",
+            "web_name": "Davis"
+          },
+          {
+            "horizon_xp": 43.027,
+            "position": "MID",
+            "price_tenths": 120,
+            "source_player_id": "426",
+            "team": "MUN",
+            "web_name": "B.Fernandes"
+          },
+          {
+            "horizon_xp": 26.477,
+            "position": "DEF",
+            "price_tenths": 50,
+            "source_player_id": "445",
+            "team": "NEW",
+            "web_name": "Thiaw"
+          }
+        ],
+        "out": [
+          {
+            "horizon_xp": 23.363,
+            "position": "DEF",
+            "price_tenths": 45,
+            "source_player_id": "233",
+            "team": "EVE",
+            "web_name": "Mykolenko"
+          },
+          {
+            "horizon_xp": 17.238,
+            "position": "MID",
+            "price_tenths": 45,
+            "source_player_id": "288",
+            "team": "HUL",
+            "web_name": "Dowell"
+          },
+          {
+            "horizon_xp": 26.348,
+            "position": "GK",
+            "price_tenths": 40,
+            "source_player_id": "301",
+            "team": "IPS",
+            "web_name": "Palmer"
+          },
+          {
+            "horizon_xp": 31.908,
+            "position": "MID",
+            "price_tenths": 70,
+            "source_player_id": "367",
+            "team": "LIV",
+            "web_name": "Gakpo"
+          },
+          {
+            "horizon_xp": 28.729,
+            "position": "DEF",
+            "price_tenths": 80,
+            "source_player_id": "4",
+            "team": "ARS",
+            "web_name": "Gabriel"
+          },
+          {
+            "horizon_xp": 27.004,
+            "position": "DEF",
+            "price_tenths": 55,
+            "source_player_id": "533",
+            "team": "SUN",
+            "web_name": "Mukiele"
+          }
+        ]
+      },
+      "decision_value": 449.041,
+      "exact_value_gap": 0.454,
+      "gameweek_expected_points": 54.941,
+      "gameweek_plans": [
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "305",
+            "61"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 1,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "O'Shea",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "304",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 2,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 3,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "55"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "305",
+            "254"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 4,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "O'Shea",
+            "Rayan",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "304",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "55"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 5,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 6,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "305",
+            "304"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 7,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "289",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 8,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        }
+      ],
+      "goalkeeper_orientations": [
+        {
+          "alternative_orientation_value": 3.413,
+          "gameweek_number": 1,
+          "pair_value": 4.084,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.631,
+          "gameweek_number": 2,
+          "pair_value": 4.104,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.795,
+          "gameweek_number": 3,
+          "pair_value": 4.588,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.102,
+          "gameweek_number": 4,
+          "pair_value": 3.481,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.297,
+          "gameweek_number": 5,
+          "pair_value": 3.804,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.829,
+          "gameweek_number": 6,
+          "pair_value": 4.114,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.656,
+          "gameweek_number": 7,
+          "pair_value": 4.565,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.669,
+          "gameweek_number": 8,
+          "pair_value": 4.114,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        }
+      ],
+      "goalkeeper_pair": [
+        {
+          "price_tenths": 45,
+          "source_player_id": "250",
+          "standalone_horizon_xp": 32.854,
+          "team": "FUL",
+          "web_name": "Leno"
+        },
+        {
+          "price_tenths": 40,
+          "source_player_id": "273",
+          "standalone_horizon_xp": 18.266,
+          "team": "HUL",
+          "web_name": "Phillips"
+        }
+      ],
+      "goalkeeper_pair_value": 32.854,
+      "horizon_expected_bench_contribution": 10.787,
+      "horizon_expected_points": 449.041,
+      "label": "alternative_1",
+      "lineup_expected_points": 428.097,
+      "players": [
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.076,
+          "horizon_expected_points": 19.641,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 40,
+          "source_player_id": "304",
+          "starts_gameweek": true,
+          "team": "IPS",
+          "vice_captain": false,
+          "web_name": "O'Shea"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.072,
+          "horizon_expected_points": 24.587,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 45,
+          "source_player_id": "254",
+          "starts_gameweek": true,
+          "team": "FUL",
+          "vice_captain": false,
+          "web_name": "Robinson"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.222,
+          "horizon_expected_points": 26.477,
+          "mean_appearance": 0.8857,
+          "position": "DEF",
+          "price_tenths": 50,
+          "source_player_id": "445",
+          "starts_gameweek": true,
+          "team": "NEW",
+          "vice_captain": false,
+          "web_name": "Thiaw"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.299,
+          "horizon_expected_points": 30.633,
+          "mean_appearance": 1.0,
+          "position": "FWD",
+          "price_tenths": 60,
+          "source_player_id": "79",
+          "starts_gameweek": true,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Evanilson"
+        },
+        {
+          "bench_rank": null,
+          "captain": true,
+          "gameweek_expected_points": 6.315,
+          "horizon_expected_points": 47.552,
+          "mean_appearance": 0.7655,
+          "position": "FWD",
+          "price_tenths": 155,
+          "source_player_id": "411",
+          "starts_gameweek": true,
+          "team": "MCI",
+          "vice_captain": false,
+          "web_name": "Haaland"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.347,
+          "horizon_expected_points": 37.21,
+          "mean_appearance": 1.0,
+          "position": "FWD",
+          "price_tenths": 80,
+          "source_player_id": "55",
+          "starts_gameweek": true,
+          "team": "AVL",
+          "vice_captain": false,
+          "web_name": "Watkins"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.084,
+          "horizon_expected_points": 32.854,
+          "mean_appearance": 1.0,
+          "position": "GK",
+          "price_tenths": 45,
+          "source_player_id": "250",
+          "starts_gameweek": true,
+          "team": "FUL",
+          "vice_captain": false,
+          "web_name": "Leno"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 5.48,
+          "horizon_expected_points": 43.027,
+          "mean_appearance": 0.9991,
+          "position": "MID",
+          "price_tenths": 120,
+          "source_player_id": "426",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": true,
+          "web_name": "B.Fernandes"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.542,
+          "horizon_expected_points": 35.668,
+          "mean_appearance": 0.8975,
+          "position": "MID",
+          "price_tenths": 80,
+          "source_player_id": "428",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": false,
+          "web_name": "Cunha"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.915,
+          "horizon_expected_points": 38.588,
+          "mean_appearance": 0.9447,
+          "position": "MID",
+          "price_tenths": 80,
+          "source_player_id": "427",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": false,
+          "web_name": "Mbeumo"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.497,
+          "horizon_expected_points": 33.74,
+          "mean_appearance": 1.0,
+          "position": "MID",
+          "price_tenths": 65,
+          "source_player_id": "67",
+          "starts_gameweek": true,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Rayan"
+        },
+        {
+          "bench_rank": 1,
+          "captain": false,
+          "gameweek_expected_points": 2.154,
+          "horizon_expected_points": 18.266,
+          "mean_appearance": 0.6918,
+          "position": "GK",
+          "price_tenths": 40,
+          "source_player_id": "273",
+          "starts_gameweek": false,
+          "team": "HUL",
+          "vice_captain": false,
+          "web_name": "Phillips"
+        },
+        {
+          "bench_rank": 2,
+          "captain": false,
+          "gameweek_expected_points": 2.075,
+          "horizon_expected_points": 16.301,
+          "mean_appearance": 0.6918,
+          "position": "MID",
+          "price_tenths": 45,
+          "source_player_id": "289",
+          "starts_gameweek": false,
+          "team": "HUL",
+          "vice_captain": false,
+          "web_name": "Crooks"
+        },
+        {
+          "bench_rank": 3,
+          "captain": false,
+          "gameweek_expected_points": 2.868,
+          "horizon_expected_points": 18.518,
+          "mean_appearance": 0.9804,
+          "position": "DEF",
+          "price_tenths": 40,
+          "source_player_id": "305",
+          "starts_gameweek": false,
+          "team": "IPS",
+          "vice_captain": false,
+          "web_name": "Davis"
+        },
+        {
+          "bench_rank": 4,
+          "captain": false,
+          "gameweek_expected_points": 2.83,
+          "horizon_expected_points": 29.789,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 55,
+          "source_player_id": "61",
+          "starts_gameweek": false,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Truffert"
+        }
+      ],
+      "proof": "CBC returned Optimal for the projected multi-Gameweek legal-XI and captain objective plus any declared terminal values, then again with that objective pinned while reserve quality across the full horizon was maximised, and a third time for a deterministic tie-break; each Gameweek's bench order and captain/vice pair were then chosen by exact enumeration. The reported horizon value exactly integrates independent player appearance outcomes with legal autosubs and captain fallback for the selected squad. The squad is proven optimal for the linear objective; exact autosub optimality is established only among the opening-squad candidate frontier that is explicitly compared. Goalkeepers entered that objective once, as an exactly valued pair with its best weekly orientation, and are absent from the starter, captain and bench-quality terms.",
+      "solver_objective": 429.962,
+      "starting_player_ids": [
+        "250",
+        "254",
+        "304",
+        "411",
+        "426",
+        "427",
+        "428",
+        "445",
+        "55",
+        "67",
+        "79"
+      ],
+      "team_counts": {
+        "AVL": 1,
+        "BOU": 3,
+        "FUL": 2,
+        "HUL": 2,
+        "IPS": 2,
+        "MCI": 1,
+        "MUN": 3,
+        "NEW": 1
+      },
+      "total_cost_tenths": 1000,
+      "vice_captain_id": "426"
+    },
+    {
+      "bank_tenths": 0,
+      "bench_player_ids": [
+        "273",
+        "290",
+        "305",
+        "61"
+      ],
+      "captain_id": "411",
+      "changes_from_primary": {
+        "changes": 6,
+        "cost_change_tenths": 0,
+        "exact_value_change": -0.454,
+        "in": [
+          {
+            "horizon_xp": 18.266,
+            "position": "GK",
+            "price_tenths": 40,
+            "source_player_id": "273",
+            "team": "HUL",
+            "web_name": "Phillips"
+          },
+          {
+            "horizon_xp": 16.301,
+            "position": "MID",
+            "price_tenths": 45,
+            "source_player_id": "290",
+            "team": "HUL",
+            "web_name": "Slater"
+          },
+          {
+            "horizon_xp": 19.641,
+            "position": "DEF",
+            "price_tenths": 40,
+            "source_player_id": "304",
+            "team": "IPS",
+            "web_name": "O'Shea"
+          },
+          {
+            "horizon_xp": 18.518,
+            "position": "DEF",
+            "price_tenths": 40,
+            "source_player_id": "305",
+            "team": "IPS",
+            "web_name": "Davis"
+          },
+          {
+            "horizon_xp": 43.027,
+            "position": "MID",
+            "price_tenths": 120,
+            "source_player_id": "426",
+            "team": "MUN",
+            "web_name": "B.Fernandes"
+          },
+          {
+            "horizon_xp": 26.477,
+            "position": "DEF",
+            "price_tenths": 50,
+            "source_player_id": "445",
+            "team": "NEW",
+            "web_name": "Thiaw"
+          }
+        ],
+        "out": [
+          {
+            "horizon_xp": 23.363,
+            "position": "DEF",
+            "price_tenths": 45,
+            "source_player_id": "233",
+            "team": "EVE",
+            "web_name": "Mykolenko"
+          },
+          {
+            "horizon_xp": 17.238,
+            "position": "MID",
+            "price_tenths": 45,
+            "source_player_id": "288",
+            "team": "HUL",
+            "web_name": "Dowell"
+          },
+          {
+            "horizon_xp": 26.348,
+            "position": "GK",
+            "price_tenths": 40,
+            "source_player_id": "301",
+            "team": "IPS",
+            "web_name": "Palmer"
+          },
+          {
+            "horizon_xp": 31.908,
+            "position": "MID",
+            "price_tenths": 70,
+            "source_player_id": "367",
+            "team": "LIV",
+            "web_name": "Gakpo"
+          },
+          {
+            "horizon_xp": 28.729,
+            "position": "DEF",
+            "price_tenths": 80,
+            "source_player_id": "4",
+            "team": "ARS",
+            "web_name": "Gabriel"
+          },
+          {
+            "horizon_xp": 27.004,
+            "position": "DEF",
+            "price_tenths": 55,
+            "source_player_id": "533",
+            "team": "SUN",
+            "web_name": "Mukiele"
+          }
+        ]
+      },
+      "decision_value": 449.041,
+      "exact_value_gap": 0.454,
+      "gameweek_expected_points": 54.941,
+      "gameweek_plans": [
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "305",
+            "61"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 1,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "O'Shea",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "304",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 2,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 3,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "55"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "305",
+            "254"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 4,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "O'Shea",
+            "Rayan",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "304",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "55"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 5,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 6,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "305",
+            "304"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 7,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "290",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 8,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        }
+      ],
+      "goalkeeper_orientations": [
+        {
+          "alternative_orientation_value": 3.413,
+          "gameweek_number": 1,
+          "pair_value": 4.084,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.631,
+          "gameweek_number": 2,
+          "pair_value": 4.104,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.795,
+          "gameweek_number": 3,
+          "pair_value": 4.588,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.102,
+          "gameweek_number": 4,
+          "pair_value": 3.481,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.297,
+          "gameweek_number": 5,
+          "pair_value": 3.804,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.829,
+          "gameweek_number": 6,
+          "pair_value": 4.114,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.656,
+          "gameweek_number": 7,
+          "pair_value": 4.565,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.669,
+          "gameweek_number": 8,
+          "pair_value": 4.114,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        }
+      ],
+      "goalkeeper_pair": [
+        {
+          "price_tenths": 45,
+          "source_player_id": "250",
+          "standalone_horizon_xp": 32.854,
+          "team": "FUL",
+          "web_name": "Leno"
+        },
+        {
+          "price_tenths": 40,
+          "source_player_id": "273",
+          "standalone_horizon_xp": 18.266,
+          "team": "HUL",
+          "web_name": "Phillips"
+        }
+      ],
+      "goalkeeper_pair_value": 32.854,
+      "horizon_expected_bench_contribution": 10.787,
+      "horizon_expected_points": 449.041,
+      "label": "alternative_2",
+      "lineup_expected_points": 428.097,
+      "players": [
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.076,
+          "horizon_expected_points": 19.641,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 40,
+          "source_player_id": "304",
+          "starts_gameweek": true,
+          "team": "IPS",
+          "vice_captain": false,
+          "web_name": "O'Shea"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.072,
+          "horizon_expected_points": 24.587,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 45,
+          "source_player_id": "254",
+          "starts_gameweek": true,
+          "team": "FUL",
+          "vice_captain": false,
+          "web_name": "Robinson"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.222,
+          "horizon_expected_points": 26.477,
+          "mean_appearance": 0.8857,
+          "position": "DEF",
+          "price_tenths": 50,
+          "source_player_id": "445",
+          "starts_gameweek": true,
+          "team": "NEW",
+          "vice_captain": false,
+          "web_name": "Thiaw"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.299,
+          "horizon_expected_points": 30.633,
+          "mean_appearance": 1.0,
+          "position": "FWD",
+          "price_tenths": 60,
+          "source_player_id": "79",
+          "starts_gameweek": true,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Evanilson"
+        },
+        {
+          "bench_rank": null,
+          "captain": true,
+          "gameweek_expected_points": 6.315,
+          "horizon_expected_points": 47.552,
+          "mean_appearance": 0.7655,
+          "position": "FWD",
+          "price_tenths": 155,
+          "source_player_id": "411",
+          "starts_gameweek": true,
+          "team": "MCI",
+          "vice_captain": false,
+          "web_name": "Haaland"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.347,
+          "horizon_expected_points": 37.21,
+          "mean_appearance": 1.0,
+          "position": "FWD",
+          "price_tenths": 80,
+          "source_player_id": "55",
+          "starts_gameweek": true,
+          "team": "AVL",
+          "vice_captain": false,
+          "web_name": "Watkins"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.084,
+          "horizon_expected_points": 32.854,
+          "mean_appearance": 1.0,
+          "position": "GK",
+          "price_tenths": 45,
+          "source_player_id": "250",
+          "starts_gameweek": true,
+          "team": "FUL",
+          "vice_captain": false,
+          "web_name": "Leno"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 5.48,
+          "horizon_expected_points": 43.027,
+          "mean_appearance": 0.9991,
+          "position": "MID",
+          "price_tenths": 120,
+          "source_player_id": "426",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": true,
+          "web_name": "B.Fernandes"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.542,
+          "horizon_expected_points": 35.668,
+          "mean_appearance": 0.8975,
+          "position": "MID",
+          "price_tenths": 80,
+          "source_player_id": "428",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": false,
+          "web_name": "Cunha"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.915,
+          "horizon_expected_points": 38.588,
+          "mean_appearance": 0.9447,
+          "position": "MID",
+          "price_tenths": 80,
+          "source_player_id": "427",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": false,
+          "web_name": "Mbeumo"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.497,
+          "horizon_expected_points": 33.74,
+          "mean_appearance": 1.0,
+          "position": "MID",
+          "price_tenths": 65,
+          "source_player_id": "67",
+          "starts_gameweek": true,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Rayan"
+        },
+        {
+          "bench_rank": 1,
+          "captain": false,
+          "gameweek_expected_points": 2.154,
+          "horizon_expected_points": 18.266,
+          "mean_appearance": 0.6918,
+          "position": "GK",
+          "price_tenths": 40,
+          "source_player_id": "273",
+          "starts_gameweek": false,
+          "team": "HUL",
+          "vice_captain": false,
+          "web_name": "Phillips"
+        },
+        {
+          "bench_rank": 2,
+          "captain": false,
+          "gameweek_expected_points": 2.075,
+          "horizon_expected_points": 16.301,
+          "mean_appearance": 0.6918,
+          "position": "MID",
+          "price_tenths": 45,
+          "source_player_id": "290",
+          "starts_gameweek": false,
+          "team": "HUL",
+          "vice_captain": false,
+          "web_name": "Slater"
+        },
+        {
+          "bench_rank": 3,
+          "captain": false,
+          "gameweek_expected_points": 2.868,
+          "horizon_expected_points": 18.518,
+          "mean_appearance": 0.9804,
+          "position": "DEF",
+          "price_tenths": 40,
+          "source_player_id": "305",
+          "starts_gameweek": false,
+          "team": "IPS",
+          "vice_captain": false,
+          "web_name": "Davis"
+        },
+        {
+          "bench_rank": 4,
+          "captain": false,
+          "gameweek_expected_points": 2.83,
+          "horizon_expected_points": 29.789,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 55,
+          "source_player_id": "61",
+          "starts_gameweek": false,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Truffert"
+        }
+      ],
+      "proof": "CBC returned Optimal for the projected multi-Gameweek legal-XI and captain objective plus any declared terminal values, then again with that objective pinned while reserve quality across the full horizon was maximised, and a third time for a deterministic tie-break; each Gameweek's bench order and captain/vice pair were then chosen by exact enumeration. The reported horizon value exactly integrates independent player appearance outcomes with legal autosubs and captain fallback for the selected squad. The squad is proven optimal for the linear objective; exact autosub optimality is established only among the opening-squad candidate frontier that is explicitly compared. Goalkeepers entered that objective once, as an exactly valued pair with its best weekly orientation, and are absent from the starter, captain and bench-quality terms.",
+      "solver_objective": 429.962,
+      "starting_player_ids": [
+        "250",
+        "254",
+        "304",
+        "411",
+        "426",
+        "427",
+        "428",
+        "445",
+        "55",
+        "67",
+        "79"
+      ],
+      "team_counts": {
+        "AVL": 1,
+        "BOU": 3,
+        "FUL": 2,
+        "HUL": 2,
+        "IPS": 2,
+        "MCI": 1,
+        "MUN": 3,
+        "NEW": 1
+      },
+      "total_cost_tenths": 1000,
+      "vice_captain_id": "426"
+    },
+    {
+      "bank_tenths": 0,
+      "bench_player_ids": [
+        "273",
+        "294",
+        "305",
+        "61"
+      ],
+      "captain_id": "411",
+      "changes_from_primary": {
+        "changes": 6,
+        "cost_change_tenths": 0,
+        "exact_value_change": -0.454,
+        "in": [
+          {
+            "horizon_xp": 18.266,
+            "position": "GK",
+            "price_tenths": 40,
+            "source_player_id": "273",
+            "team": "HUL",
+            "web_name": "Phillips"
+          },
+          {
+            "horizon_xp": 16.301,
+            "position": "MID",
+            "price_tenths": 45,
+            "source_player_id": "294",
+            "team": "HUL",
+            "web_name": "Zambrano"
+          },
+          {
+            "horizon_xp": 19.641,
+            "position": "DEF",
+            "price_tenths": 40,
+            "source_player_id": "304",
+            "team": "IPS",
+            "web_name": "O'Shea"
+          },
+          {
+            "horizon_xp": 18.518,
+            "position": "DEF",
+            "price_tenths": 40,
+            "source_player_id": "305",
+            "team": "IPS",
+            "web_name": "Davis"
+          },
+          {
+            "horizon_xp": 43.027,
+            "position": "MID",
+            "price_tenths": 120,
+            "source_player_id": "426",
+            "team": "MUN",
+            "web_name": "B.Fernandes"
+          },
+          {
+            "horizon_xp": 26.477,
+            "position": "DEF",
+            "price_tenths": 50,
+            "source_player_id": "445",
+            "team": "NEW",
+            "web_name": "Thiaw"
+          }
+        ],
+        "out": [
+          {
+            "horizon_xp": 23.363,
+            "position": "DEF",
+            "price_tenths": 45,
+            "source_player_id": "233",
+            "team": "EVE",
+            "web_name": "Mykolenko"
+          },
+          {
+            "horizon_xp": 17.238,
+            "position": "MID",
+            "price_tenths": 45,
+            "source_player_id": "288",
+            "team": "HUL",
+            "web_name": "Dowell"
+          },
+          {
+            "horizon_xp": 26.348,
+            "position": "GK",
+            "price_tenths": 40,
+            "source_player_id": "301",
+            "team": "IPS",
+            "web_name": "Palmer"
+          },
+          {
+            "horizon_xp": 31.908,
+            "position": "MID",
+            "price_tenths": 70,
+            "source_player_id": "367",
+            "team": "LIV",
+            "web_name": "Gakpo"
+          },
+          {
+            "horizon_xp": 28.729,
+            "position": "DEF",
+            "price_tenths": 80,
+            "source_player_id": "4",
+            "team": "ARS",
+            "web_name": "Gabriel"
+          },
+          {
+            "horizon_xp": 27.004,
+            "position": "DEF",
+            "price_tenths": 55,
+            "source_player_id": "533",
+            "team": "SUN",
+            "web_name": "Mukiele"
+          }
+        ]
+      },
+      "decision_value": 449.041,
+      "exact_value_gap": 0.454,
+      "gameweek_expected_points": 54.941,
+      "gameweek_plans": [
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "305",
+            "61"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 1,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "O'Shea",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "304",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 2,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 3,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "55"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "305",
+            "254"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 4,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "O'Shea",
+            "Rayan",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "304",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "55"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 5,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 6,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "305",
+            "304"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 7,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        },
+        {
+          "bench_player_ids": [
+            "273",
+            "294",
+            "304",
+            "305"
+          ],
+          "captain_id": "411",
+          "gameweek_number": 8,
+          "starting_names": [
+            "B.Fernandes",
+            "Cunha",
+            "Evanilson",
+            "Haaland",
+            "Leno",
+            "Mbeumo",
+            "Rayan",
+            "Robinson",
+            "Thiaw",
+            "Truffert",
+            "Watkins"
+          ],
+          "starting_player_ids": [
+            "250",
+            "254",
+            "411",
+            "426",
+            "427",
+            "428",
+            "445",
+            "55",
+            "61",
+            "67",
+            "79"
+          ],
+          "vice_captain_id": "426"
+        }
+      ],
+      "goalkeeper_orientations": [
+        {
+          "alternative_orientation_value": 3.413,
+          "gameweek_number": 1,
+          "pair_value": 4.084,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.631,
+          "gameweek_number": 2,
+          "pair_value": 4.104,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.795,
+          "gameweek_number": 3,
+          "pair_value": 4.588,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.102,
+          "gameweek_number": 4,
+          "pair_value": 3.481,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.297,
+          "gameweek_number": 5,
+          "pair_value": 3.804,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.829,
+          "gameweek_number": 6,
+          "pair_value": 4.114,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.656,
+          "gameweek_number": 7,
+          "pair_value": 4.565,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        },
+        {
+          "alternative_orientation_value": 3.669,
+          "gameweek_number": 8,
+          "pair_value": 4.114,
+          "starter": "Leno",
+          "starter_id": "250",
+          "starts_despite_lower_standalone": false,
+          "substitute_id": "273",
+          "uplift_over_starter_alone": 0.0
+        }
+      ],
+      "goalkeeper_pair": [
+        {
+          "price_tenths": 45,
+          "source_player_id": "250",
+          "standalone_horizon_xp": 32.854,
+          "team": "FUL",
+          "web_name": "Leno"
+        },
+        {
+          "price_tenths": 40,
+          "source_player_id": "273",
+          "standalone_horizon_xp": 18.266,
+          "team": "HUL",
+          "web_name": "Phillips"
+        }
+      ],
+      "goalkeeper_pair_value": 32.854,
+      "horizon_expected_bench_contribution": 10.787,
+      "horizon_expected_points": 449.041,
+      "label": "alternative_3",
+      "lineup_expected_points": 428.097,
+      "players": [
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.076,
+          "horizon_expected_points": 19.641,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 40,
+          "source_player_id": "304",
+          "starts_gameweek": true,
+          "team": "IPS",
+          "vice_captain": false,
+          "web_name": "O'Shea"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.072,
+          "horizon_expected_points": 24.587,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 45,
+          "source_player_id": "254",
+          "starts_gameweek": true,
+          "team": "FUL",
+          "vice_captain": false,
+          "web_name": "Robinson"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.222,
+          "horizon_expected_points": 26.477,
+          "mean_appearance": 0.8857,
+          "position": "DEF",
+          "price_tenths": 50,
+          "source_player_id": "445",
+          "starts_gameweek": true,
+          "team": "NEW",
+          "vice_captain": false,
+          "web_name": "Thiaw"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.299,
+          "horizon_expected_points": 30.633,
+          "mean_appearance": 1.0,
+          "position": "FWD",
+          "price_tenths": 60,
+          "source_player_id": "79",
+          "starts_gameweek": true,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Evanilson"
+        },
+        {
+          "bench_rank": null,
+          "captain": true,
+          "gameweek_expected_points": 6.315,
+          "horizon_expected_points": 47.552,
+          "mean_appearance": 0.7655,
+          "position": "FWD",
+          "price_tenths": 155,
+          "source_player_id": "411",
+          "starts_gameweek": true,
+          "team": "MCI",
+          "vice_captain": false,
+          "web_name": "Haaland"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.347,
+          "horizon_expected_points": 37.21,
+          "mean_appearance": 1.0,
+          "position": "FWD",
+          "price_tenths": 80,
+          "source_player_id": "55",
+          "starts_gameweek": true,
+          "team": "AVL",
+          "vice_captain": false,
+          "web_name": "Watkins"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.084,
+          "horizon_expected_points": 32.854,
+          "mean_appearance": 1.0,
+          "position": "GK",
+          "price_tenths": 45,
+          "source_player_id": "250",
+          "starts_gameweek": true,
+          "team": "FUL",
+          "vice_captain": false,
+          "web_name": "Leno"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 5.48,
+          "horizon_expected_points": 43.027,
+          "mean_appearance": 0.9991,
+          "position": "MID",
+          "price_tenths": 120,
+          "source_player_id": "426",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": true,
+          "web_name": "B.Fernandes"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.542,
+          "horizon_expected_points": 35.668,
+          "mean_appearance": 0.8975,
+          "position": "MID",
+          "price_tenths": 80,
+          "source_player_id": "428",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": false,
+          "web_name": "Cunha"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 4.915,
+          "horizon_expected_points": 38.588,
+          "mean_appearance": 0.9447,
+          "position": "MID",
+          "price_tenths": 80,
+          "source_player_id": "427",
+          "starts_gameweek": true,
+          "team": "MUN",
+          "vice_captain": false,
+          "web_name": "Mbeumo"
+        },
+        {
+          "bench_rank": null,
+          "captain": false,
+          "gameweek_expected_points": 3.497,
+          "horizon_expected_points": 33.74,
+          "mean_appearance": 1.0,
+          "position": "MID",
+          "price_tenths": 65,
+          "source_player_id": "67",
+          "starts_gameweek": true,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Rayan"
+        },
+        {
+          "bench_rank": 1,
+          "captain": false,
+          "gameweek_expected_points": 2.154,
+          "horizon_expected_points": 18.266,
+          "mean_appearance": 0.6918,
+          "position": "GK",
+          "price_tenths": 40,
+          "source_player_id": "273",
+          "starts_gameweek": false,
+          "team": "HUL",
+          "vice_captain": false,
+          "web_name": "Phillips"
+        },
+        {
+          "bench_rank": 2,
+          "captain": false,
+          "gameweek_expected_points": 2.075,
+          "horizon_expected_points": 16.301,
+          "mean_appearance": 0.6918,
+          "position": "MID",
+          "price_tenths": 45,
+          "source_player_id": "294",
+          "starts_gameweek": false,
+          "team": "HUL",
+          "vice_captain": false,
+          "web_name": "Zambrano"
+        },
+        {
+          "bench_rank": 3,
+          "captain": false,
+          "gameweek_expected_points": 2.868,
+          "horizon_expected_points": 18.518,
+          "mean_appearance": 0.9804,
+          "position": "DEF",
+          "price_tenths": 40,
+          "source_player_id": "305",
+          "starts_gameweek": false,
+          "team": "IPS",
+          "vice_captain": false,
+          "web_name": "Davis"
+        },
+        {
+          "bench_rank": 4,
+          "captain": false,
+          "gameweek_expected_points": 2.83,
+          "horizon_expected_points": 29.789,
+          "mean_appearance": 1.0,
+          "position": "DEF",
+          "price_tenths": 55,
+          "source_player_id": "61",
+          "starts_gameweek": false,
+          "team": "BOU",
+          "vice_captain": false,
+          "web_name": "Truffert"
+        }
+      ],
+      "proof": "CBC returned Optimal for the projected multi-Gameweek legal-XI and captain objective plus any declared terminal values, then again with that objective pinned while reserve quality across the full horizon was maximised, and a third time for a deterministic tie-break; each Gameweek's bench order and captain/vice pair were then chosen by exact enumeration. The reported horizon value exactly integrates independent player appearance outcomes with legal autosubs and captain fallback for the selected squad. The squad is proven optimal for the linear objective; exact autosub optimality is established only among the opening-squad candidate frontier that is explicitly compared. Goalkeepers entered that objective once, as an exactly valued pair with its best weekly orientation, and are absent from the starter, captain and bench-quality terms.",
+      "solver_objective": 429.962,
+      "starting_player_ids": [
+        "250",
+        "254",
+        "304",
+        "411",
+        "426",
+        "427",
+        "428",
+        "445",
+        "55",
+        "67",
+        "79"
+      ],
+      "team_counts": {
+        "AVL": 1,
+        "BOU": 3,
+        "FUL": 2,
+        "HUL": 2,
+        "IPS": 2,
+        "MCI": 1,
+        "MUN": 3,
+        "NEW": 1
+      },
+      "total_cost_tenths": 1000,
+      "vice_captain_id": "426"
+    }
+  ],
+  "bank_frontier": {
+    "entries": [
+      {
+        "bank_tenths": 0,
+        "changes_from_unrestricted": {
+          "changes": 0,
+          "cost_change_tenths": 0,
+          "exact_value_change": 0.0,
+          "in": [],
+          "out": []
+        },
+        "exact_horizon_value": 449.495,
+        "feasible": true,
+        "flexibility_equivalent": true,
+        "gameweek_value": 55.711,
+        "minimum_bank_tenths": 0,
+        "player_ids": [
+          "233",
+          "250",
+          "254",
+          "288",
+          "301",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "533",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "total_cost_tenths": 1000,
+        "value_sacrificed": 0.0
+      },
+      {
+        "bank_tenths": 5,
+        "changes_from_unrestricted": {
+          "changes": 6,
+          "cost_change_tenths": -5,
+          "exact_value_change": -2.479,
+          "in": [
+            {
+              "horizon_xp": 28.837,
+              "position": "MID",
+              "price_tenths": 55,
+              "source_player_id": "261",
+              "team": "FUL",
+              "web_name": "Iwobi"
+            },
+            {
+              "horizon_xp": 15.612,
+              "position": "FWD",
+              "price_tenths": 45,
+              "source_player_id": "298",
+              "team": "HUL",
+              "web_name": "Destan"
+            },
+            {
+              "horizon_xp": 19.641,
+              "position": "DEF",
+              "price_tenths": 40,
+              "source_player_id": "304",
+              "team": "IPS",
+              "web_name": "O'Shea"
+            },
+            {
+              "horizon_xp": 18.518,
+              "position": "DEF",
+              "price_tenths": 40,
+              "source_player_id": "305",
+              "team": "IPS",
+              "web_name": "Davis"
+            },
+            {
+              "horizon_xp": 43.027,
+              "position": "MID",
+              "price_tenths": 120,
+              "source_player_id": "426",
+              "team": "MUN",
+              "web_name": "B.Fernandes"
+            },
+            {
+              "horizon_xp": 26.477,
+              "position": "DEF",
+              "price_tenths": 50,
+              "source_player_id": "445",
+              "team": "NEW",
+              "web_name": "Thiaw"
+            }
+          ],
+          "out": [
+            {
+              "horizon_xp": 23.363,
+              "position": "DEF",
+              "price_tenths": 45,
+              "source_player_id": "233",
+              "team": "EVE",
+              "web_name": "Mykolenko"
+            },
+            {
+              "horizon_xp": 17.238,
+              "position": "MID",
+              "price_tenths": 45,
+              "source_player_id": "288",
+              "team": "HUL",
+              "web_name": "Dowell"
+            },
+            {
+              "horizon_xp": 31.908,
+              "position": "MID",
+              "price_tenths": 70,
+              "source_player_id": "367",
+              "team": "LIV",
+              "web_name": "Gakpo"
+            },
+            {
+              "horizon_xp": 28.729,
+              "position": "DEF",
+              "price_tenths": 80,
+              "source_player_id": "4",
+              "team": "ARS",
+              "web_name": "Gabriel"
+            },
+            {
+              "horizon_xp": 27.004,
+              "position": "DEF",
+              "price_tenths": 55,
+              "source_player_id": "533",
+              "team": "SUN",
+              "web_name": "Mukiele"
+            },
+            {
+              "horizon_xp": 30.633,
+              "position": "FWD",
+              "price_tenths": 60,
+              "source_player_id": "79",
+              "team": "BOU",
+              "web_name": "Evanilson"
+            }
+          ]
+        },
+        "exact_horizon_value": 447.016,
+        "feasible": true,
+        "flexibility_equivalent": false,
+        "gameweek_value": 55.277,
+        "minimum_bank_tenths": 5,
+        "player_ids": [
+          "250",
+          "254",
+          "261",
+          "298",
+          "301",
+          "304",
+          "305",
+          "411",
+          "426",
+          "427",
+          "428",
+          "445",
+          "55",
+          "61",
+          "67"
+        ],
+        "total_cost_tenths": 995,
+        "value_sacrificed": 2.479
+      },
+      {
+        "bank_tenths": 10,
+        "changes_from_unrestricted": {
+          "changes": 4,
+          "cost_change_tenths": -10,
+          "exact_value_change": -3.041,
+          "in": [
+            {
+              "horizon_xp": 28.837,
+              "position": "MID",
+              "price_tenths": 55,
+              "source_player_id": "261",
+              "team": "FUL",
+              "web_name": "Iwobi"
+            },
+            {
+              "horizon_xp": 19.641,
+              "position": "DEF",
+              "price_tenths": 40,
+              "source_player_id": "304",
+              "team": "IPS",
+              "web_name": "O'Shea"
+            },
+            {
+              "horizon_xp": 43.027,
+              "position": "MID",
+              "price_tenths": 120,
+              "source_player_id": "426",
+              "team": "MUN",
+              "web_name": "B.Fernandes"
+            },
+            {
+              "horizon_xp": 26.477,
+              "position": "DEF",
+              "price_tenths": 50,
+              "source_player_id": "445",
+              "team": "NEW",
+              "web_name": "Thiaw"
+            }
+          ],
+          "out": [
+            {
+              "horizon_xp": 24.587,
+              "position": "DEF",
+              "price_tenths": 45,
+              "source_player_id": "254",
+              "team": "FUL",
+              "web_name": "Robinson"
+            },
+            {
+              "horizon_xp": 31.908,
+              "position": "MID",
+              "price_tenths": 70,
+              "source_player_id": "367",
+              "team": "LIV",
+              "web_name": "Gakpo"
+            },
+            {
+              "horizon_xp": 28.729,
+              "position": "DEF",
+              "price_tenths": 80,
+              "source_player_id": "4",
+              "team": "ARS",
+              "web_name": "Gabriel"
+            },
+            {
+              "horizon_xp": 35.668,
+              "position": "MID",
+              "price_tenths": 80,
+              "source_player_id": "428",
+              "team": "MUN",
+              "web_name": "Cunha"
+            }
+          ]
+        },
+        "exact_horizon_value": 446.454,
+        "feasible": true,
+        "flexibility_equivalent": false,
+        "gameweek_value": 55.107,
+        "minimum_bank_tenths": 10,
+        "player_ids": [
+          "233",
+          "250",
+          "261",
+          "288",
+          "301",
+          "304",
+          "411",
+          "426",
+          "427",
+          "445",
+          "533",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "total_cost_tenths": 990,
+        "value_sacrificed": 3.041
+      }
+    ],
+    "equivalence_band_points": 0.25,
+    "policy": "Money in the bank is never given a points value. A bank-preserving squad within 0.25 expected points over the horizon is reported as flexibility-equivalent, and does not replace the maximum-value primary squad: equivalent within noise is not better.",
+    "thresholds_tenths": [
+      0,
+      5,
+      10
+    ]
+  },
+  "final_squad": {
+    "bank_tenths": 0,
+    "bench_player_ids": [
+      "301",
+      "254",
+      "61",
+      "288"
+    ],
+    "captain_id": "411",
+    "decision_value": 449.495,
+    "gameweek_expected_points": 55.711,
+    "gameweek_plans": [
+      {
+        "bench_player_ids": [
+          "301",
+          "254",
+          "61",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 1,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Mukiele",
+          "Mykolenko",
+          "Rayan",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "233",
+          "250",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "533",
+          "55",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "427"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "254",
+          "233",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 2,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Mukiele",
+          "Rayan",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "250",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "533",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "427"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "533",
+          "233",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 3,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Rayan",
+          "Robinson",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "250",
+          "254",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "55"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "233",
+          "254",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 4,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Mukiele",
+          "Rayan",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "250",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "533",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "55"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "533",
+          "254",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 5,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Mykolenko",
+          "Rayan",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "233",
+          "250",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "55"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "254",
+          "233",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 6,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Mukiele",
+          "Rayan",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "250",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "533",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "427"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "533",
+          "233",
+          "288"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 7,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Rayan",
+          "Robinson",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "250",
+          "254",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "55"
+      },
+      {
+        "bench_player_ids": [
+          "301",
+          "254",
+          "288",
+          "233"
+        ],
+        "captain_id": "411",
+        "gameweek_number": 8,
+        "starting_names": [
+          "Cunha",
+          "Evanilson",
+          "Gabriel",
+          "Gakpo",
+          "Haaland",
+          "Leno",
+          "Mbeumo",
+          "Mukiele",
+          "Rayan",
+          "Truffert",
+          "Watkins"
+        ],
+        "starting_player_ids": [
+          "250",
+          "367",
+          "4",
+          "411",
+          "427",
+          "428",
+          "533",
+          "55",
+          "61",
+          "67",
+          "79"
+        ],
+        "vice_captain_id": "427"
+      }
+    ],
+    "goalkeeper_orientations": [
+      {
+        "alternative_orientation_value": 3.907,
+        "gameweek_number": 1,
+        "pair_value": 4.084,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 2.675,
+        "gameweek_number": 2,
+        "pair_value": 4.104,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.294,
+        "gameweek_number": 3,
+        "pair_value": 4.588,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.481,
+        "gameweek_number": 4,
+        "pair_value": 3.481,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.281,
+        "gameweek_number": 5,
+        "pair_value": 3.804,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.746,
+        "gameweek_number": 6,
+        "pair_value": 4.114,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 2.494,
+        "gameweek_number": 7,
+        "pair_value": 4.565,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.714,
+        "gameweek_number": 8,
+        "pair_value": 4.114,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      }
+    ],
+    "goalkeeper_pair": [
+      {
+        "price_tenths": 45,
+        "source_player_id": "250",
+        "standalone_horizon_xp": 32.854,
+        "team": "FUL",
+        "web_name": "Leno"
+      },
+      {
+        "price_tenths": 40,
+        "source_player_id": "301",
+        "standalone_horizon_xp": 26.348,
+        "team": "IPS",
+        "web_name": "Palmer"
+      }
+    ],
+    "goalkeeper_pair_value": 32.854,
+    "horizon_expected_bench_contribution": 16.294,
+    "horizon_expected_points": 449.495,
+    "label": "final",
+    "lineup_expected_points": 423.779,
+    "model_version": "rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed",
+    "players": [
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 4.1,
+        "horizon_expected_points": 28.729,
+        "mean_appearance": 0.7827,
+        "position": "DEF",
+        "price_tenths": 80,
+        "source_player_id": "4",
+        "starts_gameweek": true,
+        "team": "ARS",
+        "vice_captain": false,
+        "web_name": "Gabriel"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 3.617,
+        "horizon_expected_points": 27.004,
+        "mean_appearance": 0.8854,
+        "position": "DEF",
+        "price_tenths": 55,
+        "source_player_id": "533",
+        "starts_gameweek": true,
+        "team": "SUN",
+        "vice_captain": false,
+        "web_name": "Mukiele"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 3.505,
+        "horizon_expected_points": 23.363,
+        "mean_appearance": 1.0,
+        "position": "DEF",
+        "price_tenths": 45,
+        "source_player_id": "233",
+        "starts_gameweek": true,
+        "team": "EVE",
+        "vice_captain": false,
+        "web_name": "Mykolenko"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 3.299,
+        "horizon_expected_points": 30.633,
+        "mean_appearance": 1.0,
+        "position": "FWD",
+        "price_tenths": 60,
+        "source_player_id": "79",
+        "starts_gameweek": true,
+        "team": "BOU",
+        "vice_captain": false,
+        "web_name": "Evanilson"
+      },
+      {
+        "bench_rank": null,
+        "captain": true,
+        "gameweek_expected_points": 6.315,
+        "horizon_expected_points": 47.552,
+        "mean_appearance": 0.7655,
+        "position": "FWD",
+        "price_tenths": 155,
+        "source_player_id": "411",
+        "starts_gameweek": true,
+        "team": "MCI",
+        "vice_captain": false,
+        "web_name": "Haaland"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 4.347,
+        "horizon_expected_points": 37.21,
+        "mean_appearance": 1.0,
+        "position": "FWD",
+        "price_tenths": 80,
+        "source_player_id": "55",
+        "starts_gameweek": true,
+        "team": "AVL",
+        "vice_captain": false,
+        "web_name": "Watkins"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 4.084,
+        "horizon_expected_points": 32.854,
+        "mean_appearance": 1.0,
+        "position": "GK",
+        "price_tenths": 45,
+        "source_player_id": "250",
+        "starts_gameweek": true,
+        "team": "FUL",
+        "vice_captain": false,
+        "web_name": "Leno"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 4.542,
+        "horizon_expected_points": 35.668,
+        "mean_appearance": 0.8975,
+        "position": "MID",
+        "price_tenths": 80,
+        "source_player_id": "428",
+        "starts_gameweek": true,
+        "team": "MUN",
+        "vice_captain": false,
+        "web_name": "Cunha"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 3.857,
+        "horizon_expected_points": 31.908,
+        "mean_appearance": 1.0,
+        "position": "MID",
+        "price_tenths": 70,
+        "source_player_id": "367",
+        "starts_gameweek": true,
+        "team": "LIV",
+        "vice_captain": false,
+        "web_name": "Gakpo"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 4.915,
+        "horizon_expected_points": 38.588,
+        "mean_appearance": 0.9447,
+        "position": "MID",
+        "price_tenths": 80,
+        "source_player_id": "427",
+        "starts_gameweek": true,
+        "team": "MUN",
+        "vice_captain": true,
+        "web_name": "Mbeumo"
+      },
+      {
+        "bench_rank": null,
+        "captain": false,
+        "gameweek_expected_points": 3.497,
+        "horizon_expected_points": 33.74,
+        "mean_appearance": 1.0,
+        "position": "MID",
+        "price_tenths": 65,
+        "source_player_id": "67",
+        "starts_gameweek": true,
+        "team": "BOU",
+        "vice_captain": false,
+        "web_name": "Rayan"
+      },
+      {
+        "bench_rank": 1,
+        "captain": false,
+        "gameweek_expected_points": 3.877,
+        "horizon_expected_points": 26.348,
+        "mean_appearance": 0.9926,
+        "position": "GK",
+        "price_tenths": 40,
+        "source_player_id": "301",
+        "starts_gameweek": false,
+        "team": "IPS",
+        "vice_captain": false,
+        "web_name": "Palmer"
+      },
+      {
+        "bench_rank": 2,
+        "captain": false,
+        "gameweek_expected_points": 3.072,
+        "horizon_expected_points": 24.587,
+        "mean_appearance": 1.0,
+        "position": "DEF",
+        "price_tenths": 45,
+        "source_player_id": "254",
+        "starts_gameweek": false,
+        "team": "FUL",
+        "vice_captain": false,
+        "web_name": "Robinson"
+      },
+      {
+        "bench_rank": 3,
+        "captain": false,
+        "gameweek_expected_points": 2.83,
+        "horizon_expected_points": 29.789,
+        "mean_appearance": 1.0,
+        "position": "DEF",
+        "price_tenths": 55,
+        "source_player_id": "61",
+        "starts_gameweek": false,
+        "team": "BOU",
+        "vice_captain": false,
+        "web_name": "Truffert"
+      },
+      {
+        "bench_rank": 4,
+        "captain": false,
+        "gameweek_expected_points": 2.177,
+        "horizon_expected_points": 17.238,
+        "mean_appearance": 0.8757,
+        "position": "MID",
+        "price_tenths": 45,
+        "source_player_id": "288",
+        "starts_gameweek": false,
+        "team": "HUL",
+        "vice_captain": false,
+        "web_name": "Dowell"
+      }
+    ],
+    "projection_run_id": 2,
+    "proof": "CBC returned Optimal for the projected multi-Gameweek legal-XI and captain objective plus any declared terminal values, then again with that objective pinned while reserve quality across the full horizon was maximised, and a third time for a deterministic tie-break; each Gameweek's bench order and captain/vice pair were then chosen by exact enumeration. The reported horizon value exactly integrates independent player appearance outcomes with legal autosubs and captain fallback for the selected squad. The squad is proven optimal for the linear objective; exact autosub optimality is established only among the opening-squad candidate frontier that is explicitly compared. Goalkeepers entered that objective once, as an exactly valued pair with its best weekly orientation, and are absent from the starter, captain and bench-quality terms.",
+    "provisional": true,
+    "solver_objective": 424.094,
+    "starting_player_ids": [
+      "233",
+      "250",
+      "367",
+      "4",
+      "411",
+      "427",
+      "428",
+      "533",
+      "55",
+      "67",
+      "79"
+    ],
+    "team_counts": {
+      "ARS": 1,
+      "AVL": 1,
+      "BOU": 3,
+      "EVE": 1,
+      "FUL": 2,
+      "HUL": 1,
+      "IPS": 1,
+      "LIV": 1,
+      "MCI": 1,
+      "MUN": 2,
+      "SUN": 1
+    },
+    "total_cost_tenths": 1000,
+    "vice_captain_id": "427"
+  },
+  "gameweek_number": 1,
+  "generated_at": "2026-08-05T12:38:32.020696+00:00",
+  "goalkeeper_pair": {
+    "effect_on_this_run": {
+      "any_gameweek_nominates_lower_standalone": false,
+      "exact_value_with_pair_valuation": 448.524,
+      "exact_value_without_pair_valuation": 448.524,
+      "goalkeepers_with_pair_valuation": [
+        "Leno",
+        "Palmer"
+      ],
+      "goalkeepers_without_pair_valuation": [
+        "Leno",
+        "Palmer"
+      ],
+      "largest_gameweek_uplift": 0.0,
+      "note": "Substitution protection is worth P(nominated goalkeeper records no minutes) x the reserve's expected points. When the minutes model puts a first-choice goalkeeper's appearance probability at one, that product is zero and the pair treatment cannot move the selection however it is implemented. The number above says whether that is the case here.",
+      "squad_changed": false,
+      "total_substitution_protection_points": 0.0
+    },
+    "implementation": "Every eligible goalkeeper pair is enumerated, each pair's best weekly orientation and exact value computed, and that value carried into the same objective the outfield players are selected under. Goalkeepers appear in the objective once and are excluded from the starter, captain and bench-quality terms, so no goalkeeper's points are counted twice. The nomination is pinned inside the solve, not swapped afterwards.",
+    "independence_assumption": "Appearance states are independent, as everywhere else in the optimiser. Two goalkeepers at the same club, or a first choice and their own understudy, would violate it and the protection would be overstated.",
+    "orientations": [
+      {
+        "alternative_orientation_value": 3.907,
+        "gameweek_number": 1,
+        "pair_value": 4.084,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 2.675,
+        "gameweek_number": 2,
+        "pair_value": 4.104,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.294,
+        "gameweek_number": 3,
+        "pair_value": 4.588,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.481,
+        "gameweek_number": 4,
+        "pair_value": 3.481,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.281,
+        "gameweek_number": 5,
+        "pair_value": 3.804,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.746,
+        "gameweek_number": 6,
+        "pair_value": 4.114,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 2.494,
+        "gameweek_number": 7,
+        "pair_value": 4.565,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      },
+      {
+        "alternative_orientation_value": 3.714,
+        "gameweek_number": 8,
+        "pair_value": 4.114,
+        "starter": "Leno",
+        "starter_id": "250",
+        "starts_despite_lower_standalone": false,
+        "substitute_id": "301",
+        "uplift_over_starter_alone": 0.0
+      }
+    ],
+    "pair_value": 32.854,
+    "selected_pair": [
+      {
+        "price_tenths": 45,
+        "source_player_id": "250",
+        "standalone_horizon_xp": 32.854,
+        "team": "FUL",
+        "web_name": "Leno"
+      },
+      {
+        "price_tenths": 40,
+        "source_player_id": "301",
+        "standalone_horizon_xp": 26.348,
+        "team": "IPS",
+        "web_name": "Palmer"
+      }
+    ]
+  },
+  "horizon_gameweeks": 8,
+  "model_version": "rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed",
+  "projection_run_id": 2,
+  "promoted_player_role_treatment": "none",
+  "promoted_prior": {
+    "clubs": [
+      {
+        "attack_bound_applied": false,
+        "attack_multiplier": 0.85,
+        "attack_relative": 1.6189,
+        "championship_name": "Coventry City FC",
+        "defence_bound_applied": false,
+        "defence_multiplier": 1.2,
+        "defence_relative": 0.751,
+        "fpl_name": "Coventry City",
+        "matched": true,
+        "reason": "Coventry City FC scored 97 and conceded 45 in 46 Championship matches (2025-26)."
+      },
+      {
+        "attack_bound_applied": false,
+        "attack_multiplier": 0.85,
+        "attack_relative": 1.1683,
+        "championship_name": "Hull City AFC",
+        "defence_bound_applied": false,
+        "defence_multiplier": 1.2,
+        "defence_relative": 1.1015,
+        "fpl_name": "Hull City",
+        "matched": true,
+        "reason": "Hull City AFC scored 70 and conceded 66 in 46 Championship matches (2025-26)."
+      },
+      {
+        "attack_bound_applied": false,
+        "attack_multiplier": 0.85,
+        "attack_relative": 1.3352,
+        "championship_name": "Ipswich Town FC",
+        "defence_bound_applied": false,
+        "defence_multiplier": 1.2,
+        "defence_relative": 0.7844,
+        "fpl_name": "Ipswich Town",
+        "matched": true,
+        "reason": "Ipswich Town FC scored 80 and conceded 47 in 46 Championship matches (2025-26)."
+      }
+    ],
+    "mode": "fixed",
+    "weight": 0.0
+  },
+  "season_code": "2026-27",
+  "selection_stability": {
+    "model_sensitive": [
+      "Davis"
+    ],
+    "moderate": [
+      "B.Fernandes",
+      "Cunha",
+      "Destan",
+      "Dowell",
+      "Evanilson",
+      "Gabriel",
+      "Gakpo",
+      "Iwobi",
+      "Mukiele",
+      "Mykolenko",
+      "O'Shea",
+      "Robinson",
+      "Thiaw"
+    ],
+    "robust": [
+      "Haaland",
+      "Leno",
+      "Mbeumo",
+      "Palmer",
+      "Rayan",
+      "Truffert",
+      "Watkins"
+    ],
+    "runs_compared": 6,
+    "selection_counts": {
+      "B.Fernandes": 4,
+      "Cunha": 4,
+      "Davis": 1,
+      "Destan": 2,
+      "Dowell": 4,
+      "Evanilson": 4,
+      "Gabriel": 2,
+      "Gakpo": 3,
+      "Haaland": 6,
+      "Iwobi": 3,
+      "Leno": 6,
+      "Mbeumo": 6,
+      "Mukiele": 4,
+      "Mykolenko": 5,
+      "O'Shea": 4,
+      "Palmer": 6,
+      "Rayan": 6,
+      "Robinson": 5,
+      "Thiaw": 3,
+      "Truffert": 6,
+      "Watkins": 6
+    }
+  },
+  "status": "provisional until the final pre-deadline team-news rerun",
+  "warnings": [
+    "The live snapshot did not come from a direct official FPL API capture. Prices, availability and fixtures are as good as the mirror behind them and no better.",
+    "The promoted-player role treatment was not adopted: Coverage is insufficient. The existing player model is kept and Championship role evidence is reported as an audit field only, because applying it to some players and not their direct competitors would distort a squad decision more than leaving the whole cohort on the positional prior."
+  ]
+}

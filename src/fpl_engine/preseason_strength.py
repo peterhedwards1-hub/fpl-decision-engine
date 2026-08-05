@@ -421,11 +421,18 @@ def evaluate_player_and_decision(
     horizon_gameweeks: int = EARLY_SEASON_GAMEWEEKS,
     candidate_pool_size: int = 8,
     minimum_mean_appearance: float = DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
+    include_regret: bool = True,
 ) -> dict[str, Any]:
     """Backtest one model from the GW1 origin and score the squad it builds.
 
     One origin only. A preseason decision is made once, so averaging it with
     thirty in-season origins would answer a different question.
+
+    ``include_regret`` covers the two hindsight measures — legal-squad regret
+    and owned-captain regret — which solve a mixed-integer program per origin
+    across the whole season and dominate runtime. A caller that only wants the
+    opening-squad effect can switch them off and say so; the returned sections
+    are then explicitly ``None`` rather than silently absent.
     """
 
     report = ProjectionBacktester(
@@ -453,8 +460,16 @@ def evaluate_player_and_decision(
         database, run_id, rules, (policy,), origin_gameweeks=(1,)
     )
     origin = squads.origins[0]
-    regret = evaluate_legal_squad_regret(database, run_id, rules, methods=("model",))
-    captain = evaluate_owned_captain_regret(database, run_id, rules)
+    regret = (
+        evaluate_legal_squad_regret(database, run_id, rules, methods=("model",))
+        if include_regret
+        else None
+    )
+    captain = (
+        evaluate_owned_captain_regret(database, run_id, rules)
+        if include_regret
+        else None
+    )
     return {
         "backtest_run_id": run_id,
         "player_points": {
@@ -504,21 +519,33 @@ def evaluate_player_and_decision(
             "selected_player_ids": list(origin.selected_player_ids),
             "bench_player_ids": list(origin.bench_player_ids),
         },
-        "squad_regret": {
-            "mean": regret.mean_regret_by_method.get("model"),
-            "realised_points": round(
-                sum(entry.realised_points for entry in regret.origins), 3
-            ),
-            "hindsight_points": round(
-                sum(entry.hindsight_optimal_points for entry in regret.origins), 3
-            ),
-            "origins": len(regret.origins),
-        },
-        "captain_regret": {
-            "mean": round(captain.mean_regret, 4),
-            "total": round(captain.total_regret, 4),
-            "samples": captain.samples,
-        },
+        "squad_regret": (
+            None
+            if regret is None
+            else {
+                "mean": regret.mean_regret_by_method.get("model"),
+                "realised_points": round(
+                    sum(entry.realised_points for entry in regret.origins), 3
+                ),
+                "hindsight_points": round(
+                    sum(
+                        entry.hindsight_optimal_points for entry in regret.origins
+                    ),
+                    3,
+                ),
+                "origins": len(regret.origins),
+            }
+        ),
+        "captain_regret": (
+            None
+            if captain is None
+            else {
+                "mean": round(captain.mean_regret, 4),
+                "total": round(captain.total_regret, 4),
+                "samples": captain.samples,
+            }
+        ),
+        "hindsight_measures_included": include_regret,
     }
 
 

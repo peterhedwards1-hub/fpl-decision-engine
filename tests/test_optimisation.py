@@ -5,18 +5,23 @@ from dataclasses import replace
 from itertools import combinations, permutations
 from pathlib import Path
 
+import pytest
+
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Position
 from fpl_engine.optimisation import (
     CandidatePlayer,
     GameweekPlayerValue,
+    OptimisationError,
     _expected_weekly_score,
     _optimal_captaincy,
     _used_outfield_bench_indexes,
     appearance_qualified_candidates,
+    goalkeeper_pair_orientation,
     optimise_full_squad,
     optimise_opening_squads,
     optimise_starting_xi,
+    squad_ranking_key,
 )
 
 RULES = load_season_rules(Path("config/seasons/2026-27.json"))
@@ -595,3 +600,397 @@ def test_declared_terminal_value_is_added_once_beyond_the_horizon() -> None:
 
     assert result.terminal_value == 2.5
     assert result.decision_value == result.horizon_expected_points + 2.5
+
+
+# --------------------------------------------------------------------------
+# Goalkeepers are a pair, not two players
+# --------------------------------------------------------------------------
+
+
+def _pair_squad_candidates(
+    *,
+    first_points: float,
+    first_appearance: float,
+    second_points: float,
+    second_appearance: float,
+    third_points: float = 1.0,
+    gameweeks: int = 2,
+) -> tuple[CandidatePlayer, ...]:
+    """Eleven forced outfield players and three goalkeepers to choose between.
+
+    The outfield squad is fully determined — exactly the required counts at
+    identical prices — so the only decision left is which two goalkeepers are
+    owned and which one starts. Anything the optimiser does differently is a
+    goalkeeper decision.
+    """
+
+    def player(
+        identifier: str,
+        position: Position,
+        price_tenths: int,
+        points: float,
+        appearance_probability: float,
+    ) -> CandidatePlayer:
+        values = tuple(
+            GameweekPlayerValue(
+                gameweek,
+                points,
+                appearance_probability,
+                appearance_probability,
+            )
+            for gameweek in range(1, gameweeks + 1)
+        )
+        return CandidatePlayer(
+            source_player_id=identifier,
+            web_name=f"Player {identifier}",
+            team_id=identifier,
+            team_short_name=f"T{identifier}",
+            position=position,
+            price_tenths=price_tenths,
+            expected_points=points * gameweeks,
+            gameweek_expected_points=points,
+            appearance_probability=appearance_probability,
+            gameweek_values=values,
+        )
+
+    outfield_shape = (
+        *(Position.DEF for _ in range(5)),
+        *(Position.MID for _ in range(5)),
+        *(Position.FWD for _ in range(3)),
+    )
+    outfield = tuple(
+        player(f"out{index:02d}", position, 40, 4.0, 0.9)
+        for index, position in enumerate(outfield_shape)
+    )
+    keepers = (
+        player("gk_first", Position.GK, 40, first_points, first_appearance),
+        player("gk_second", Position.GK, 40, second_points, second_appearance),
+        player("gk_third", Position.GK, 40, third_points, 0.9),
+    )
+    return outfield + keepers
+
+
+def test_the_pair_orientation_prefers_protection_over_a_bigger_standalone() -> None:
+    """The claim the whole treatment rests on, as arithmetic.
+
+    A goalkeeper with the smaller unconditional projection can be the correct
+    nomination: if their own appearance is doubtful, the reserve behind them
+    collects in exactly the states they miss, and the pair is worth more than
+    the safer goalkeeper's projection alone.
+    """
+
+    orientation = goalkeeper_pair_orientation(
+        "safe",
+        "doubtful",
+        gameweek_number=1,
+        points={"safe": 4.0, "doubtful": 3.9},
+        appearance={"safe": 0.99, "doubtful": 0.50},
+    )
+
+    assert orientation.starter_id == "doubtful"
+    assert orientation.prefers_lower_standalone
+    # 3.9 + 0.5 x 4.0 against 4.0 + 0.01 x 3.9.
+    assert orientation.value == pytest.approx(5.9)
+    assert orientation.alternative_value == pytest.approx(4.039)
+
+
+def test_the_lower_standalone_goalkeeper_can_be_selected_and_started() -> None:
+    """The same claim, but decided by the optimiser rather than by arithmetic."""
+
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.99,
+        second_points=3.9,
+        second_appearance=0.50,
+        third_points=0.2,
+    )
+
+    result = optimise_full_squad(
+        candidates, budget_tenths=1000, rules=RULES
+    )
+
+    assert set(result.goalkeeper_pair) == {"gk_first", "gk_second"}
+    nominated = {
+        orientation.gameweek_number: orientation.starter_id
+        for orientation in result.goalkeeper_orientations
+    }
+    assert set(nominated.values()) == {"gk_second"}
+    started = {
+        plan.gameweek_number: next(
+            player_id
+            for player_id in plan.starting_player_ids
+            if player_id.startswith("gk_")
+        )
+        for plan in result.gameweek_plans
+    }
+    # The nomination is the lineup, not a label attached after selection.
+    assert started == nominated
+
+
+def test_pair_value_decides_which_two_goalkeepers_are_owned() -> None:
+    """Selection, not only nomination.
+
+    The reserve never starts, so a model that values goalkeepers one at a time
+    is indifferent between reserves and picks arbitrarily. Pair valuation makes
+    the reserve's quality a reason to own them.
+    """
+
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.5,
+        second_points=1.0,
+        second_appearance=0.9,
+        third_points=3.0,
+    )
+
+    result = optimise_full_squad(candidates, budget_tenths=1000, rules=RULES)
+
+    # gk_third is the better partner for the doubtful gk_first, even though
+    # gk_second and gk_third cost the same and neither is expected to start.
+    assert set(result.goalkeeper_pair) == {"gk_first", "gk_third"}
+
+
+def test_goalkeeper_points_are_never_counted_twice() -> None:
+    """The solver objective must contain each goalkeeper exactly once.
+
+    The pair term already carries the nominated goalkeeper's own expectation
+    plus the reserve's, conditioned on absence. If the ordinary starter term
+    still carried the goalkeeper, the objective would pay for the same points
+    twice and the optimiser would overbuy goalkeepers.
+    """
+
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.8,
+        second_points=2.0,
+        second_appearance=0.8,
+        third_points=0.1,
+    )
+
+    result = optimise_full_squad(candidates, budget_tenths=1000, rules=RULES)
+
+    by_id = {player.source_player_id: player for player in result.players}
+    outfield_lineup = sum(
+        value.expected_points
+        for plan in result.gameweek_plans
+        for player_id in plan.starting_player_ids
+        if by_id[player_id].position != Position.GK
+        for value in by_id[player_id].gameweek_values
+        if value.gameweek_number == plan.gameweek_number
+    )
+    captain = sum(
+        next(
+            value.expected_points
+            for value in by_id[plan.captain_id].gameweek_values
+            if value.gameweek_number == plan.gameweek_number
+        )
+        for plan in result.gameweek_plans
+    )
+    expected_objective = (
+        outfield_lineup + captain + result.goalkeeper_pair_value
+    )
+
+    assert result.solver_objective == pytest.approx(expected_objective, abs=1e-3)
+    # And the pair value is exactly the two-goalkeeper quantity, not a sum.
+    assert result.goalkeeper_pair_value == pytest.approx(
+        sum(
+            orientation.value
+            for orientation in result.goalkeeper_orientations
+        ),
+        abs=1e-6,
+    )
+
+
+def test_the_exact_revaluation_agrees_with_the_pair_value() -> None:
+    """The objective and the exact rescoring must price the pair identically.
+
+    The exact weekly score already replaces an absent goalkeeper with the
+    substitute. If that disagreed with the pair term, the optimiser would be
+    selecting against one number and reporting another.
+    """
+
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.75,
+        second_points=2.5,
+        second_appearance=0.85,
+        third_points=0.1,
+    )
+
+    result = optimise_full_squad(candidates, budget_tenths=1000, rules=RULES)
+
+    for orientation in result.goalkeeper_orientations:
+        starter = next(
+            player
+            for player in result.players
+            if player.source_player_id == orientation.starter_id
+        )
+        substitute = next(
+            player
+            for player in result.players
+            if player.source_player_id == orientation.substitute_id
+        )
+        starter_value = next(
+            value
+            for value in starter.gameweek_values
+            if value.gameweek_number == orientation.gameweek_number
+        )
+        substitute_value = next(
+            value
+            for value in substitute.gameweek_values
+            if value.gameweek_number == orientation.gameweek_number
+        )
+        assert orientation.value == pytest.approx(
+            starter_value.expected_points
+            + (1.0 - starter_value.appearance_probability)
+            * substitute_value.expected_points
+        )
+
+
+def test_pair_valuation_can_be_switched_off_for_a_controlled_comparison() -> None:
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.5,
+        second_points=1.0,
+        second_appearance=0.9,
+        third_points=3.0,
+    )
+
+    without = optimise_full_squad(
+        candidates,
+        budget_tenths=1000,
+        rules=RULES,
+        goalkeeper_pair_valuation=False,
+    )
+
+    assert without.goalkeeper_pair == ()
+    assert without.goalkeeper_pair_value == 0.0
+
+
+# --------------------------------------------------------------------------
+# Budget, forced inclusion and the frontier
+# --------------------------------------------------------------------------
+
+
+def test_the_budget_is_an_upper_bound_not_a_target() -> None:
+    """Nothing requires the squad to spend every penny.
+
+    A candidate set whose only legal squad is cheap has to be reachable; an
+    optimiser that treats the budget as an equality would report it infeasible.
+    """
+
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.9,
+        second_points=3.0,
+        second_appearance=0.9,
+    )
+
+    result = optimise_full_squad(candidates, budget_tenths=1000, rules=RULES)
+
+    assert result.total_cost_tenths <= 1000
+    assert result.total_cost_tenths == 600
+
+
+def test_a_cheaper_squad_wins_a_tie_before_the_identifier_tie_break() -> None:
+    """Money left over is never points, but it does break a tie.
+
+    Two squads the model cannot separate on expected points are not equal in
+    every respect: one leaves money for a transfer that has not happened yet.
+    """
+
+    expensive = optimise_full_squad(
+        _pair_squad_candidates(
+            first_points=4.0, first_appearance=0.9,
+            second_points=3.0, second_appearance=0.9,
+        ),
+        budget_tenths=1000,
+        rules=RULES,
+    )
+    cheaper = replace(expensive, total_cost_tenths=expensive.total_cost_tenths - 10)
+
+    ordered = sorted([expensive, cheaper], key=squad_ranking_key)
+
+    assert ordered[0] is cheaper
+
+
+def test_a_forced_player_is_in_the_squad_and_the_rest_is_rebuilt() -> None:
+    candidates = _pair_squad_candidates(
+        first_points=4.0,
+        first_appearance=0.9,
+        second_points=3.0,
+        second_appearance=0.9,
+        third_points=3.5,
+    )
+
+    forced = optimise_full_squad(
+        candidates,
+        budget_tenths=1000,
+        rules=RULES,
+        required_player_ids=frozenset({"gk_second"}),
+    )
+
+    assert "gk_second" in {
+        player.source_player_id for player in forced.players
+    }
+
+
+def test_forcing_a_player_who_is_not_a_candidate_is_refused() -> None:
+    candidates = _pair_squad_candidates(
+        first_points=4.0, first_appearance=0.9,
+        second_points=3.0, second_appearance=0.9,
+    )
+
+    with pytest.raises(OptimisationError, match="not eligible candidates"):
+        optimise_full_squad(
+            candidates,
+            budget_tenths=1000,
+            rules=RULES,
+            required_player_ids=frozenset({"nobody"}),
+        )
+
+
+def test_a_frontier_may_repeat_a_starting_eleven_when_asked_to() -> None:
+    """Two squads with the same XI and different benches are different squads.
+
+    They make different autosub and rotation propositions, and excluding one of
+    them narrows the frontier for no reason.
+    """
+
+    candidates = _degenerate_bench_candidates()
+
+    frontier = optimise_opening_squads(
+        candidates,
+        budget_tenths=1000,
+        rules=RULES,
+        alternative_count=3,
+        candidate_pool_size=4,
+        require_distinct_starting_xi=False,
+    )
+
+    squads = [frontier.primary, *frontier.alternatives]
+    memberships = [
+        frozenset(player.source_player_id for player in squad.players)
+        for squad in squads
+    ]
+    assert len(set(memberships)) == len(memberships)
+
+
+def test_a_frontier_larger_than_the_candidate_set_stops_rather_than_failing() -> None:
+    """Running out of legal squads is a fact, not an error."""
+
+    candidates = _pair_squad_candidates(
+        first_points=4.0, first_appearance=0.9,
+        second_points=3.0, second_appearance=0.9,
+    )
+
+    frontier = optimise_opening_squads(
+        candidates,
+        budget_tenths=1000,
+        rules=RULES,
+        alternative_count=0,
+        candidate_pool_size=25,
+        require_distinct_starting_xi=False,
+    )
+
+    assert frontier.primary.total_cost_tenths <= 1000

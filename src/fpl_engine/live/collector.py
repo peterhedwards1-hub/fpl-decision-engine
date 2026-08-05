@@ -27,6 +27,7 @@ from fpl_engine.history.records import (
 )
 
 from .client import ApiPayload, FplApiClient
+from .mirror import OFFICIAL_PROVENANCE, SnapshotProvenance
 from .report import write_verification_report
 
 POSITION_BY_ELEMENT_TYPE = {
@@ -70,12 +71,17 @@ class LiveSnapshotCollector:
         report_root: str | Path = "data/reports/fpl",
         client: SnapshotClient | None = None,
         clock: Callable[[], datetime] | None = None,
+        provenance: SnapshotProvenance = OFFICIAL_PROVENANCE,
     ) -> None:
         self.database = database
         self.archive_root = Path(archive_root)
         self.report_root = Path(report_root)
         self.client = client or FplApiClient()
         self.clock = clock or (lambda: datetime.now(UTC))
+        # A capture read from a mirror is recorded under the mirror's name.
+        # Nothing downstream may see a mirrored row wearing the official
+        # source's provenance.
+        self.provenance = provenance
 
     def collect(
         self,
@@ -117,14 +123,15 @@ class LiveSnapshotCollector:
             observation_kind=observation_kind,
             bootstrap=bootstrap.data,
             fixtures=fixtures.data,
+            source_name=self.provenance.source_name,
         )
         source = IngestionSource(
-            name="official-fpl-api",
+            name=self.provenance.source_name,
             retrieved_at=captured_at,
             url=bootstrap.url,
             content_sha256=digest,
-            identifier_namespace="official-fpl",
-            adapter_version="official-fpl-api-v1",
+            identifier_namespace=self.provenance.identifier_namespace,
+            adapter_version=self.provenance.adapter_version,
         )
         run_id = self.database.ingest_bundle(source, bundle)
         report = write_verification_report(
@@ -217,6 +224,7 @@ class LiveSnapshotCollector:
         observation_kind: str,
         bootstrap: dict[str, Any],
         fixtures: list[dict[str, Any]],
+        source_name: str = "official-fpl-api",
     ) -> HistoricalBundle:
         events = bootstrap["events"]
         deadlines = [event.get("deadline_time") for event in events if event.get("deadline_time")]
@@ -296,7 +304,7 @@ class LiveSnapshotCollector:
                 ),
                 news=player.get("news") or None,
                 source_observation_key=_live_capture_key(
-                    "official-fpl-api",
+                    source_name,
                     season_code,
                     gameweek_number,
                     captured_at,
@@ -310,7 +318,7 @@ class LiveSnapshotCollector:
                 source_player_id=str(player["id"]),
                 observed_at=captured_at,
                 source_observation_key=_live_capture_key(
-                    "official-fpl-api-season-stats",
+                    f"{source_name}-season-stats",
                     season_code,
                     gameweek_number,
                     captured_at,
@@ -453,12 +461,16 @@ class LiveSnapshotCollector:
         existing = self.database.connection.execute(
             """
             SELECT id FROM ingestion_runs
-            WHERE source_name = 'official-fpl-api'
+            WHERE source_name = ?
               AND retrieved_at = ?
               AND content_sha256 = ?
               AND status = 'completed'
             """,
-            (captured_at.astimezone(UTC).isoformat(), digest),
+            (
+                self.provenance.source_name,
+                captured_at.astimezone(UTC).isoformat(),
+                digest,
+            ),
         ).fetchone()
         if existing is not None:
             return int(existing["id"])
@@ -478,14 +490,15 @@ class LiveSnapshotCollector:
             observation_kind=observation_kind,
             bootstrap=bootstrap_data,
             fixtures=fixtures_data,
+            source_name=self.provenance.source_name,
         )
         source = IngestionSource(
-            name="official-fpl-api",
+            name=self.provenance.source_name,
             retrieved_at=captured_at,
             url=str(endpoints[bootstrap_name]),
             content_sha256=digest,
-            identifier_namespace="official-fpl",
-            adapter_version="official-fpl-api-v1",
+            identifier_namespace=self.provenance.identifier_namespace,
+            adapter_version=self.provenance.adapter_version,
         )
         return self.database.ingest_bundle(source, bundle)
 
