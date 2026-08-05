@@ -123,8 +123,18 @@ def opening_candidates(
     gameweek: int,
     horizon_gameweeks: int,
     generated_at: datetime | None = None,
+    overrides: tuple[Any, ...] = (),
+    team_overrides: tuple[Any, ...] = (),
+    model_version: str = "squad-comparison",
 ) -> tuple[CandidatePlayer, ...]:
-    """Project in memory and attach the prices the optimiser needs."""
+    """Project in memory and attach the prices the optimiser needs.
+
+    ``team_overrides`` replaces a named club's attack and defence multipliers
+    outright, which is what a concentration test needs: the perturbation has to
+    travel through expected goals into every consumer — the club's own
+    attackers, their opponents' clean sheets, bonus and defensive contribution
+    — rather than being applied to a finished points total.
+    """
 
     season = database.connection.execute(
         "SELECT id FROM seasons WHERE code = ?", (season_code,)
@@ -135,11 +145,13 @@ def opening_candidates(
         database,
         rules,
         config=config,
-        model_version="squad-comparison",
+        model_version=model_version,
     ).project(
         season_code=season_code,
         start_gameweek=gameweek,
         horizon_gameweeks=horizon_gameweeks,
+        overrides=overrides,
+        team_overrides=team_overrides,
         generated_at=generated_at or datetime.now(UTC),
         persist=False,
     )

@@ -1,0 +1,803 @@
+{
+  "format": "fpl-decision-engine/championship-season-goals/v1",
+  "description": "Regular-season goals for and against for every English Championship club, used only to vary the declared promoted-club Premier League prior around its average. Play-off matches are excluded: a play-off run is a knockout sample of three to five matches and would distort a per-match rate computed over a 46-match league season.",
+  "source": {
+    "name": "openfootball/england",
+    "url": "https://github.com/openfootball/england",
+    "revision": "master",
+    "licence": "Public Domain (CC0), per the openfootball project",
+    "retrieved_at": "2026-08-05T09:58:06.381510+00:00",
+    "retrieval_method": "Plain-text match results for '<season>/2-championship.txt' fetched over HTTPS and parsed by fpl_engine.championship. Each season's raw bytes are recorded as a SHA-256 digest so a re-fetch can be checked against this file.",
+    "note": "The official FPL API and the usual football statistics providers were unreachable from the execution environment that produced this file; openfootball is a public mirror of match results only and carries no player-level data."
+  },
+  "team_name_aliases": {
+    "AFC Bournemouth": "Bournemouth",
+    "Fulham FC": "Fulham",
+    "Nottingham Forest FC": "Nott'm Forest",
+    "Burnley FC": "Burnley",
+    "Luton Town FC": "Luton",
+    "Sheffield United FC": "Sheffield Utd",
+    "Ipswich Town FC": [
+      "Ipswich",
+      "Ipswich Town"
+    ],
+    "Leicester City FC": "Leicester",
+    "Southampton FC": "Southampton",
+    "Leeds United FC": "Leeds",
+    "Sunderland AFC": "Sunderland",
+    "Coventry City FC": "Coventry City",
+    "Hull City AFC": "Hull City"
+  },
+  "seasons": [
+    {
+      "season_code": "2021-22",
+      "competition": "english-championship",
+      "stage": "regular",
+      "matches": 552,
+      "teams": [
+        {
+          "name": "AFC Bournemouth",
+          "matches": 46,
+          "goals_for": 74,
+          "goals_against": 39
+        },
+        {
+          "name": "Barnsley FC",
+          "matches": 46,
+          "goals_for": 33,
+          "goals_against": 73
+        },
+        {
+          "name": "Birmingham City FC",
+          "matches": 46,
+          "goals_for": 50,
+          "goals_against": 75
+        },
+        {
+          "name": "Blackburn Rovers FC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 50
+        },
+        {
+          "name": "Blackpool FC",
+          "matches": 46,
+          "goals_for": 54,
+          "goals_against": 58
+        },
+        {
+          "name": "Bristol City FC",
+          "matches": 46,
+          "goals_for": 62,
+          "goals_against": 77
+        },
+        {
+          "name": "Cardiff City FC",
+          "matches": 46,
+          "goals_for": 50,
+          "goals_against": 68
+        },
+        {
+          "name": "Coventry City FC",
+          "matches": 46,
+          "goals_for": 60,
+          "goals_against": 59
+        },
+        {
+          "name": "Derby County FC",
+          "matches": 46,
+          "goals_for": 45,
+          "goals_against": 53
+        },
+        {
+          "name": "Fulham FC",
+          "matches": 46,
+          "goals_for": 106,
+          "goals_against": 43
+        },
+        {
+          "name": "Huddersfield Town AFC",
+          "matches": 46,
+          "goals_for": 64,
+          "goals_against": 47
+        },
+        {
+          "name": "Hull City AFC",
+          "matches": 46,
+          "goals_for": 41,
+          "goals_against": 54
+        },
+        {
+          "name": "Luton Town FC",
+          "matches": 46,
+          "goals_for": 63,
+          "goals_against": 55
+        },
+        {
+          "name": "Middlesbrough FC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 50
+        },
+        {
+          "name": "Millwall FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 45
+        },
+        {
+          "name": "Nottingham Forest FC",
+          "matches": 46,
+          "goals_for": 73,
+          "goals_against": 40
+        },
+        {
+          "name": "Peterborough United FC",
+          "matches": 46,
+          "goals_for": 43,
+          "goals_against": 87
+        },
+        {
+          "name": "Preston North End FC",
+          "matches": 46,
+          "goals_for": 52,
+          "goals_against": 56
+        },
+        {
+          "name": "Queens Park Rangers FC",
+          "matches": 46,
+          "goals_for": 60,
+          "goals_against": 59
+        },
+        {
+          "name": "Reading FC",
+          "matches": 46,
+          "goals_for": 54,
+          "goals_against": 87
+        },
+        {
+          "name": "Sheffield United FC",
+          "matches": 46,
+          "goals_for": 63,
+          "goals_against": 45
+        },
+        {
+          "name": "Stoke City FC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 52
+        },
+        {
+          "name": "Swansea City AFC",
+          "matches": 46,
+          "goals_for": 58,
+          "goals_against": 68
+        },
+        {
+          "name": "West Bromwich Albion FC",
+          "matches": 46,
+          "goals_for": 52,
+          "goals_against": 45
+        }
+      ],
+      "source_url": "https://raw.githubusercontent.com/openfootball/england/master/2021-22/2-championship.txt",
+      "source_sha256": "cfad00fd132faba713a1c2928670b8df790adafe838989d437d40f716a4c0beb"
+    },
+    {
+      "season_code": "2022-23",
+      "competition": "english-championship",
+      "stage": "regular",
+      "matches": 552,
+      "teams": [
+        {
+          "name": "Birmingham City FC",
+          "matches": 46,
+          "goals_for": 47,
+          "goals_against": 58
+        },
+        {
+          "name": "Blackburn Rovers FC",
+          "matches": 46,
+          "goals_for": 52,
+          "goals_against": 54
+        },
+        {
+          "name": "Blackpool FC",
+          "matches": 46,
+          "goals_for": 48,
+          "goals_against": 72
+        },
+        {
+          "name": "Bristol City FC",
+          "matches": 46,
+          "goals_for": 55,
+          "goals_against": 56
+        },
+        {
+          "name": "Burnley FC",
+          "matches": 46,
+          "goals_for": 87,
+          "goals_against": 35
+        },
+        {
+          "name": "Cardiff City FC",
+          "matches": 46,
+          "goals_for": 41,
+          "goals_against": 58
+        },
+        {
+          "name": "Coventry City FC",
+          "matches": 46,
+          "goals_for": 58,
+          "goals_against": 46
+        },
+        {
+          "name": "Huddersfield Town AFC",
+          "matches": 46,
+          "goals_for": 47,
+          "goals_against": 62
+        },
+        {
+          "name": "Hull City AFC",
+          "matches": 46,
+          "goals_for": 51,
+          "goals_against": 61
+        },
+        {
+          "name": "Luton Town FC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 39
+        },
+        {
+          "name": "Middlesbrough FC",
+          "matches": 46,
+          "goals_for": 84,
+          "goals_against": 56
+        },
+        {
+          "name": "Millwall FC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 50
+        },
+        {
+          "name": "Norwich City FC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 54
+        },
+        {
+          "name": "Preston North End FC",
+          "matches": 46,
+          "goals_for": 45,
+          "goals_against": 59
+        },
+        {
+          "name": "Queens Park Rangers FC",
+          "matches": 46,
+          "goals_for": 44,
+          "goals_against": 71
+        },
+        {
+          "name": "Reading FC",
+          "matches": 46,
+          "goals_for": 46,
+          "goals_against": 68
+        },
+        {
+          "name": "Rotherham United FC",
+          "matches": 46,
+          "goals_for": 49,
+          "goals_against": 60
+        },
+        {
+          "name": "Sheffield United FC",
+          "matches": 46,
+          "goals_for": 73,
+          "goals_against": 39
+        },
+        {
+          "name": "Stoke City FC",
+          "matches": 46,
+          "goals_for": 55,
+          "goals_against": 54
+        },
+        {
+          "name": "Sunderland AFC",
+          "matches": 46,
+          "goals_for": 68,
+          "goals_against": 55
+        },
+        {
+          "name": "Swansea City AFC",
+          "matches": 46,
+          "goals_for": 68,
+          "goals_against": 64
+        },
+        {
+          "name": "Watford FC",
+          "matches": 46,
+          "goals_for": 56,
+          "goals_against": 53
+        },
+        {
+          "name": "West Bromwich Albion FC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 53
+        },
+        {
+          "name": "Wigan Athletic FC",
+          "matches": 46,
+          "goals_for": 38,
+          "goals_against": 65
+        }
+      ],
+      "source_url": "https://raw.githubusercontent.com/openfootball/england/master/2022-23/2-championship.txt",
+      "source_sha256": "043b06a923ac5c049ae9c03bcef858a3836979d29807d078f0aee551cc3e06ec"
+    },
+    {
+      "season_code": "2023-24",
+      "competition": "english-championship",
+      "stage": "regular",
+      "matches": 552,
+      "teams": [
+        {
+          "name": "Birmingham City FC",
+          "matches": 46,
+          "goals_for": 50,
+          "goals_against": 65
+        },
+        {
+          "name": "Blackburn Rovers FC",
+          "matches": 46,
+          "goals_for": 60,
+          "goals_against": 74
+        },
+        {
+          "name": "Bristol City FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 51
+        },
+        {
+          "name": "Cardiff City FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 70
+        },
+        {
+          "name": "Coventry City FC",
+          "matches": 46,
+          "goals_for": 70,
+          "goals_against": 59
+        },
+        {
+          "name": "Huddersfield Town AFC",
+          "matches": 46,
+          "goals_for": 48,
+          "goals_against": 77
+        },
+        {
+          "name": "Hull City AFC",
+          "matches": 46,
+          "goals_for": 68,
+          "goals_against": 60
+        },
+        {
+          "name": "Ipswich Town FC",
+          "matches": 46,
+          "goals_for": 92,
+          "goals_against": 57
+        },
+        {
+          "name": "Leeds United FC",
+          "matches": 46,
+          "goals_for": 81,
+          "goals_against": 43
+        },
+        {
+          "name": "Leicester City FC",
+          "matches": 46,
+          "goals_for": 89,
+          "goals_against": 41
+        },
+        {
+          "name": "Middlesbrough FC",
+          "matches": 46,
+          "goals_for": 71,
+          "goals_against": 62
+        },
+        {
+          "name": "Millwall FC",
+          "matches": 46,
+          "goals_for": 45,
+          "goals_against": 55
+        },
+        {
+          "name": "Norwich City FC",
+          "matches": 46,
+          "goals_for": 79,
+          "goals_against": 64
+        },
+        {
+          "name": "Plymouth Argyle FC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 70
+        },
+        {
+          "name": "Preston North End FC",
+          "matches": 46,
+          "goals_for": 56,
+          "goals_against": 67
+        },
+        {
+          "name": "Queens Park Rangers FC",
+          "matches": 46,
+          "goals_for": 47,
+          "goals_against": 58
+        },
+        {
+          "name": "Rotherham United FC",
+          "matches": 46,
+          "goals_for": 37,
+          "goals_against": 89
+        },
+        {
+          "name": "Sheffield Wednesday FC",
+          "matches": 46,
+          "goals_for": 44,
+          "goals_against": 68
+        },
+        {
+          "name": "Southampton FC",
+          "matches": 46,
+          "goals_for": 87,
+          "goals_against": 63
+        },
+        {
+          "name": "Stoke City FC",
+          "matches": 46,
+          "goals_for": 49,
+          "goals_against": 60
+        },
+        {
+          "name": "Sunderland AFC",
+          "matches": 46,
+          "goals_for": 52,
+          "goals_against": 54
+        },
+        {
+          "name": "Swansea City AFC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 65
+        },
+        {
+          "name": "Watford FC",
+          "matches": 46,
+          "goals_for": 61,
+          "goals_against": 61
+        },
+        {
+          "name": "West Bromwich Albion FC",
+          "matches": 46,
+          "goals_for": 70,
+          "goals_against": 47
+        }
+      ],
+      "source_url": "https://raw.githubusercontent.com/openfootball/england/master/2023-24/2-championship.txt",
+      "source_sha256": "21465cd995e0037ae1ff076b6c8b135708146f09d46974bb96850afc9f94c9d8"
+    },
+    {
+      "season_code": "2024-25",
+      "competition": "english-championship",
+      "stage": "regular",
+      "matches": 552,
+      "teams": [
+        {
+          "name": "Blackburn Rovers FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 48
+        },
+        {
+          "name": "Bristol City FC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 55
+        },
+        {
+          "name": "Burnley FC",
+          "matches": 46,
+          "goals_for": 69,
+          "goals_against": 16
+        },
+        {
+          "name": "Cardiff City FC",
+          "matches": 46,
+          "goals_for": 48,
+          "goals_against": 73
+        },
+        {
+          "name": "Coventry City FC",
+          "matches": 46,
+          "goals_for": 64,
+          "goals_against": 58
+        },
+        {
+          "name": "Derby County FC",
+          "matches": 46,
+          "goals_for": 48,
+          "goals_against": 56
+        },
+        {
+          "name": "Hull City AFC",
+          "matches": 46,
+          "goals_for": 44,
+          "goals_against": 54
+        },
+        {
+          "name": "Leeds United FC",
+          "matches": 46,
+          "goals_for": 95,
+          "goals_against": 30
+        },
+        {
+          "name": "Luton Town FC",
+          "matches": 46,
+          "goals_for": 45,
+          "goals_against": 69
+        },
+        {
+          "name": "Middlesbrough FC",
+          "matches": 46,
+          "goals_for": 64,
+          "goals_against": 56
+        },
+        {
+          "name": "Millwall FC",
+          "matches": 46,
+          "goals_for": 47,
+          "goals_against": 49
+        },
+        {
+          "name": "Norwich City FC",
+          "matches": 46,
+          "goals_for": 71,
+          "goals_against": 68
+        },
+        {
+          "name": "Oxford United FC",
+          "matches": 46,
+          "goals_for": 49,
+          "goals_against": 65
+        },
+        {
+          "name": "Plymouth Argyle FC",
+          "matches": 46,
+          "goals_for": 51,
+          "goals_against": 88
+        },
+        {
+          "name": "Portsmouth FC",
+          "matches": 46,
+          "goals_for": 58,
+          "goals_against": 71
+        },
+        {
+          "name": "Preston North End FC",
+          "matches": 46,
+          "goals_for": 48,
+          "goals_against": 59
+        },
+        {
+          "name": "Queens Park Rangers FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 63
+        },
+        {
+          "name": "Sheffield United FC",
+          "matches": 46,
+          "goals_for": 63,
+          "goals_against": 36
+        },
+        {
+          "name": "Sheffield Wednesday FC",
+          "matches": 46,
+          "goals_for": 60,
+          "goals_against": 69
+        },
+        {
+          "name": "Stoke City FC",
+          "matches": 46,
+          "goals_for": 45,
+          "goals_against": 62
+        },
+        {
+          "name": "Sunderland AFC",
+          "matches": 46,
+          "goals_for": 58,
+          "goals_against": 44
+        },
+        {
+          "name": "Swansea City AFC",
+          "matches": 46,
+          "goals_for": 51,
+          "goals_against": 56
+        },
+        {
+          "name": "Watford FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 61
+        },
+        {
+          "name": "West Bromwich Albion FC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 47
+        }
+      ],
+      "source_url": "https://raw.githubusercontent.com/openfootball/england/master/2024-25/2-championship.txt",
+      "source_sha256": "190a37922f1b261226f63bc86ae8fe07d1d1ac40784ab570ea346e1faf4ceb94"
+    },
+    {
+      "season_code": "2025-26",
+      "competition": "english-championship",
+      "stage": "regular",
+      "matches": 552,
+      "teams": [
+        {
+          "name": "Birmingham City FC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 56
+        },
+        {
+          "name": "Blackburn Rovers FC",
+          "matches": 46,
+          "goals_for": 42,
+          "goals_against": 56
+        },
+        {
+          "name": "Bristol City FC",
+          "matches": 46,
+          "goals_for": 59,
+          "goals_against": 59
+        },
+        {
+          "name": "Charlton Athletic FC",
+          "matches": 46,
+          "goals_for": 44,
+          "goals_against": 58
+        },
+        {
+          "name": "Coventry City FC",
+          "matches": 46,
+          "goals_for": 97,
+          "goals_against": 45
+        },
+        {
+          "name": "Derby County FC",
+          "matches": 46,
+          "goals_for": 67,
+          "goals_against": 59
+        },
+        {
+          "name": "Hull City AFC",
+          "matches": 46,
+          "goals_for": 70,
+          "goals_against": 66
+        },
+        {
+          "name": "Ipswich Town FC",
+          "matches": 46,
+          "goals_for": 80,
+          "goals_against": 47
+        },
+        {
+          "name": "Leicester City FC",
+          "matches": 46,
+          "goals_for": 58,
+          "goals_against": 68
+        },
+        {
+          "name": "Middlesbrough FC",
+          "matches": 46,
+          "goals_for": 72,
+          "goals_against": 47
+        },
+        {
+          "name": "Millwall FC",
+          "matches": 46,
+          "goals_for": 64,
+          "goals_against": 49
+        },
+        {
+          "name": "Norwich City FC",
+          "matches": 46,
+          "goals_for": 63,
+          "goals_against": 56
+        },
+        {
+          "name": "Oxford United FC",
+          "matches": 46,
+          "goals_for": 45,
+          "goals_against": 59
+        },
+        {
+          "name": "Portsmouth FC",
+          "matches": 46,
+          "goals_for": 49,
+          "goals_against": 64
+        },
+        {
+          "name": "Preston North End FC",
+          "matches": 46,
+          "goals_for": 55,
+          "goals_against": 62
+        },
+        {
+          "name": "Queens Park Rangers FC",
+          "matches": 46,
+          "goals_for": 61,
+          "goals_against": 73
+        },
+        {
+          "name": "Sheffield United FC",
+          "matches": 46,
+          "goals_for": 66,
+          "goals_against": 66
+        },
+        {
+          "name": "Sheffield Wednesday FC",
+          "matches": 46,
+          "goals_for": 29,
+          "goals_against": 89
+        },
+        {
+          "name": "Southampton FC",
+          "matches": 46,
+          "goals_for": 82,
+          "goals_against": 56
+        },
+        {
+          "name": "Stoke City FC",
+          "matches": 46,
+          "goals_for": 51,
+          "goals_against": 56
+        },
+        {
+          "name": "Swansea City AFC",
+          "matches": 46,
+          "goals_for": 57,
+          "goals_against": 59
+        },
+        {
+          "name": "Watford FC",
+          "matches": 46,
+          "goals_for": 53,
+          "goals_against": 65
+        },
+        {
+          "name": "West Bromwich Albion FC",
+          "matches": 46,
+          "goals_for": 48,
+          "goals_against": 58
+        },
+        {
+          "name": "Wrexham AFC",
+          "matches": 46,
+          "goals_for": 69,
+          "goals_against": 65
+        }
+      ],
+      "source_url": "https://raw.githubusercontent.com/openfootball/england/master/2025-26/2-championship.txt",
+      "source_sha256": "c782c023638ec960ee58ef65e5c3ddb0ff9b6ef1ee72f972caa7327670baa97d"
+    }
+  ]
+}

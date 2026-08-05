@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from fpl_engine.declaration import (
+    _BARE_PROJECTION_CONFIG_V1_FIELDS,
     DECLARATION_VERSION,
     ModelDeclaration,
     declaration_digest,
@@ -143,10 +144,19 @@ def test_the_legacy_shape_keeps_its_identity() -> None:
 
 
 def test_the_previous_bare_schema_rebuilds_without_changing_its_hash() -> None:
-    """A stored pre-component registration must remain reproducible."""
+    """A stored pre-component registration must remain reproducible.
 
-    historic = asdict(PRESEASON_V5_MODEL_CONFIG)
-    historic.pop("team_strength_model")
+    The historic shape is a *fixed* field set, so it is built from the frozen
+    declaration rather than from today's dataclass. Deriving it from
+    ``asdict`` would silently redefine the legacy shape every time
+    ``ProjectionModelConfig`` gains a field, which is the one thing this test
+    exists to prevent.
+    """
+
+    current = asdict(PRESEASON_V5_MODEL_CONFIG)
+    historic = {
+        field: current[field] for field in sorted(_BARE_PROJECTION_CONFIG_V1_FIELDS)
+    }
 
     declaration = ModelDeclaration.from_dict(historic)
 

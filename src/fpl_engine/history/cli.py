@@ -13,6 +13,11 @@ from ..allocation_variants import evaluate_allocation_variants
 from ..assumption_audit import run_assumption_audit
 from ..backtest import ProjectionBacktester, load_backtest_report
 from ..capture import capture_gameweek_forecasts
+from ..championship import (
+    DEFAULT_CHAMPIONSHIP_DATA_PATH,
+    import_championship_document,
+    load_championship_document,
+)
 from ..chip_state import LookaheadChipPolicy, ScoringChipPolicy
 from ..config import load_season_rules
 from ..declaration import ModelDeclaration
@@ -39,6 +44,11 @@ from ..learned_challenger import train_and_evaluate_learned_challenger
 from ..news import ingest_structured_news
 from ..optimisation import DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE
 from ..playing_time import train_and_evaluate_hurdle_model
+from ..preseason_final import (
+    DEFAULT_FRONTIER_SIZE,
+    finalise_preseason_squad,
+    write_artifacts,
+)
 from ..preseason_fit import fit_preseason_priors, profile_preseason_prior
 from ..preseason_strength import (
     squad_comparison_artifact,
@@ -52,6 +62,7 @@ from ..projections import (
     ProjectionModelConfig,
     RatesProjectionModel,
 )
+from ..promoted_roles import import_role_document, load_role_document
 from ..promotion import (
     DecisionGateEvidence,
     PromotionGatePolicy,
@@ -818,6 +829,85 @@ def main() -> None:
         "--markdown-output", help="Where to write the readable summary"
     )
 
+    finalise_parser = subparsers.add_parser(
+        "finalise-preseason-squad",
+        help=(
+            "Validate the differentiated promoted-club prior and the "
+            "promoted-player role evidence, generate a fresh projection under "
+            "the validated model, search a broad exact squad frontier with "
+            "goalkeeper pairs, bank levels and forced-inclusion "
+            "counterfactuals, and write the provisional opening squad"
+        ),
+    )
+    finalise_parser.add_argument("season_code")
+    finalise_parser.add_argument("--horizon", type=int, default=8)
+    finalise_parser.add_argument("--gameweek", type=int, default=1)
+    finalise_parser.add_argument(
+        "--frontier-size",
+        type=int,
+        default=DEFAULT_FRONTIER_SIZE,
+        help="How many distinct complete legal squads to enumerate and rescore",
+    )
+    finalise_parser.add_argument(
+        "--alternatives",
+        type=int,
+        default=3,
+        help="How many runners-up to report in full",
+    )
+    finalise_parser.add_argument(
+        "--appearance-floor",
+        type=float,
+        default=DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
+    )
+    finalise_parser.add_argument(
+        "--decision-evidence",
+        action="store_true",
+        help=(
+            "Also replay a historical opening squad per transition per prior. "
+            "Secondary evidence only, and it dominates runtime."
+        ),
+    )
+    finalise_parser.add_argument(
+        "--no-modifiers",
+        action="store_true",
+        help="Do not apply accepted reviewed research modifiers to the live run",
+    )
+    finalise_parser.add_argument("--rules")
+    finalise_parser.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "Validation artifact path; defaults to "
+            "data/models/preseason-final-validation-<season>.json"
+        ),
+    )
+    finalise_parser.add_argument("--squad-output")
+    finalise_parser.add_argument("--markdown-output")
+    finalise_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Print a short summary instead of the whole artifact",
+    )
+
+    import_championship_parser = subparsers.add_parser(
+        "import-championship",
+        help=(
+            "Import the documented Championship season goal file used to vary "
+            "the promoted-club prior"
+        ),
+    )
+    import_championship_parser.add_argument(
+        "--path", default=str(DEFAULT_CHAMPIONSHIP_DATA_PATH)
+    )
+    import_championship_parser.add_argument(
+        "--roles-path",
+        help=(
+            "Optional Championship player role file. Absent by default: no "
+            "public source of Championship player minutes is available to this "
+            "project."
+        ),
+    )
+
     variants_parser = subparsers.add_parser(
         "evaluate-allocation-variants",
         help=(
@@ -1406,6 +1496,63 @@ def main() -> None:
             if args.markdown_output:
                 write_preseason_validation_markdown(result, args.markdown_output)
             print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "import-championship":
+            document = load_championship_document(args.path)
+            summary = import_championship_document(database, document)
+            if args.roles_path:
+                roles = load_role_document(args.roles_path)
+                summary["roles"] = import_role_document(database, roles)
+            print(json.dumps(summary, indent=2, default=str))
+            return
+
+        if args.command == "finalise-preseason-squad":
+            rules = load_season_rules(
+                Path(args.rules or f"config/seasons/{args.season_code}.json")
+            )
+            result = finalise_preseason_squad(
+                database,
+                rules,
+                season_code=args.season_code,
+                horizon_gameweeks=args.horizon,
+                gameweek_number=args.gameweek,
+                frontier_size=args.frontier_size,
+                minimum_mean_appearance=args.appearance_floor,
+                include_decision_evidence=args.decision_evidence,
+                alternative_count=args.alternatives,
+                apply_modifiers=not args.no_modifiers,
+            )
+            base = Path("data/models")
+            paths = write_artifacts(
+                result,
+                validation_path=(
+                    args.output
+                    or base / f"preseason-final-validation-{args.season_code}.json"
+                ),
+                squad_path=(
+                    args.squad_output
+                    or base / f"preseason-final-squad-{args.season_code}.json"
+                ),
+                markdown_path=(
+                    args.markdown_output
+                    or base / f"preseason-final-validation-{args.season_code}.md"
+                ),
+            )
+            if args.quiet:
+                squad = result["final_squad"]
+                print(
+                    f"Projection run {squad.get('projection_run_id')} "
+                    f"({squad.get('model_version')}); cost "
+                    f"{squad['total_cost_tenths'] / 10:.1f}m, bank "
+                    f"{squad['bank_tenths'] / 10:.1f}m, exact GW"
+                    f"{args.gameweek}-{args.gameweek + args.horizon - 1} value "
+                    f"{squad['decision_value']}."
+                )
+                for path in paths:
+                    print(f"Wrote {path}")
+            else:
+                print(json.dumps(result, indent=2, default=str))
             return
 
         if args.command == "evaluate-allocation-variants":

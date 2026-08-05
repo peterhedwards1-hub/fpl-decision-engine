@@ -99,6 +99,14 @@ class FullSquadResult:
     horizon_expected_bench_contribution: float = 0.0
     terminal_value: float = 0.0
     decision_value: float = 0.0
+    #: The two goalkeepers owned, the exact horizon value of the pair under
+    #: its best weekly orientation, and that orientation Gameweek by Gameweek.
+    goalkeeper_pair: tuple[str, ...] = ()
+    goalkeeper_pair_value: float = 0.0
+    goalkeeper_orientations: tuple[GoalkeeperOrientation, ...] = ()
+    #: The linear objective CBC actually proved, kept so a report can say
+    #: whether exact rescoring reorders the solver's own ranking.
+    solver_objective: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -281,6 +289,116 @@ def optimise_starting_xi(
     )
 
 
+@dataclass(frozen=True)
+class GoalkeeperOrientation:
+    """Which of a goalkeeper pair starts one Gameweek, and what the pair is worth.
+
+    Goalkeepers cannot be valued one at a time. Exactly one of the two plays,
+    and the reserve is not a reserve in the usual sense: when the nominated
+    starter records zero minutes the substitute goalkeeper replaces them
+    automatically, because no legal formation exists without a goalkeeper. The
+    quantity a manager actually owns is therefore
+
+        value_if_A_starts = A unconditional xP
+                          + P(A records zero minutes) x B unconditional xP
+
+    and the mirror for B. A goalkeeper with the lower standalone expectation
+    can be the correct nomination when the partner behind them is strong and
+    their own appearance is doubtful, because the pair collects from both.
+
+    Appearance states are assumed independent, exactly as everywhere else in
+    this module. That assumption is visible here: a manager's two goalkeepers
+    are ordinarily at different clubs, but if they were at the same club, or
+    were a first choice and their own understudy, the independence assumption
+    would overstate the protection.
+    """
+
+    gameweek_number: int
+    starter_id: str
+    substitute_id: str
+    value: float
+    starter_standalone: float
+    substitute_standalone: float
+    alternative_value: float
+
+    @property
+    def uplift(self) -> float:
+        """How much the pairing adds over the nominated starter alone."""
+
+        return self.value - self.starter_standalone
+
+    @property
+    def prefers_lower_standalone(self) -> bool:
+        """Whether protection outweighed a lower standalone expectation."""
+
+        return self.starter_standalone < self.substitute_standalone
+
+
+def goalkeeper_pair_orientation(
+    first_id: str,
+    second_id: str,
+    *,
+    gameweek_number: int,
+    points: dict[str, float],
+    appearance: dict[str, float],
+) -> GoalkeeperOrientation:
+    """The better of the two orientations for one goalkeeper pair, exactly."""
+
+    first_value = points[first_id] + (1.0 - appearance[first_id]) * points[second_id]
+    second_value = points[second_id] + (1.0 - appearance[second_id]) * points[first_id]
+    # Ties resolve on identifier so a rerun on identical inputs agrees.
+    if (second_value, second_id) > (first_value, first_id):
+        starter, substitute = second_id, first_id
+        value, alternative = second_value, first_value
+    else:
+        starter, substitute = first_id, second_id
+        value, alternative = first_value, second_value
+    return GoalkeeperOrientation(
+        gameweek_number=gameweek_number,
+        starter_id=starter,
+        substitute_id=substitute,
+        value=value,
+        starter_standalone=points[starter],
+        substitute_standalone=points[substitute],
+        alternative_value=alternative,
+    )
+
+
+def goalkeeper_pair_horizon_value(
+    first: CandidatePlayer,
+    second: CandidatePlayer,
+    gameweeks: tuple[int, ...],
+) -> tuple[float, tuple[GoalkeeperOrientation, ...]]:
+    """A pair's total value over the horizon, orientation chosen each Gameweek.
+
+    The orientation is a weekly decision, not a squad-level one: a fixture
+    swing or a doubt can flip which goalkeeper should be nominated without
+    changing which two are owned.
+    """
+
+    orientations = []
+    total = 0.0
+    for gameweek in gameweeks:
+        first_value = _value_for_gameweek(first, gameweek)
+        second_value = _value_for_gameweek(second, gameweek)
+        orientation = goalkeeper_pair_orientation(
+            first.source_player_id,
+            second.source_player_id,
+            gameweek_number=gameweek,
+            points={
+                first.source_player_id: first_value.expected_points,
+                second.source_player_id: second_value.expected_points,
+            },
+            appearance={
+                first.source_player_id: first_value.appearance_probability,
+                second.source_player_id: second_value.appearance_probability,
+            },
+        )
+        orientations.append(orientation)
+        total += orientation.value
+    return total, tuple(orientations)
+
+
 def optimise_full_squad(
     candidates: tuple[CandidatePlayer, ...],
     *,
@@ -288,6 +406,8 @@ def optimise_full_squad(
     rules: SeasonRules,
     excluded_squads: tuple[frozenset[str], ...] = (),
     excluded_starting_xis: tuple[frozenset[str], ...] = (),
+    required_player_ids: frozenset[str] = frozenset(),
+    goalkeeper_pair_valuation: bool = True,
 ) -> FullSquadResult:
     """Select a legal squad and weekly lineup, then value autosubs exactly.
 
@@ -300,6 +420,24 @@ def optimise_full_squad(
     that too and breaks any remaining tie deterministically. Bench order and
     the captain/vice pair are then chosen by exact enumeration, which needs no
     surrogate because the state space is small.
+
+    Goalkeepers are handled as a pair rather than as two independent players.
+    A single starter variable per Gameweek would value the nominated
+    goalkeeper alone and leave the substitute contributing nothing to
+    selection, even though the substitute automatically replaces the starter
+    whenever the starter records no minutes. Instead every eligible pair is
+    enumerated, each pair's best weekly orientation and exact value computed,
+    and that value carried into the same objective the outfield players are
+    selected under. Goalkeepers therefore appear in the objective **once**, in
+    the pair term, and are excluded from the ordinary starter, captain and
+    bench-quality terms so no goalkeeper's points can be counted twice. Which
+    two goalkeepers are owned, and which one starts each Gameweek, both come
+    out of the solve; nothing is swapped afterwards.
+
+    ``required_player_ids`` forces named players into the squad, which is what
+    a counterfactual ("what if this club's defender had to be owned?") needs:
+    the optimiser then rebuilds the rest of the squad around them rather than
+    substituting them into a squad chosen without them.
     """
 
     try:
@@ -337,13 +475,56 @@ def optimise_full_squad(
         for gameweek in gameweeks
         for index, player in enumerate(ordered)
     }
+    goalkeepers = tuple(
+        player for player in ordered if player.position == Position.GK
+    )
+    if goalkeeper_pair_valuation and len(goalkeepers) < 2:
+        raise OptimisationError(
+            "Goalkeeper-pair valuation needs at least two eligible goalkeepers"
+        )
+    # A goalkeeper is never a sensible captain under this scoring model, and
+    # allowing one would double-count a goalkeeper already valued in the pair
+    # term. The post-solve captaincy enumeration still sees every starter, so
+    # the exact value reported is unaffected either way.
+    captainable = (
+        tuple(player for player in ordered if player.position != Position.GK)
+        if goalkeeper_pair_valuation
+        else ordered
+    )
     captain_vars = {
         (gameweek, player.source_player_id): pulp.LpVariable(
             f"captain_{gameweek}_{index}", cat=pulp.LpBinary
         )
         for gameweek in gameweeks
-        for index, player in enumerate(ordered)
+        for index, player in enumerate(captainable)
     }
+    # Every legal ownable goalkeeper pair, with its exact horizon value under
+    # the better weekly orientation. Both members must be in the squad for the
+    # pair to be selected, and exactly one pair is selected, so the squad's
+    # two goalkeepers and the pair are the same choice.
+    pair_values: dict[tuple[str, str], float] = {}
+    pair_reserve_values: dict[tuple[str, str], float] = {}
+    pair_orientations: dict[tuple[str, str], tuple[GoalkeeperOrientation, ...]] = {}
+    pair_vars: dict[tuple[str, str], object] = {}
+    if goalkeeper_pair_valuation:
+        for index, (first, second) in enumerate(combinations(goalkeepers, 2)):
+            key = (first.source_player_id, second.source_player_id)
+            total, orientations = goalkeeper_pair_horizon_value(
+                first, second, gameweeks
+            )
+            pair_values[key] = total
+            pair_orientations[key] = orientations
+            # Reserve quality, for the tie-break stage only. When a nominated
+            # goalkeeper's appearance probability saturates at one the pair
+            # value is identical for every partner, and without this the
+            # reserve would be settled by the deterministic index tie-break
+            # rather than by who is actually the better substitute.
+            pair_reserve_values[key] = sum(
+                orientation.substitute_standalone for orientation in orientations
+            )
+            pair_vars[key] = pulp.LpVariable(
+                f"gk_pair_{index}", cat=pulp.LpBinary
+            )
     # The primary objective is expected FPL points from a legal XI plus its
     # captain in every projected Gameweek, with an explicitly supplied
     # residual player value added once beyond the horizon. A zero residual is
@@ -351,21 +532,33 @@ def optimise_full_squad(
     # Vice-captain variables are deliberately absent: the fallback term is a
     # product of two binaries, and it is resolved exactly after the solve by
     # _optimal_captaincy rather than linearised here.
+    scored_starters = (
+        tuple(player for player in ordered if player.position != Position.GK)
+        if goalkeeper_pair_valuation
+        else ordered
+    )
     lineup_objective = pulp.lpSum(
-        (
-            starter_vars[(gameweek, player.source_player_id)]
-            + captain_vars[(gameweek, player.source_player_id)]
-        )
+        starter_vars[(gameweek, player.source_player_id)]
         * round(values[(gameweek, player.source_player_id)].expected_points, 6)
         for gameweek in gameweeks
-        for player in ordered
+        for player in scored_starters
+    ) + pulp.lpSum(
+        captain_vars[(gameweek, player.source_player_id)]
+        * round(values[(gameweek, player.source_player_id)].expected_points, 6)
+        for gameweek in gameweeks
+        for player in captainable
+    )
+    # The goalkeepers' only appearance in the objective.
+    pair_objective = pulp.lpSum(
+        variable * round(pair_values[key], 6)
+        for key, variable in pair_vars.items()
     )
     terminal_objective = pulp.lpSum(
         squad_vars[player.source_player_id]
         * round(player.residual_value, 6)
         for player in ordered
     )
-    primary_objective = lineup_objective + terminal_objective
+    primary_objective = lineup_objective + pair_objective + terminal_objective
     problem += primary_objective
     problem += (
         pulp.lpSum(squad_vars.values()) == rules.squad.squad_size,
@@ -391,7 +584,7 @@ def optimise_full_squad(
         problem += (
             pulp.lpSum(
                 captain_vars[(gameweek, player.source_player_id)]
-                for player in ordered
+                for player in captainable
             )
             == 1,
             f"one_captain_{gameweek}",
@@ -403,11 +596,12 @@ def optimise_full_squad(
                 <= squad_vars[player_id],
                 f"starter_in_squad_{gameweek}_{player_id}",
             )
-            problem += (
-                captain_vars[(gameweek, player_id)]
-                <= starter_vars[(gameweek, player_id)],
-                f"captain_starts_{gameweek}_{player_id}",
-            )
+            if (gameweek, player_id) in captain_vars:
+                problem += (
+                    captain_vars[(gameweek, player_id)]
+                    <= starter_vars[(gameweek, player_id)],
+                    f"captain_starts_{gameweek}_{player_id}",
+                )
     for position in Position:
         squad_position_total = pulp.lpSum(
             squad_vars[player.source_player_id]
@@ -444,6 +638,44 @@ def optimise_full_squad(
             <= rules.squad.max_players_per_team,
             f"club_{team_id}_limit",
         )
+    if pair_vars:
+        problem += (
+            pulp.lpSum(pair_vars.values()) == 1,
+            "one_goalkeeper_pair",
+        )
+        for (first_id, second_id), variable in pair_vars.items():
+            problem += (
+                variable <= squad_vars[first_id],
+                f"pair_first_{first_id}_{second_id}",
+            )
+            problem += (
+                variable <= squad_vars[second_id],
+                f"pair_second_{first_id}_{second_id}",
+            )
+            # Nominate the goalkeeper the pair was priced under, inside the
+            # solve. Exactly one goalkeeper starts each Gameweek, so this
+            # pins the starter variable to the orientation rather than
+            # leaving it free and correcting it afterwards — which would
+            # make every constraint written against the starting XI, such as
+            # frontier exclusions, read a lineup nobody selected.
+            for orientation in pair_orientations[(first_id, second_id)]:
+                problem += (
+                    starter_vars[
+                        (orientation.gameweek_number, orientation.starter_id)
+                    ]
+                    >= variable,
+                    f"pair_nominates_{first_id}_{second_id}_"
+                    f"{orientation.gameweek_number}",
+                )
+    missing = sorted(required_player_ids - set(squad_vars))
+    if missing:
+        raise OptimisationError(
+            "Cannot force players who are not eligible candidates: "
+            + ", ".join(missing)
+        )
+    for player_id in sorted(required_player_ids):
+        problem += (squad_vars[player_id] == 1, f"required_{player_id}")
+
     current_gameweek = gameweeks[0]
     for index, excluded in enumerate(excluded_squads):
         known_ids = excluded & set(squad_vars)
@@ -493,7 +725,10 @@ def optimise_full_squad(
             6,
         )
         for gameweek in gameweeks
-        for player in ordered
+        for player in scored_starters
+    ) + pulp.lpSum(
+        variable * round(pair_reserve_values[key], 6)
+        for key, variable in pair_vars.items()
     )
     problem.setObjective(bench_objective)
     status_code = problem.solve(solver)
@@ -530,6 +765,17 @@ def optimise_full_squad(
         for player in ordered
         if (squad_vars[player.source_player_id].value() or 0) > 0.5
     )
+    selected_pair: tuple[str, str] | None = None
+    orientation_by_gameweek: dict[int, GoalkeeperOrientation] = {}
+    if pair_vars:
+        selected_ids = {player.source_player_id for player in selected}
+        selected_pair = next(
+            key for key in pair_vars if selected_ids.issuperset(key)
+        )
+        orientation_by_gameweek = {
+            orientation.gameweek_number: orientation
+            for orientation in pair_orientations[selected_pair]
+        }
     plans = []
     for gameweek in gameweeks:
         gameweek_starters = tuple(
@@ -540,6 +786,26 @@ def optimise_full_squad(
             )
             > 0.5
         )
+        if orientation_by_gameweek:
+            # The solve valued the pair, not a nominated goalkeeper, so the
+            # solver's goalkeeper starter variable carries no information.
+            # Nominate the orientation the pair value was computed under, so
+            # the reported lineup is the one that was actually priced.
+            nominated = orientation_by_gameweek[gameweek].starter_id
+            gameweek_starters = tuple(
+                sorted(
+                    (
+                        player
+                        for player in gameweek_starters
+                        if player.position != Position.GK
+                    ),
+                    key=lambda player: player.source_player_id,
+                )
+            ) + tuple(
+                player
+                for player in selected
+                if player.source_player_id == nominated
+            )
         # The solve fixes who starts. Captaincy is then resolved exactly: the
         # vice-captain never entered the objective, so the solver's choice
         # carries no information at all.
@@ -691,6 +957,14 @@ def optimise_full_squad(
         ),
         terminal_value=round(terminal_value, 3),
         decision_value=round(horizon_expected + terminal_value, 3),
+        goalkeeper_pair=tuple(selected_pair or ()),
+        goalkeeper_pair_value=round(
+            pair_values.get(selected_pair, 0.0) if selected_pair else 0.0, 3
+        ),
+        goalkeeper_orientations=(
+            pair_orientations[selected_pair] if selected_pair else ()
+        ),
+        solver_objective=round(primary_optimum, 3),
         proof=(
             "CBC returned Optimal for the projected multi-Gameweek legal-XI "
             "and captain objective plus any declared terminal values, then "
@@ -703,8 +977,32 @@ def optimise_full_squad(
             "autosubs and captain fallback for the selected squad. The squad "
             "is proven optimal for the linear objective; exact autosub "
             "optimality is established only among the opening-squad candidate "
-            "frontier that is explicitly compared."
+            "frontier that is explicitly compared. Goalkeepers entered that "
+            "objective once, as an exactly valued pair with its best weekly "
+            "orientation, and are absent from the starter, captain and "
+            "bench-quality terms."
         ),
+    )
+
+
+def squad_ranking_key(
+    result: FullSquadResult,
+) -> tuple[float, float, float, int, tuple[str, ...]]:
+    """Rank squads by exact decision value, cheapest first among true ties.
+
+    Money left in the bank is worth something a projection cannot price — a
+    later transfer, a price rise absorbed — so it is never converted into
+    points here. It only breaks ties: two squads the model cannot separate on
+    expected points are separated by cost, and only then by identifier so a
+    rerun agrees with itself.
+    """
+
+    return (
+        -result.decision_value,
+        -result.horizon_expected_points,
+        -result.lineup_expected_points,
+        result.total_cost_tenths,
+        tuple(sorted(player.source_player_id for player in result.players)),
     )
 
 
@@ -715,12 +1013,23 @@ def optimise_opening_squads(
     rules: SeasonRules,
     alternative_count: int = 2,
     candidate_pool_size: int | None = None,
+    require_distinct_starting_xi: bool = True,
+    required_player_ids: frozenset[str] = frozenset(),
+    goalkeeper_pair_valuation: bool = True,
 ) -> OpeningSquadRecommendation:
     """Return a robust opening squad and genuinely distinct alternatives.
 
     Excluding only the exact fifteen produced alternatives that reused the
     same XI and swapped a bench filler, which is not a decision the manager
-    can act on. Each alternative must now differ in its starting XI as well.
+    can act on, so by default each alternative must differ in its starting XI
+    as well.
+
+    A broad frontier wants the opposite: forty *complete squads* that are each
+    distinct as squads, whether or not two of them happen to field the same
+    opening eleven. Two squads with the same XI and different benches make
+    genuinely different autosub and rotation propositions, and excluding one
+    of them shrinks the frontier for no reason. Pass
+    ``require_distinct_starting_xi=False`` for that.
     """
 
     if alternative_count < 0:
@@ -738,27 +1047,30 @@ def optimise_opening_squads(
     excluded_squads: list[frozenset[str]] = []
     excluded_starting_xis: list[frozenset[str]] = []
     for _ in range(pool_size):
-        result = optimise_full_squad(
-            candidates,
-            budget_tenths=budget_tenths,
-            rules=rules,
-            excluded_squads=tuple(excluded_squads),
-            excluded_starting_xis=tuple(excluded_starting_xis),
-        )
+        try:
+            result = optimise_full_squad(
+                candidates,
+                budget_tenths=budget_tenths,
+                rules=rules,
+                excluded_squads=tuple(excluded_squads),
+                excluded_starting_xis=tuple(excluded_starting_xis),
+                required_player_ids=required_player_ids,
+                goalkeeper_pair_valuation=goalkeeper_pair_valuation,
+            )
+        except OptimisationError:
+            # The frontier is exhausted: every remaining legal squad has
+            # already been produced. Fewer candidates than asked for is a
+            # fact about the candidate set, not a failure.
+            if not results:
+                raise
+            break
         results.append(result)
         excluded_squads.append(
             frozenset(player.source_player_id for player in result.players)
         )
-        excluded_starting_xis.append(result.starting_player_ids)
-    ranked = sorted(
-        results,
-        key=lambda result: (
-            -result.decision_value,
-            -result.horizon_expected_points,
-            -result.lineup_expected_points,
-            tuple(player.source_player_id for player in result.players),
-        ),
-    )
+        if require_distinct_starting_xi:
+            excluded_starting_xis.append(result.starting_player_ids)
+    ranked = sorted(results, key=squad_ranking_key)
     primary = ranked[0]
     uncertain = sorted(
         (
@@ -784,13 +1096,16 @@ def optimise_opening_squads(
         objective=(
             "Expected points from each Gameweek's legal-XI, captain fallback "
             "and autosubs across the active horizon, plus declared terminal "
-            f"value; best of {pool_size} distinct solver-proven candidates"
+            f"value; best of {len(results)} distinct solver-proven candidates"
         ),
         assumptions=(
             "Appearance states are independent until the joint simulator qualifies",
             "Terminal value is zero unless explicitly supplied on candidates",
             "Candidate-frontier comparison is exact; a global nonlinear autosub optimum "
             "is not claimed",
+            "Goalkeepers are valued as a pair: the substitute's automatic "
+            "replacement of a starter who records no minutes is priced into "
+            "selection, under the same independent-appearance assumption",
         ),
         transfer_triggers=triggers,
     )

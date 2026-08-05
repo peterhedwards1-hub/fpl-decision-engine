@@ -167,6 +167,20 @@ class ProjectionModelConfig:
     carry_forward_regression_matches: float = 12.0
     promoted_team_attack_multiplier: float = 0.85
     promoted_team_defence_multiplier: float = 1.20
+    # How a promoted club's declared prior is set. "fixed" gives every
+    # promoted club the two multipliers above, which is the incumbent.
+    # "championship_relative" keeps those as the cohort average and varies
+    # each club around it by its previous-division goals for and against,
+    # at ``promoted_prior_weight``. Weight zero reproduces "fixed" exactly,
+    # which is what makes the two a single-field comparison.
+    promoted_prior_mode: str = "fixed"
+    promoted_prior_weight: float = 0.0
+    # Declared and asymmetric: Championship evidence may separate promoted
+    # clubs from one another, never rate one above an average established club.
+    promoted_prior_minimum_attack: float = 0.60
+    promoted_prior_maximum_attack: float = 1.00
+    promoted_prior_minimum_defence: float = 1.00
+    promoted_prior_maximum_defence: float = 1.50
     cold_start_prior: str = "position"
     cold_start_price_elasticity: float = 1.5
     cold_start_minimum_factor: float = 0.35
@@ -267,6 +281,24 @@ class ProjectionModelConfig:
             raise ValueError("Promoted attack multiplier must be positive")
         if self.promoted_team_defence_multiplier <= 0:
             raise ValueError("Promoted defence multiplier must be positive")
+        if self.promoted_prior_mode not in {"fixed", "championship_relative"}:
+            raise ValueError(
+                "Promoted prior mode must be 'fixed' or 'championship_relative'"
+            )
+        if self.promoted_prior_weight < 0:
+            raise ValueError("Promoted prior weight cannot be negative")
+        if self.promoted_prior_minimum_attack <= 0:
+            raise ValueError("Minimum promoted attack multiplier must be positive")
+        if self.promoted_prior_maximum_attack < self.promoted_prior_minimum_attack:
+            raise ValueError(
+                "Maximum promoted attack multiplier cannot be below the minimum"
+            )
+        if self.promoted_prior_minimum_defence <= 0:
+            raise ValueError("Minimum promoted defence multiplier must be positive")
+        if self.promoted_prior_maximum_defence < self.promoted_prior_minimum_defence:
+            raise ValueError(
+                "Maximum promoted defence multiplier cannot be below the minimum"
+            )
         if self.cold_start_prior not in {"position", "position_price"}:
             raise ValueError("Cold-start prior must be 'position' or 'position_price'")
         if self.cold_start_price_elasticity < 0:
@@ -1421,15 +1453,67 @@ class RatesProjectionModel:
         ).fetchall()
         promoted_attack = previous_league_average * self.config.promoted_team_attack_multiplier
         promoted_defence = previous_league_average * self.config.promoted_team_defence_multiplier
+        # A club with no same-named entry in the previous top-flight season is
+        # promoted and has nothing to carry forward. Under the incumbent every
+        # such club takes the same declared prior; under the differentiated
+        # mode each takes its own, derived from the division it came from.
+        promoted_names = tuple(
+            str(row["name"]) for row in current if str(row["name"]) not in by_name
+        )
+        promoted_rates = {
+            name: (promoted_attack, promoted_defence) for name in promoted_names
+        }
+        if (
+            self.config.promoted_prior_mode == "championship_relative"
+            and promoted_names
+        ):
+            for name, prior in self._promoted_club_priors(
+                previous_season_code=str(previous["code"]),
+                promoted_names=promoted_names,
+            ).items():
+                promoted_rates[name] = (
+                    previous_league_average * prior.attack_multiplier,
+                    previous_league_average * prior.defence_multiplier,
+                )
         return (
             {
                 str(row["team_id"]): by_name.get(
                     str(row["name"]),
-                    (promoted_attack, promoted_defence),
+                    promoted_rates.get(
+                        str(row["name"]), (promoted_attack, promoted_defence)
+                    ),
                 )
                 for row in current
             },
             previous_league_average,
+        )
+
+    def _promoted_club_priors(
+        self,
+        *,
+        previous_season_code: str,
+        promoted_names: tuple[str, ...],
+    ) -> dict[str, Any]:
+        """Differentiated promoted priors from the previous Championship season.
+
+        The Championship season read is the one that ran alongside the previous
+        Premier League season, and it finished before the target season began,
+        so it cannot leak into any origin inside the target season.
+        """
+
+        from .championship import promoted_club_priors
+
+        return promoted_club_priors(
+            self.database,
+            championship_season_code=previous_season_code,
+            promoted_fpl_names=promoted_names,
+            weight=self.config.promoted_prior_weight,
+            base_attack=self.config.promoted_team_attack_multiplier,
+            base_defence=self.config.promoted_team_defence_multiplier,
+            minimum_attack=self.config.promoted_prior_minimum_attack,
+            maximum_attack=self.config.promoted_prior_maximum_attack,
+            minimum_defence=self.config.promoted_prior_minimum_defence,
+            maximum_defence=self.config.promoted_prior_maximum_defence,
         )
 
     def fixture_lambdas(
