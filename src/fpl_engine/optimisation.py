@@ -13,6 +13,22 @@ from .rules import validate_squad
 
 DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE = 0.6
 
+#: Wall-clock cap, in seconds, on a single *generation* solve inside
+#: :func:`enumerate_squad_ids`. Generation only proposes candidate squads; every
+#: candidate is exact-rescored before it is ranked, so a solve that stops early
+#: with a feasible-but-unproven incumbent can only change *which* legal squad is
+#: proposed, never how one is scored or ordered. Without a cap, the linear
+#: objective's massive degeneracy — every completion of one weekly XI ties
+#: exactly — lets CBC spend arbitrarily long proving optimality over an
+#: interchangeable tie set, which has cost multi-hour and hung runs. ``None``
+#: restores uncapped, proven-optimal generation. The exact-scoring solves in
+#: :func:`optimise_full_squad` and the starting-XI selection are never capped.
+#:
+#: 30 seconds is far more than a healthy generation solve needs — real ones
+#: return in a few seconds — so the cap only bites on the degenerate proofs it
+#: is meant to bound, where CBC has already found the incumbent it will return.
+DEFAULT_GENERATION_TIME_LIMIT_SECONDS: float | None = 30.0
+
 
 class OptimisationError(RuntimeError):
     """Raised when no proven optimal solution can be produced."""
@@ -832,6 +848,7 @@ def enumerate_squad_ids(
     forbidden_player_ids: frozenset[str] = frozenset(),
     group_constraints: tuple[SquadGroupConstraint, ...] = (),
     spend_constraints: tuple[SquadSpendConstraint, ...] = (),
+    time_limit_seconds: float | None = DEFAULT_GENERATION_TIME_LIMIT_SECONDS,
 ) -> tuple[frozenset[str], ...]:
     """Produce many distinct legal squads from one model, cheaply.
 
@@ -869,6 +886,15 @@ def enumerate_squad_ids(
     is removed before anything is scored: the returned linear objective and
     every exact value are computed without it, so it can never decide a
     ranking.
+
+    ``time_limit_seconds`` caps each individual generation solve. When CBC hits
+    the cap with a feasible incumbent, that incumbent is accepted as a proposed
+    candidate rather than discarded — safe precisely because generation never
+    scores anything: the fifteen it returns is exact-rescored afterwards like
+    every other. The cap exists because the linear objective's degeneracy can
+    otherwise send CBC into an arbitrarily long optimality proof over a tie set
+    of interchangeable reserves. ``None`` disables it and restores uncapped,
+    proven-optimal generation.
     """
 
     try:
@@ -895,15 +921,34 @@ def enumerate_squad_ids(
         spend_constraints=spend_constraints,
     )
     problem = model.problem
-    solver = pulp.PULP_CBC_CMD(msg=False)
+    solver = (
+        pulp.PULP_CBC_CMD(msg=False)
+        if time_limit_seconds is None
+        else pulp.PULP_CBC_CMD(msg=False, timeLimit=time_limit_seconds)
+    )
 
     def solve(name: str) -> bool:
-        status = pulp.LpStatus[problem.solve(solver)]
-        if status == "Optimal":
+        problem.solve(solver)
+        # ``sol_status`` describes the solution regardless of why the solver
+        # stopped: ``Optimal`` is a proven optimum, ``IntegerFeasible`` is a
+        # valid legal squad found before the time cap expired. Both are usable
+        # candidates here — generation only proposes, and every proposal is
+        # exact-rescored before it is ranked. ``NoSolutionFound`` covers both a
+        # genuinely infeasible model and a cap that expired before any incumbent
+        # was reached; either way there is nothing to propose, so stop.
+        if problem.sol_status in {
+            pulp.LpSolutionOptimal,
+            pulp.LpSolutionIntegerFeasible,
+        }:
             return True
-        if status in {"Infeasible", "Undefined", "Not Solved"}:
+        if problem.sol_status in {
+            pulp.LpSolutionNoSolutionFound,
+            pulp.LpSolutionInfeasible,
+        }:
             return False
-        raise OptimisationError(f"{name} did not resolve: {status}")
+        raise OptimisationError(
+            f"{name} did not resolve: {pulp.LpStatus[problem.status]}"
+        )
 
     if linear_slack is not None:
         problem.setObjective(model.primary_objective)
