@@ -1,6 +1,6 @@
 # Preseason final squad — 2026-27
 
-Generated 2026-08-05T12:38:32.020696+00:00. Horizon GW1–GW8. Total runtime 1498.39s.
+Generated 2026-08-08T01:03:21.014776+00:00. Horizon GW1–GW8. Total runtime 23744.59s.
 
 **This squad is provisional.** It stands until the final reliable pre-deadline team-news rerun, and no further.
 
@@ -8,8 +8,8 @@ Generated 2026-08-05T12:38:32.020696+00:00. Horizon GW1–GW8. Total runtime 149
 
 - Premier League seasons imported: 2021-22, 2022-23, 2023-24, 2024-25, 2025-26, 2026-27
 - Usable season transitions: 2021-22->2022-23, 2022-23->2023-24, 2023-24->2024-25, 2024-25->2025-26
-- Live snapshot source: `vaastav-fpl-mirror` retrieved 2026-08-05T12:09:07.752399+00:00
-- Direct official API capture: no
+- Live snapshot source: `official-fpl-api` retrieved 2026-08-05T22:54:28.381216+00:00
+- Direct official API capture: yes
 
 | Championship season | clubs | matches | mean goals per club-match | source |
 | --- | --- | --- | --- | --- |
@@ -40,15 +40,6 @@ Generated 2026-08-05T12:38:32.020696+00:00. Horizon GW1–GW8. Total runtime 149
 | championship_relative_w0.5 | 1.2314 | 0.8914 | -0.0438 | 1.1687 | 0.1721 |
 | championship_relative_w0.75 | 1.24 | 0.8967 | -0.0423 | 1.1715 | 0.1722 |
 
-Secondary evidence — what each prior's opening squad actually scored, one observation per season:
-
-| model | mean realised GW1–8 points | seasons |
-| --- | --- | --- |
-| fixed | 409.5 | 4 |
-| championship_relative_w0.25 | 407.25 | 4 |
-
-Difference (championship_relative_w0.25 minus fixed): -2.25 points per season. Four observations; this is not what the gate reads.
-
 Live priors for 2026-27 (Championship 2025-26, cohort mean attack 0.85 against a declared 0.85):
 
 | club | Championship attack relative | defence relative | attack multiplier | defence multiplier |
@@ -61,7 +52,7 @@ Live priors for 2026-27 (Championship 2025-26, cohort mean attack 0.85 against a
 
 - Treatment applied: **none**
 - Stored Championship role rows: 0
-- Eligible promoted candidates: 86
+- Eligible promoted candidates: 87
 - Coverage: 0.0 (minimum 0.6)
 
 Coverage is insufficient. The existing player model is kept and Championship role evidence is reported as an audit field only, because applying it to some players and not their direct competitors would distort a squad decision more than leaving the whole cohort on the positional prior.
@@ -74,18 +65,18 @@ Appearance states are independent, as everywhere else in the optimiser. Two goal
 
 | GW | nominated | pair value | other orientation | uplift over starter alone | lower standalone starts |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Leno | 4.084 | 3.907 | 0.0 | no |
-| 2 | Leno | 4.104 | 2.675 | 0.0 | no |
-| 3 | Leno | 4.588 | 3.294 | 0.0 | no |
-| 4 | Leno | 3.481 | 3.481 | 0.0 | no |
-| 5 | Leno | 3.804 | 3.281 | 0.0 | no |
-| 6 | Leno | 4.114 | 3.746 | 0.0 | no |
-| 7 | Leno | 4.565 | 2.494 | 0.0 | no |
-| 8 | Leno | 4.114 | 3.714 | 0.0 | no |
+| 1 | Raya | 4.885 | 4.084 | 0.9029 | yes |
+| 2 | Raya | 4.288 | 4.104 | 0.9073 | yes |
+| 3 | Raya | 4.68 | 4.588 | 1.0143 | yes |
+| 4 | Raya | 4.456 | 3.481 | 0.7696 | no |
+| 5 | Raya | 4.305 | 3.804 | 0.841 | yes |
+| 6 | Raya | 4.748 | 4.114 | 0.9095 | yes |
+| 7 | Leno | 4.565 | 4.559 | 0.0 | no |
+| 8 | Raya | 4.787 | 4.114 | 0.9095 | yes |
 
-- Pair chosen: Leno, Palmer
+- Pair chosen: Leno, Lo-Tutala
 - Chosen when goalkeepers are valued singly: Leno, Palmer
-- Squad changed by the pair treatment: no
+- Squad changed by the pair treatment: yes
 - Total substitution-protection value over the horizon: 0.0 points
 - A Gameweek nominates the lower standalone goalkeeper: no
 
@@ -93,16 +84,16 @@ Substitution protection is worth P(nominated goalkeeper records no minutes) x th
 
 ## 5. Eligibility audit
 
-- Priced candidates: 567
-- Eligible after the mean-appearance guardrail (0.6): 243
-- Excluded: 324
+- Priced candidates: 570
+- Eligible after the mean-appearance guardrail (0.6): 242
+- Excluded: 328
 
 ## 6. Candidate frontier
 
-- Requested 40, produced 40 distinct complete squads in 961.97s
-- Ranked together with the bank levels and forced inclusions: 44 squads; the recommendation came from `forced_Gabriel`
-- Distinct starting elevens among them: 1
-- Exact rescoring reorders the solver's ranking: **yes** (39 of 40 moved; largest move 38)
+- Requested 40, produced 76 distinct complete squads in 23601.89s
+- Ranked together with the bank levels and forced inclusions: 80 squads; the recommendation came from `frontier`
+- Distinct starting elevens among them: 13
+- Exact rescoring reorders the solver's ranking: **yes** (75 of 76 moved; largest move 74)
 - Exact rescoring changes the winner: **yes**
 
 ## 7. Bank frontier
@@ -111,9 +102,9 @@ Money in the bank is never given a points value. A bank-preserving squad within 
 
 | minimum bank | exact GW1–8 value | GW1 value | cost | bank | changes | value sacrificed | flexibility-equivalent |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| £0.0m | 449.495 | 55.711 | £100.0m | £0.0m | 0 | 0.0 | yes |
-| £0.5m | 447.016 | 55.277 | £99.5m | £0.5m | 6 | 2.479 | no |
-| £1.0m | 446.454 | 55.107 | £99.0m | £1.0m | 4 | 3.041 | no |
+| £0.0m | 450.354 | 55.731 | £100.0m | £0.0m | 0 | 0.0 | yes |
+| £0.5m | 446.471 | 55.148 | £99.5m | £0.5m | 5 | 3.883 | no |
+| £1.0m | 445.857 | 55.035 | £99.0m | £1.0m | 4 | 4.497 | no |
 
 ## 8. Arsenal defender counterfactuals
 
@@ -122,12 +113,12 @@ Money in the bank is never given a points value. A bank-preserving squad within 
 
 | defender | price | mean appearance | GW1 xP | GW1–8 xP | forced squad value | value gap | squad changes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| White | £5.5m | 0.6264 | 2.897 | 20.419 | 447.31 | 2.185 | 5 |
-| Gabriel | £8.0m | 0.7827 | 4.1 | 28.729 | 449.495 | 0.0 | 0 |
+| White | £5.5m | 0.6264 | 2.897 | 20.419 | 446.737 | 3.617 | 5 |
+| Gabriel | £8.0m | 0.7827 | 4.1 | 28.729 | 449.239 | 1.115 | 3 |
 
-Best squad containing any Arsenal defender: Gabriel at 449.495 (0.0 behind the recommendation)
+Best squad containing any Arsenal defender: Gabriel at 449.239 (1.115 behind the recommendation)
 
-**Verdict: not_absent.** The recommended squad contains 1 ARS player(s) — Gabriel — so there is no absence to explain. The counterfactual table below still reports what forcing each defender in costs.
+**Verdict: not_absent.** The recommended squad contains 1 ARS player(s) — Raya — so there is no absence to explain. The counterfactual table below still reports what forcing each defender in costs.
 
 ## 9. Concentration tests
 
@@ -137,51 +128,50 @@ The baseline is the unconstrained single solve under the live model, because eve
 
 | test | exact value | squad changes | Man Utd triple | Bournemouth double | no Arsenal | goalkeeper pair | captain |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| baseline | 448.524 | — | yes | yes | yes | Leno, Palmer | Haaland |
-| manchester_united_attack_minus_10_percent | 441.677 | 3 | no | yes | yes | Leno, Palmer | Haaland |
-| bournemouth_attack_minus_10_percent | 447.652 | 3 | yes | no | yes | Leno, Palmer | Haaland |
+| baseline | 447.796 | — | yes | yes | yes | Leno, Lo-Tutala | Haaland |
+| manchester_united_attack_minus_10_percent | 441.418 | 5 | no | yes | yes | Leno, Palmer | Haaland |
+| bournemouth_attack_minus_10_percent | 447.063 | 4 | yes | no | yes | Leno, Palmer | Haaland |
 | differentiated_promoted_prior | not run | The differentiated promoted prior was not adopted, so the live model already uses the fixed prior. Running the two against each other here would compare a model with itself; the historical comparison in the promoted-prior section is the evidence. | | | | | |
 | promoted_player_role_treatment | not run | The role treatment was not validated — no usable Championship player-level role evidence is available — so there is no second model to run. Reporting a null result here would imply the treatment was tested and found neutral, which is not what happened. | | | | | |
 
 ## 10. Final squad
 
-Projection run 2 under `rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed`. Cost £100.0m, bank £0.0m. GW1 expected 55.711, exact GW1–8 decision value 449.495, linear objective 424.094.
+Projection run 17 under `rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed`. Cost £100.0m, bank £0.0m. GW1 expected 55.731, exact GW1–8 decision value 450.354, linear objective 425.922.
 
 | player | club | pos | price | GW1–8 xP | role |
 | --- | --- | --- | --- | --- | --- |
-| Gabriel | ARS | DEF | £8.0m | 28.729 | XI |
 | Mukiele | SUN | DEF | £5.5m | 27.004 | XI |
 | Mykolenko | EVE | DEF | £4.5m | 23.363 | XI |
-| Evanilson | BOU | FWD | £6.0m | 30.633 | XI |
+| Thiaw | NEW | DEF | £5.0m | 26.477 | XI |
 | Haaland | MCI | FWD | £15.5m | 47.552 | XI (C) |
-| Watkins | AVL | FWD | £8.0m | 37.21 | XI |
-| Leno | FUL | GK | £4.5m | 32.854 | XI |
+| Watkins | AVL | FWD | £8.0m | 36.963 | XI |
+| Raya | ARS | GK | £6.0m | 29.444 | XI |
 | Cunha | MUN | MID | £8.0m | 35.668 | XI |
 | Gakpo | LIV | MID | £7.0m | 31.908 | XI |
+| Iwobi | FUL | MID | £5.5m | 28.491 | XI |
 | Mbeumo | MUN | MID | £8.0m | 38.588 | XI (V) |
 | Rayan | BOU | MID | £6.5m | 33.74 | XI |
-| Palmer | IPS | GK | £4.0m | 26.348 | bench 1 |
-| Robinson | FUL | DEF | £4.5m | 24.587 | bench 2 |
-| Truffert | BOU | DEF | £5.5m | 29.789 | bench 3 |
-| Dowell | HUL | MID | £4.5m | 17.238 | bench 4 |
+| Leno | FUL | GK | £4.5m | 32.854 | bench 1 |
+| Evanilson | BOU | FWD | £6.0m | 30.633 | bench 2 |
+| Robinson | FUL | DEF | £4.5m | 24.587 | bench 3 |
+| Truffert | BOU | DEF | £5.5m | 29.789 | bench 4 |
 
 ## 11. Meaningful alternatives
 
 | alternative | exact value | gap | cost | bank | changes |
 | --- | --- | --- | --- | --- | --- |
-| alternative_1 | 449.041 | 0.454 | £100.0m | £0.0m | 6 |
-| alternative_2 | 449.041 | 0.454 | £100.0m | £0.0m | 6 |
-| alternative_3 | 449.041 | 0.454 | £100.0m | £0.0m | 6 |
+| alternative_1 | 449.239 | 1.115 | £100.0m | £0.0m | 3 |
+| alternative_2 | 449.083 | 1.271 | £100.0m | £0.0m | 3 |
+| alternative_3 | 448.86 | 1.494 | £100.0m | £0.0m | 5 |
 
 ## 12. Robust and model-sensitive selections
 
 Compared across 6 squads: the recommendation, every completed concentration run and every feasible bank level.
 
-- Robust (in every one): Haaland, Leno, Mbeumo, Palmer, Rayan, Truffert, Watkins
-- Moderate: B.Fernandes, Cunha, Destan, Dowell, Evanilson, Gabriel, Gakpo, Iwobi, Mukiele, Mykolenko, O'Shea, Robinson, Thiaw
-- Model-sensitive (in exactly one): Davis
+- Robust (in every one): Haaland, Leno, Mbeumo, Rayan, Truffert, Watkins
+- Moderate: B.Fernandes, Cunha, Destan, Dowell, Evanilson, Gakpo, Iwobi, Mukiele, Mykolenko, O'Shea, Palmer, Raya, Robinson, Thiaw
+- Model-sensitive (in exactly one): McCarthy
 
 ## 13. Warnings and unresolved limitations
 
-- The live snapshot did not come from a direct official FPL API capture. Prices, availability and fixtures are as good as the mirror behind them and no better.
 - The promoted-player role treatment was not adopted: Coverage is insufficient. The existing player model is kept and Championship role evidence is reported as an audit field only, because applying it to some players and not their direct competitors would distort a squad decision more than leaving the whole cohort on the positional prior.

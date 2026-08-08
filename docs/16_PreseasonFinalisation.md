@@ -279,30 +279,38 @@ there is no way to tell a real interaction from a coincidence.
 
 ## 5. Live data provenance
 
-The official FPL API was unreachable: the execution environment's egress policy
-refuses the connection to `fantasy.premierleague.com` before any request is
-made. The snapshot was therefore collected from a pinned public mirror
-(`vaastav/Fantasy-Premier-League` at an immutable commit SHA) through the same
-collector, validation, archival and verification path a direct capture uses,
-and recorded under the ingestion source name `vaastav-fpl-mirror` — never
-`official-fpl-api`. Two derivations are declared on the capture:
+**Updated 2026-08-08.** Earlier runs of this document were produced inside an
+execution environment whose egress policy refused the connection to
+`fantasy.premierleague.com` before any request was made, so those snapshots
+were collected from a pinned public mirror
+(`vaastav/Fantasy-Premier-League` at an immutable commit SHA) and recorded
+under the ingestion source name `vaastav-fpl-mirror` — never
+`official-fpl-api`. That constraint does not hold from a normal home network:
+`fpl_engine.live.mirror.official_api_reachable()` confirms the official host
+answers, and every ingestion run recorded against this database — including
+runs before this one (ingestion runs 6, 7 and 13, dated 2026-07-30 through
+2026-08-05) — is `source_name: official-fpl-api`,
+`is_official_api: true`. The squad in this artifact rests on ingestion run 14,
+retrieved 2026-08-05T22:54:28Z directly from
+`https://fantasy.premierleague.com/api/bootstrap-static/`
+(`content_sha256` recorded in `data_coverage.snapshot_provenance`).
 
-- **Gameweek deadlines** are reconstructed as 90 minutes before each Gameweek's
-  first kick-off, because the mirror publishes no `events` collection. That is
-  the published FPL rule, not a measurement, and a deadline derived this way
-  must not be used to argue a capture preceded a real one.
-- **Preseason season-to-date counters are zeroed.** The mirrored player file for
-  a season with no finished fixture still carries the *previous* season's
-  totals for continuing players, and recording those as observations of the new
-  season would be a false statement about a season that has not started.
-  Nothing in the projection path reads them; the rates it does read come from
-  the previous season's fixture-level records, imported separately and
-  untouched.
+The mirror path (`--mirror-source-ref`) remains implemented and refuses to run
+when the official API is reachable, precisely so it cannot be reached for by
+habit once it is no longer necessary. It is documented here because a future
+rerun from a restricted environment (a CI runner, a sandboxed agent) will hit
+the same egress refusal and need it again — in that case, two derivations are
+declared on the mirror capture and must be re-stated: Gameweek deadlines are
+reconstructed as 90 minutes before each Gameweek's first kick-off (the mirror
+publishes no `events` collection, so this is the published FPL rule, not a
+measurement), and preseason season-to-date counters are zeroed (the mirrored
+player file for a season with no finished fixture still carries the *previous*
+season's totals for continuing players, and the projection path does not read
+them).
 
-The artifact carries a standing warning that the live snapshot is not a direct
-official capture. **Prices, availability and fixtures are as good as that
-mirror and no better, and the squad must be re-derived from a direct capture
-before submission.**
+**This artifact carries no mirror warning.** Prices, availability and
+fixtures come from a direct official capture, retrieved less than a day before
+this run.
 
 ## 6. Reproducing it
 
@@ -322,8 +330,6 @@ so the live run cannot influence the decision that authorised it.
 
 ## 7. Remaining limitations
 
-- **No direct official capture.** See section 5. This is the largest
-  qualification on the squad.
 - **No Championship player minutes.** The role treatment is implemented and
   untestable against data. See section 2.
 - **The promoted prior's two halves disagree.** Attack differentiation helps,
