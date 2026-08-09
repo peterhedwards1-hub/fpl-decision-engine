@@ -1,6 +1,6 @@
 # Opening-squad candidate search — 2026-27
 
-Generated 2026-08-05T21:18:41.903398+00:00. Horizon 8 Gameweeks. Total runtime 4629.48s.
+Generated 2026-08-09T07:03:19.549896+00:00. Horizon 8 Gameweeks. Total runtime 4146.98s.
 
 **Optimiser validation only.** No live squad is declared from this run. The squad in section 6 is the best the search found, reported as evidence about the search.
 
@@ -25,42 +25,46 @@ The winner gave up 4.3 linear points and bought 5.5 points of autosub value. No 
 
 | strategy | squads | distinct XIs | distinct GK pairs | distinct linear values | best exact | runtime |
 | --- | --- | --- | --- | --- | --- | --- |
-| legacy_8 | 8 | 1 | 3 | 1 | 447.863 | 38.28s |
-| frontier_40 | 40 | 1 | 3 | 1 | 448.86 | 169.27s |
-| mixed | 192 | 61 | 14 | 68 | 455.106 | 2078.73s |
+| legacy_8 | 8 | 1 | 3 | 1 | 448.86 | 33.88s |
+| frontier_40 | 40 | 1 | 3 | 1 | 448.86 | 169.7s |
+| mixed | 191 | 63 | 16 | 70 | 455.106 | 1980.23s |
 
 - Exact value gained over the forty-candidate frontier: **6.246**
-- Exact value gained over the eight-candidate frontier: **7.243**
+- Exact value gained over the eight-candidate frontier: **6.246**
 - The mixed pool contains every squad the older searches found: {'legacy_8': True, 'frontier_40': True}
 
 ## 4. The combined pool
 
-- Raw candidates 305, unique complete squads 192
-- Distinct starting elevens 61, distinct goalkeeper pairs 14
-- Exact-minus-linear uplift ranges 18.44 to 36.755 (spread 18.315)
-- Widest declared slack band 16.0; covers the observed uplift spread: **no**
-- Generation runtime 1963.98s
+- Raw candidates 300, unique complete squads 191
+- Distinct starting elevens 63, distinct goalkeeper pairs 16
+- Exact-minus-linear uplift ranges 16.364 to 30.186 (spread 13.822)
+- Widest declared slack band 16.0; covers the observed uplift spread: **yes**
+- Generation runtime 1893.75s
 
 | family | candidates first found here | candidates reachable |
 | --- | --- | --- |
-| A0_seeded | 40 | 40 |
-| A_complete_squads | 10 | 50 |
-| B_distinct_xis | 33 | 50 |
-| C_slack_bands | 31 | 39 |
-| D_forced | 50 | 65 |
-| E_structural | 18 | 25 |
-| F_perturbations | 10 | 23 |
+| A0_seeded | 44 | 44 |
+| A_complete_squads | 9 | 50 |
+| B_distinct_xis | 30 | 50 |
+| C_slack_bands | 33 | 41 |
+| D_forced | 51 | 61 |
+| E_structural | 17 | 25 |
+| F_perturbations | 7 | 23 |
 
 ## 5. Convergence
 
 The search has NOT converged by the declared criterion. The best squad below is the best found, not the best that exists.
 
-| pool size | best exact | winner changed | improvement | distinct XIs | winning family |
-| --- | --- | --- | --- | --- | --- |
-| 40 | 448.86 | no | None | 1 | A0_seeded |
-| 100 | 450.354 | yes | 1.494 | 13 | C_slack_bands |
+Each stage expands every candidate family to the stated fraction, so the final stage is the whole pool and the winning squad is inside it.
 
-Practical convergence only. No claim of global nonlinear optimality is made or implied: the exact objective is not the one the solver optimises, so no solver proof covers it.
+| stage (all families) | pool size | best exact | winner changed | improvement | distinct XIs | winning family |
+| --- | --- | --- | --- | --- | --- | --- |
+| 25% | 51 | 449.083 | no | None | 17 | D_forced |
+| 50% | 98 | 450.36 | yes | 1.277 | 31 | D_forced |
+| 75% | 146 | 450.405 | yes | 0.045 | 50 | D_forced |
+| 100% | 191 | 455.106 | yes | 4.701 | 63 | C_slack_bands |
+
+Balanced staged convergence: each stage expands every candidate family and the final stage is the whole pool, so the winning squad is always inside the last stage. Practical convergence only — no claim of global nonlinear optimality is made or implied: the exact objective is not the one the solver optimises, so no solver proof covers it.
 
 ## 6. Forced-diagnostic escape test
 
@@ -68,7 +72,7 @@ Practical convergence only. No claim of global nonlinear optimality is made or i
 
 ## 7. Best squad found (optimiser-validation result only)
 
-Exact GW1–8 value **455.106**, linear objective 424.92, uplift 36.755. Cost £100.0m. Found by `slack_8_reserve` in family `C_slack_bands`.
+Exact GW1–8 value **455.106**, linear objective 424.92, uplift 30.186. Cost £100.0m. Found by `slack_16_reserve` in family `C_slack_bands`.
 
 Goalkeeper pair Raya, Leno with 6.254 points of substitution protection. Captain Haaland, vice Mbeumo.
 
@@ -95,8 +99,8 @@ Goalkeeper pair Raya, Leno with 6.254 points of substitution protection. Captain
 | season | legacy_8 exact | frontier_40 exact | mixed exact | gain | mixed XIs | legacy realised | frontier realised | mixed realised |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2022-23 | 379.528 | 379.528 | 379.528 | 0.0 | 14 | 394.0 | 394.0 | 394.0 |
-| 2023-24 | 441.915 | 442.838 | 442.838 | 0.0 | 12 | 474.0 | 474.0 | 474.0 |
-| 2024-25 | 445.608 | 445.192 | 445.608 | 0.416 | 11 | 469.0 | 422.0 | 469.0 |
+| 2023-24 | 442.404 | 442.838 | 442.838 | 0.0 | 12 | 463.0 | 474.0 | 474.0 |
+| 2024-25 | 445.617 | 445.192 | 445.617 | 0.425 | 11 | 469.0 | 422.0 | 469.0 |
 | 2025-26 | 419.877 | 419.877 | 419.877 | 0.0 | 22 | 294.0 | 294.0 | 294.0 |
 
 Realised points are one opening squad per season — four draws from a wide distribution. They are reported because they were asked for and discounted because four observations cannot separate two search strategies.
@@ -110,7 +114,9 @@ Realised points are one opening squad per season — four draws from a wide dist
 | meaningful_starting_xi_diversity | True |
 | convergence_reported_for_the_live_season | True |
 | live_search_converged | False |
-| live_runtime_seconds | 2286.3 |
+| live_runtime_seconds | 2183.8 |
+| search_acceptance_passed | False |
+| convergence_passed | False |
 | passed | False |
 
 ## 10. Exact-objective feasibility
