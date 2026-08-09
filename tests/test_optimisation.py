@@ -338,6 +338,46 @@ def test_vice_captain_is_chosen_jointly_with_the_captain() -> None:
     assert (captain, vice) == ("a", "b")
 
 
+def test_a_goalkeeper_can_be_captain_when_their_points_dominate() -> None:
+    """FPL permits captaining a goalkeeper and the exact captaincy enumeration
+    must too. The MILP guide once excluded goalkeepers from the linear captain
+    term, but the reported captaincy is resolved here, over every starter — so
+    a goalkeeper who out-scores the outfield starters is captained."""
+
+    starters = tuple(
+        CandidatePlayer(
+            source_player_id=identifier,
+            web_name=identifier,
+            team_id=identifier,
+            team_short_name=identifier,
+            position=position,
+            price_tenths=50,
+            expected_points=points,
+            gameweek_expected_points=points,
+            appearance_probability=1.0,
+        )
+        for identifier, position, points in (
+            ("keeper", Position.GK, 9.0),
+            ("mid", Position.MID, 6.0),
+            ("fwd", Position.FWD, 5.0),
+        )
+    )
+    points = {
+        player.source_player_id: player.gameweek_expected_points
+        for player in starters
+    }
+    appearance = {
+        player.source_player_id: player.appearance_probability
+        for player in starters
+    }
+
+    captain, _vice = _optimal_captaincy(
+        starters, points=points, appearance=appearance
+    )
+
+    assert captain == "keeper"
+
+
 def test_captaincy_can_prefer_lower_raw_points_for_fallback_value() -> None:
     starters = tuple(
         CandidatePlayer(

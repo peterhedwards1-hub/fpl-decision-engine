@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from .candidate_search import (
+    DEFAULT_CONVERGENCE_STAGES,
     ScoredCandidate,
     convergence_report,
     declared_requests,
@@ -306,7 +307,7 @@ def compare_search_strategies(
     incumbent_winner: frozenset[str] = frozenset(),
     realised: dict[tuple[str, int], GameweekPlayerValue] | None = None,
     gameweeks: tuple[int, ...] = (),
-    convergence_stages: tuple[int, ...] | None = None,
+    convergence_stages: tuple[float, ...] | None = None,
     run_escape_check: bool = True,
 ) -> dict[str, Any]:
     """Run all three strategies over one candidate set and compare them."""
@@ -419,12 +420,7 @@ def compare_search_strategies(
         stages=(
             convergence_stages
             if convergence_stages is not None
-            else tuple(
-                size
-                for size in (40, 100, 250, 500)
-                if size <= max(len(mixed), 1)
-            )
-            or (len(mixed),)
+            else DEFAULT_CONVERGENCE_STAGES
         ),
     )
     return {
@@ -703,11 +699,23 @@ def validate_opening_squad_search(
             sum(row["runtime_seconds"] for row in live["strategies"]), 1
         ),
     }
-    acceptance["passed"] = bool(
+    # Search acceptance and convergence are two different claims and must not be
+    # conflated. Search acceptance says the mixed search is a sound replacement:
+    # it contains everything the old searches found, no forced diagnostic
+    # escapes it, and it produces genuine starting-XI diversity. Convergence is
+    # the separate, stronger claim that expanding the search further would not
+    # find a better squad — measured by the balanced staged test. A run can be
+    # accepted without having converged, and it is reported that way; convergence
+    # is never reported as passed unless the corrected balanced test passes.
+    acceptance["search_acceptance_passed"] = bool(
         acceptance["contains_everything_the_old_search_found"]
         and acceptance["no_forced_diagnostic_escape"]
         and acceptance["meaningful_starting_xi_diversity"]
     )
+    acceptance["convergence_passed"] = bool(acceptance["live_search_converged"])
+    # ``passed`` is search acceptance alone, kept for callers that read it; it
+    # deliberately does not require convergence.
+    acceptance["passed"] = acceptance["search_acceptance_passed"]
     return {
         "season_code": season_code,
         "generated_at": generated.isoformat(),
@@ -965,13 +973,17 @@ def render_search_validation_markdown(result: dict[str, Any]) -> str:
         )
     lines += ["", "## 5. Convergence", "", live["convergence"]["verdict"], ""]
     lines += [
-        "| pool size | best exact | winner changed | improvement | distinct XIs "
-        "| winning family |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "Each stage expands every candidate family to the stated fraction, so "
+        "the final stage is the whole pool and the winning squad is inside it.",
+        "",
+        "| stage (all families) | pool size | best exact | winner changed "
+        "| improvement | distinct XIs | winning family |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for stage in live["convergence"]["stages"]:
         lines.append(
-            f"| {stage['actual_pool_size']} | {stage['best_exact_value']} "
+            f"| {stage['stage_fraction']:.0%} | {stage['actual_pool_size']} "
+            f"| {stage['best_exact_value']} "
             f"| {'yes' if stage['winner_changed'] else 'no'} "
             f"| {stage['improvement_over_previous_stage']} "
             f"| {stage['distinct_starting_xis']} "

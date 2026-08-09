@@ -546,15 +546,17 @@ def build_squad_model(
         raise OptimisationError(
             "Goalkeeper-pair valuation needs at least two eligible goalkeepers"
         )
-    # A goalkeeper is never a sensible captain under this scoring model, and
-    # allowing one would double-count a goalkeeper already valued in the pair
-    # term. The post-solve captaincy enumeration still sees every starter, so
-    # the exact value reported is unaffected either way.
-    captainable = (
-        tuple(player for player in ordered if player.position != Position.GK)
-        if goalkeeper_pair_valuation
-        else ordered
-    )
+    # Every starter, goalkeepers included, may be captained. FPL allows
+    # captaining a goalkeeper, and the exact valuation already enumerates the
+    # nominated goalkeeper as a captaincy candidate, so excluding goalkeepers
+    # here only biased the *linear generation guide*, never a reported exact
+    # value. It is not a double-count: goalkeepers earn their base value through
+    # the pair term rather than the starter term, so a captain term on a
+    # starting goalkeeper is the same single captain-doubling every outfield
+    # captain receives. Removing the exclusion leaves the exact objective
+    # untouched and lets generation reach squads where a goalkeeper captain is
+    # linearly attractive.
+    captainable = ordered
     captain_vars = {
         (gameweek, player.source_player_id): pulp.LpVariable(
             f"captain_{gameweek}_{index}", cat=pulp.LpBinary
