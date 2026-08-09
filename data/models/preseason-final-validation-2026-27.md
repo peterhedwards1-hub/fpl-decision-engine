@@ -1,6 +1,6 @@
 # Preseason final squad — 2026-27
 
-Generated 2026-08-08T01:03:21.014776+00:00. Horizon GW1–GW8. Total runtime 23744.59s.
+Generated 2026-08-08T19:34:36.301601+00:00. Horizon GW1–GW8. Total runtime 11738.2s.
 
 **This squad is provisional.** It stands until the final reliable pre-deadline team-news rerun, and no further.
 
@@ -90,10 +90,10 @@ Substitution protection is worth P(nominated goalkeeper records no minutes) x th
 
 ## 6. Candidate frontier
 
-- Requested 40, produced 76 distinct complete squads in 23601.89s
-- Ranked together with the bank levels and forced inclusions: 80 squads; the recommendation came from `frontier`
-- Distinct starting elevens among them: 13
-- Exact rescoring reorders the solver's ranking: **yes** (75 of 76 moved; largest move 74)
+- Requested 500, produced 856 distinct complete squads in 11621.0s
+- Ranked together with the bank levels and forced inclusions: 860 squads; the recommendation came from `frontier`
+- Distinct starting elevens among them: 96
+- Exact rescoring reorders the solver's ranking: **yes** (856 of 856 moved; largest move 849)
 - Exact rescoring changes the winner: **yes**
 
 ## 7. Bank frontier
@@ -102,9 +102,9 @@ Money in the bank is never given a points value. A bank-preserving squad within 
 
 | minimum bank | exact GW1–8 value | GW1 value | cost | bank | changes | value sacrificed | flexibility-equivalent |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| £0.0m | 450.354 | 55.731 | £100.0m | £0.0m | 0 | 0.0 | yes |
-| £0.5m | 446.471 | 55.148 | £99.5m | £0.5m | 5 | 3.883 | no |
-| £1.0m | 445.857 | 55.035 | £99.0m | £1.0m | 4 | 4.497 | no |
+| £0.0m | 455.106 | 56.774 | £100.0m | £0.0m | 0 | 0.0 | yes |
+| £0.5m | 446.471 | 55.148 | £99.5m | £0.5m | 5 | 8.635 | no |
+| £1.0m | 445.857 | 55.035 | £99.0m | £1.0m | 4 | 9.249 | no |
 
 ## 8. Arsenal defender counterfactuals
 
@@ -113,10 +113,10 @@ Money in the bank is never given a points value. A bank-preserving squad within 
 
 | defender | price | mean appearance | GW1 xP | GW1–8 xP | forced squad value | value gap | squad changes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| White | £5.5m | 0.6264 | 2.897 | 20.419 | 446.737 | 3.617 | 5 |
-| Gabriel | £8.0m | 0.7827 | 4.1 | 28.729 | 449.239 | 1.115 | 3 |
+| White | £5.5m | 0.6264 | 2.897 | 20.419 | 446.737 | 8.369 | 5 |
+| Gabriel | £8.0m | 0.7827 | 4.1 | 28.729 | 449.239 | 5.867 | 4 |
 
-Best squad containing any Arsenal defender: Gabriel at 449.239 (1.115 behind the recommendation)
+Best squad containing any Arsenal defender: Gabriel at 449.239 (5.867 behind the recommendation)
 
 **Verdict: not_absent.** The recommended squad contains 1 ARS player(s) — Raya — so there is no absence to explain. The counterfactual table below still reports what forcing each defender in costs.
 
@@ -136,7 +136,7 @@ The baseline is the unconstrained single solve under the live model, because eve
 
 ## 10. Final squad
 
-Projection run 17 under `rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed`. Cost £100.0m, bank £0.0m. GW1 expected 55.731, exact GW1–8 decision value 450.354, linear objective 425.922.
+Projection run 18 under `rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed`. Cost £100.0m, bank £0.0m. GW1 expected 56.774, exact GW1–8 decision value 455.106, linear objective 424.92.
 
 | player | club | pos | price | GW1–8 xP | role |
 | --- | --- | --- | --- | --- | --- |
@@ -147,7 +147,7 @@ Projection run 17 under `rates-rules-corrected-v4-preseason-carry-forward-promot
 | Watkins | AVL | FWD | £8.0m | 36.963 | XI |
 | Raya | ARS | GK | £6.0m | 29.444 | XI |
 | Cunha | MUN | MID | £8.0m | 35.668 | XI |
-| Gakpo | LIV | MID | £7.0m | 31.908 | XI |
+| Foden | MCI | MID | £7.0m | 30.867 | XI |
 | Iwobi | FUL | MID | £5.5m | 28.491 | XI |
 | Mbeumo | MUN | MID | £8.0m | 38.588 | XI (V) |
 | Rayan | BOU | MID | £6.5m | 33.74 | XI |
@@ -160,17 +160,17 @@ Projection run 17 under `rates-rules-corrected-v4-preseason-carry-forward-promot
 
 | alternative | exact value | gap | cost | bank | changes |
 | --- | --- | --- | --- | --- | --- |
-| alternative_1 | 449.239 | 1.115 | £100.0m | £0.0m | 3 |
-| alternative_2 | 449.083 | 1.271 | £100.0m | £0.0m | 3 |
-| alternative_3 | 448.86 | 1.494 | £100.0m | £0.0m | 5 |
+| alternative_1 | 450.874 | 4.232 | £100.0m | £0.0m | 5 |
+| alternative_2 | 450.576 | 4.53 | £100.0m | £0.0m | 4 |
+| alternative_3 | 450.405 | 4.701 | £100.0m | £0.0m | 4 |
 
 ## 12. Robust and model-sensitive selections
 
 Compared across 6 squads: the recommendation, every completed concentration run and every feasible bank level.
 
 - Robust (in every one): Haaland, Leno, Mbeumo, Rayan, Truffert, Watkins
-- Moderate: B.Fernandes, Cunha, Destan, Dowell, Evanilson, Gakpo, Iwobi, Mukiele, Mykolenko, O'Shea, Palmer, Raya, Robinson, Thiaw
-- Model-sensitive (in exactly one): McCarthy
+- Moderate: B.Fernandes, Cunha, Destan, Dowell, Evanilson, Foden, Iwobi, Mukiele, Mykolenko, O'Shea, Palmer, Phillips, Raya, Robinson, Thiaw
+- Model-sensitive (in exactly one): Ajayi, Gakpo
 
 ## 13. Warnings and unresolved limitations
 
