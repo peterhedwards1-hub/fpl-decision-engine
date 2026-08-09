@@ -1,0 +1,449 @@
+{
+  "generated_at": "2026-08-09T11:32:37.283829+00:00",
+  "season_code": "2026-27",
+  "horizon_gameweeks": 8,
+  "model_version": "rates-rules-corrected-v4-preseason-carry-forward-promoted-fixed",
+  "eligible": 242,
+  "haaland_id": "411",
+  "gabriel_id": "4",
+  "runs": {
+    "baseline": {
+      "unique_squads": 171,
+      "distinct_starting_xis": 51,
+      "best_exact_value": 455.106,
+      "best_cost_tenths": 1000,
+      "captain": "Haaland",
+      "starting_xi": [
+        "Cunha",
+        "Foden",
+        "Haaland",
+        "Iwobi",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Thiaw",
+        "Watkins"
+      ],
+      "squad": [
+        "Cunha",
+        "Evanilson",
+        "Foden",
+        "Haaland",
+        "Iwobi",
+        "Leno",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Robinson",
+        "Thiaw",
+        "Truffert",
+        "Watkins"
+      ],
+      "converged": false,
+      "convergence_stages": [
+        {
+          "fraction": 0.25,
+          "pool": 46,
+          "best": 449.083,
+          "winner_changed": false,
+          "improvement": null,
+          "distinct_xis": 15
+        },
+        {
+          "fraction": 0.5,
+          "pool": 88,
+          "best": 450.354,
+          "winner_changed": true,
+          "improvement": 1.271,
+          "distinct_xis": 24
+        },
+        {
+          "fraction": 0.75,
+          "pool": 131,
+          "best": 450.459,
+          "winner_changed": true,
+          "improvement": 0.105,
+          "distinct_xis": 40
+        },
+        {
+          "fraction": 1.0,
+          "pool": 171,
+          "best": 455.106,
+          "winner_changed": true,
+          "improvement": 4.647,
+          "distinct_xis": 51
+        }
+      ],
+      "runtime_seconds": 1954.0
+    },
+    "haaland_required": {
+      "unique_squads": 165,
+      "distinct_starting_xis": 44,
+      "best_exact_value": 455.106,
+      "best_cost_tenths": 1000,
+      "captain": "Haaland",
+      "starting_xi": [
+        "Cunha",
+        "Foden",
+        "Haaland",
+        "Iwobi",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Thiaw",
+        "Watkins"
+      ],
+      "squad": [
+        "Cunha",
+        "Evanilson",
+        "Foden",
+        "Haaland",
+        "Iwobi",
+        "Leno",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Robinson",
+        "Thiaw",
+        "Truffert",
+        "Watkins"
+      ],
+      "converged": false,
+      "convergence_stages": [
+        {
+          "fraction": 0.25,
+          "pool": 43,
+          "best": 449.083,
+          "winner_changed": false,
+          "improvement": null,
+          "distinct_xis": 12
+        },
+        {
+          "fraction": 0.5,
+          "pool": 83,
+          "best": 449.083,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 21
+        },
+        {
+          "fraction": 0.75,
+          "pool": 126,
+          "best": 450.576,
+          "winner_changed": true,
+          "improvement": 1.493,
+          "distinct_xis": 35
+        },
+        {
+          "fraction": 1.0,
+          "pool": 165,
+          "best": 455.106,
+          "winner_changed": true,
+          "improvement": 4.53,
+          "distinct_xis": 44
+        }
+      ],
+      "runtime_seconds": 1639.2
+    },
+    "haaland_forbidden": {
+      "unique_squads": 122,
+      "distinct_starting_xis": 34,
+      "best_exact_value": 439.37,
+      "best_cost_tenths": 1000,
+      "captain": "Foden",
+      "starting_xi": [
+        "B.Fernandes",
+        "Cunha",
+        "Foden",
+        "Isak",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Thiaw",
+        "Watkins"
+      ],
+      "squad": [
+        "B.Fernandes",
+        "Cunha",
+        "Evanilson",
+        "Foden",
+        "Isak",
+        "Leno",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Robinson",
+        "Thiaw",
+        "Truffert",
+        "Watkins"
+      ],
+      "converged": false,
+      "convergence_stages": [
+        {
+          "fraction": 0.25,
+          "pool": 32,
+          "best": 438.04,
+          "winner_changed": false,
+          "improvement": null,
+          "distinct_xis": 12
+        },
+        {
+          "fraction": 0.5,
+          "pool": 62,
+          "best": 438.04,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 19
+        },
+        {
+          "fraction": 0.75,
+          "pool": 94,
+          "best": 439.37,
+          "winner_changed": true,
+          "improvement": 1.33,
+          "distinct_xis": 29
+        },
+        {
+          "fraction": 1.0,
+          "pool": 122,
+          "best": 439.37,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 34
+        }
+      ],
+      "runtime_seconds": 684.3
+    },
+    "bank_0.5m": {
+      "unique_squads": 170,
+      "distinct_starting_xis": 52,
+      "best_exact_value": 452.656,
+      "best_cost_tenths": 995,
+      "captain": "Haaland",
+      "starting_xi": [
+        "Cunha",
+        "Evanilson",
+        "Haaland",
+        "Leno",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Rayan",
+        "Saka",
+        "Thiaw",
+        "Watkins"
+      ],
+      "squad": [
+        "Cunha",
+        "Evanilson",
+        "Haaland",
+        "Leno",
+        "Lo-Tutala",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Rayan",
+        "Robinson",
+        "Saka",
+        "Thiaw",
+        "Truffert",
+        "Watkins",
+        "Yates"
+      ],
+      "converged": false,
+      "convergence_stages": [
+        {
+          "fraction": 0.25,
+          "pool": 45,
+          "best": 447.0,
+          "winner_changed": false,
+          "improvement": null,
+          "distinct_xis": 10
+        },
+        {
+          "fraction": 0.5,
+          "pool": 86,
+          "best": 447.0,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 21
+        },
+        {
+          "fraction": 0.75,
+          "pool": 129,
+          "best": 452.656,
+          "winner_changed": true,
+          "improvement": 5.656,
+          "distinct_xis": 38
+        },
+        {
+          "fraction": 1.0,
+          "pool": 170,
+          "best": 452.656,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 52
+        }
+      ],
+      "runtime_seconds": 2503.2
+    },
+    "bank_1.0m": {
+      "unique_squads": 180,
+      "distinct_starting_xis": 41,
+      "best_exact_value": 450.795,
+      "best_cost_tenths": 990,
+      "captain": "Haaland",
+      "starting_xi": [
+        "Cunha",
+        "Foden",
+        "Haaland",
+        "Iwobi",
+        "Mbeumo",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Robinson",
+        "Thiaw",
+        "Watkins"
+      ],
+      "squad": [
+        "Cunha",
+        "Evanilson",
+        "Foden",
+        "Haaland",
+        "Iwobi",
+        "Leno",
+        "Mbeumo",
+        "Mitchell",
+        "Mykolenko",
+        "Raya",
+        "Rayan",
+        "Robinson",
+        "Thiaw",
+        "Truffert",
+        "Watkins"
+      ],
+      "converged": false,
+      "convergence_stages": [
+        {
+          "fraction": 0.25,
+          "pool": 48,
+          "best": 448.45,
+          "winner_changed": false,
+          "improvement": null,
+          "distinct_xis": 12
+        },
+        {
+          "fraction": 0.5,
+          "pool": 92,
+          "best": 448.562,
+          "winner_changed": true,
+          "improvement": 0.112,
+          "distinct_xis": 17
+        },
+        {
+          "fraction": 0.75,
+          "pool": 138,
+          "best": 449.732,
+          "winner_changed": true,
+          "improvement": 1.17,
+          "distinct_xis": 28
+        },
+        {
+          "fraction": 1.0,
+          "pool": 180,
+          "best": 450.795,
+          "winner_changed": true,
+          "improvement": 1.063,
+          "distinct_xis": 41
+        }
+      ],
+      "runtime_seconds": 2785.9
+    },
+    "gabriel_required": {
+      "unique_squads": 164,
+      "distinct_starting_xis": 52,
+      "best_exact_value": 453.755,
+      "best_cost_tenths": 1000,
+      "captain": "Haaland",
+      "starting_xi": [
+        "Cunha",
+        "Evanilson",
+        "Foden",
+        "Gabriel",
+        "Haaland",
+        "Leno",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Rayan",
+        "Watkins"
+      ],
+      "squad": [
+        "Cunha",
+        "Evanilson",
+        "Foden",
+        "Gabriel",
+        "Haaland",
+        "Leno",
+        "Mbeumo",
+        "Mukiele",
+        "Mykolenko",
+        "Palmer",
+        "Rayan",
+        "Reed",
+        "Robinson",
+        "Truffert",
+        "Watkins"
+      ],
+      "converged": true,
+      "convergence_stages": [
+        {
+          "fraction": 0.25,
+          "pool": 43,
+          "best": 451.002,
+          "winner_changed": false,
+          "improvement": null,
+          "distinct_xis": 13
+        },
+        {
+          "fraction": 0.5,
+          "pool": 83,
+          "best": 453.755,
+          "winner_changed": true,
+          "improvement": 2.753,
+          "distinct_xis": 26
+        },
+        {
+          "fraction": 0.75,
+          "pool": 125,
+          "best": 453.755,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 40
+        },
+        {
+          "fraction": 1.0,
+          "pool": 164,
+          "best": 453.755,
+          "winner_changed": false,
+          "improvement": 0.0,
+          "distinct_xis": 52
+        }
+      ],
+      "runtime_seconds": 2419.6
+    }
+  }
+}

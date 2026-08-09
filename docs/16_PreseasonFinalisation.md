@@ -330,6 +330,22 @@ so the live run cannot influence the decision that authorised it.
 
 ## 7. Remaining limitations
 
+- **This report's convergence field is superseded.** It was written before the
+  convergence test was corrected and still reports the false "converged" the old
+  prefix-order stages produced. The authoritative convergence analysis is the
+  balanced staged test in `17_OpeningSquadCandidateSearch.md` §4 and the
+  regenerated `opening-squad-search-validation-2026-27` artifacts: the live
+  search does **not** converge. The recommended squad (exact 455.106) is
+  unchanged and is confirmed by three independent full-scale searches.
+- **This report's bank and Arsenal costs are single-solve and overstated.**
+  Section 4's bank frontier and Arsenal-defender counterfactuals price each
+  constraint with one budget-reduced or forced-in solve, which understates the
+  constrained squad and so overstates the cost. Re-run as full mixed searches
+  (`17_OpeningSquadCandidateSearch.md` §7): holding £0.5m costs ~2.5 points not
+  ~8.6, holding £1.0m ~4.3 not ~9.2, and forcing in the strongest Arsenal
+  defender ~1.4 not ~5.9 — close enough to free to overturn the "not worth it"
+  reading. Owning Haaland is worth ~15.7 points over the horizon, searched both
+  ways rather than inferred from single solves.
 - **No Championship player minutes.** The role treatment is implemented and
   untestable against data. See section 2.
 - **The promoted prior's two halves disagree.** Attack differentiation helps,
