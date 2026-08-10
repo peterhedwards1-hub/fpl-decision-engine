@@ -829,15 +829,10 @@ def build_frontier(
         ],
         "generation_requests": report["requests"],
         "exact_versus_linear": _rank_comparison(results, exact_order, linear_rank),
-        "convergence": convergence_report(
-            scored,
-            stages=tuple(
-                stage
-                for stage in DEFAULT_CONVERGENCE_STAGES
-                if stage <= len(scored)
-            )
-            or (len(scored),),
-        ),
+        # Balanced fractional stages expand every family, so unlike absolute
+        # prefix sizes they need no clamping to the pool size and always place
+        # the winning squad inside the final stage.
+        "convergence": convergence_report(scored, stages=DEFAULT_CONVERGENCE_STAGES),
     }
     return exact_order, diagnostics
 
@@ -2817,6 +2812,9 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"{frontier['exact_versus_linear']['largest_rank_move']})",
         f"- Exact rescoring changes the winner: "
         f"**{'yes' if frontier['exact_versus_linear']['changes_the_winner'] else 'no'}**",
+        f"- Balanced staged convergence (every family expanded per stage): "
+        f"**{'reached' if frontier['convergence']['converged'] else 'not reached'}**"
+        f" — {frontier['convergence']['verdict']}",
         "",
         "## 7. Bank frontier",
         "",

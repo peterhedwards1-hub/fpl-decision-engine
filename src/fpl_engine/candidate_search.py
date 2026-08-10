@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from math import ceil
 from typing import Any
 
 from .config import SeasonRules
@@ -82,8 +83,18 @@ PERTURBATION_COUNT = 6
 CONVERGENCE_STAGES_REQUIRED = 2
 CONVERGENCE_IMPROVEMENT_TOLERANCE = 0.05
 
-#: The declared stage sizes for the convergence test, in unique squads.
-DEFAULT_CONVERGENCE_STAGES: tuple[int, ...] = (40, 100, 250, 500)
+#: The declared convergence stages, as fractions of *every* candidate family.
+#:
+#: Stage ``f`` contains the first ``ceil(f * n)`` candidates of each family in
+#: that family's own generation order, so the stages are genuinely nested and
+#: each one expands every family. The final stage is the whole pool. This
+#: replaces absolute prefix sizes taken in global generation order: because the
+#: families are generated one after another and the first families reproduce the
+#: incumbent frontier, an absolute prefix small enough to test would be filled
+#: entirely by those families while the slack-band family that actually finds
+#: the exact winner sat beyond the prefix — so convergence could be declared on
+#: a pool that did not contain the winning squad.
+DEFAULT_CONVERGENCE_STAGES: tuple[float, ...] = (0.25, 0.5, 0.75, 1.0)
 
 
 @dataclass(frozen=True)
@@ -138,6 +149,29 @@ class ScoredCandidate:
 
     @property
     def uplift(self) -> float:
+        """Exact decision value above the solver's own linear objective.
+
+        The slack bands are declared in the solver objective's own units — the
+        solver maximises ``solver_objective`` and the exact value exceeds it by
+        this much — so this is the quantity that says whether the band set is
+        wide enough to reach the exact optimum. Comparing the exact value to
+        the lineup-expected-points instead (see :attr:`exact_minus_lineup`)
+        answers a different, narrower question.
+        """
+        return round(
+            self.result.decision_value - self.result.solver_objective, 3
+        )
+
+    @property
+    def exact_minus_lineup(self) -> float:
+        """Exact decision value above the legal-XI-plus-captain points.
+
+        Retained as a separate diagnostic from :attr:`uplift`: it isolates the
+        autosub, bench-order and captain-fallback value beyond the eleven that
+        actually started, whereas ``uplift`` measures the gap to the whole
+        linear objective the solver optimised (which also carries the
+        goalkeeper-pair and terminal terms).
+        """
         return round(
             self.result.decision_value - self.result.lineup_expected_points, 3
         )
@@ -680,6 +714,7 @@ def pool_report(scored: list[ScoredCandidate], diagnostics: dict[str, Any]) -> d
                 "linear_objective": entry.linear_objective,
                 "lineup_expected_points": entry.result.lineup_expected_points,
                 "exact_minus_linear_uplift": entry.uplift,
+                "exact_minus_lineup": entry.exact_minus_lineup,
                 "total_cost_tenths": entry.result.total_cost_tenths,
                 "generation_source": entry.first_source,
                 "generation_family": entry.first_family,
@@ -701,27 +736,43 @@ def pool_report(scored: list[ScoredCandidate], diagnostics: dict[str, Any]) -> d
 def convergence_report(
     scored: list[ScoredCandidate],
     *,
-    stages: tuple[int, ...] = DEFAULT_CONVERGENCE_STAGES,
+    stages: tuple[float, ...] = DEFAULT_CONVERGENCE_STAGES,
     tolerance: float = CONVERGENCE_IMPROVEMENT_TOLERANCE,
     stages_required: int = CONVERGENCE_STAGES_REQUIRED,
 ) -> dict[str, Any]:
-    """Best exact value against pool size, on nested prefixes.
+    """Best exact value against a *balanced* expansion of every family.
 
-    The stages are prefixes of one pool taken in generation order, not separate
-    searches. That is a declared choice and it is what makes the comparison
-    honest rather than merely cheap: the families run in a fixed declared
-    order, family A alone reproduces the incumbent frontier, so stage one *is*
-    the old behaviour and each later stage adds exactly one more family's worth
-    of candidates.
+    ``stages`` are fractions in ``(0, 1]``. Stage ``f`` contains the first
+    ``ceil(f * n)`` candidates of each family, taken in that family's own
+    generation order, so the stages are genuinely nested and each one expands
+    *every* family rather than adding whole families one at a time. The final
+    stage is the entire pool.
+
+    This is a deliberate replacement for prefixes taken in global generation
+    order. The families run in a fixed order and the first ones reproduce the
+    incumbent frontier, so a prefix small enough to test would be filled by
+    those families while the slack-band family that finds the exact winner sat
+    beyond it — convergence could then be declared on a pool that never
+    contained the winning squad. Because the last stage here is the whole pool,
+    the winning squad is always inside it, and "no new winner across the final
+    expansions" means what it says.
     """
 
-    in_order = sorted(scored, key=lambda entry: entry.order)
+    by_family: dict[str, list[ScoredCandidate]] = {}
+    for entry in scored:
+        by_family.setdefault(entry.first_family, []).append(entry)
+    for entries in by_family.values():
+        entries.sort(key=lambda entry: entry.order)
+
     rows: list[dict[str, Any]] = []
     previous_best: float | None = None
     previous_winner: frozenset[str] | None = None
     quiet_stages = 0
-    for size in stages:
-        prefix = in_order[:size]
+    for fraction in stages:
+        prefix: list[ScoredCandidate] = []
+        for entries in by_family.values():
+            take = ceil(fraction * len(entries)) if entries else 0
+            prefix.extend(entries[:take])
         if not prefix:
             continue
         best = min(prefix, key=lambda entry: squad_ranking_key(entry.result))
@@ -736,7 +787,8 @@ def convergence_report(
                 quiet_stages = 0
         rows.append(
             {
-                "requested_pool_size": size,
+                "stage_fraction": fraction,
+                "families_expanded": len(by_family),
                 "actual_pool_size": len(prefix),
                 "best_exact_value": best.exact_value,
                 "winner_changed": changed,
@@ -754,13 +806,14 @@ def convergence_report(
     converged = quiet_stages >= stages_required
     return {
         "stages": rows,
+        "stage_fractions": list(stages),
         "tolerance": tolerance,
         "stages_required": stages_required,
         "quiet_stages": quiet_stages,
         "converged": converged,
         "verdict": (
-            "Practical convergence reached: two successive expansions produced "
-            "no new winning squad and no material improvement."
+            "Practical convergence reached: the final expansions of every "
+            "family produced no new winning squad and no material improvement."
             if converged
             else (
                 "The search has NOT converged by the declared criterion. The "
@@ -768,8 +821,11 @@ def convergence_report(
             )
         ),
         "note": (
-            "Practical convergence only. No claim of global nonlinear "
-            "optimality is made or implied: the exact objective is not the one "
-            "the solver optimises, so no solver proof covers it."
+            "Balanced staged convergence: each stage expands every candidate "
+            "family and the final stage is the whole pool, so the winning "
+            "squad is always inside the last stage. Practical convergence "
+            "only — no claim of global nonlinear optimality is made or "
+            "implied: the exact objective is not the one the solver optimises, "
+            "so no solver proof covers it."
         ),
     }

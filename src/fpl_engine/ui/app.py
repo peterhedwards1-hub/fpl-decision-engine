@@ -2797,4 +2797,5 @@ def _option_index(options: list[str], value: str | None) -> int:
     return options.index(value) if value in options else 0
 
 
-main()
+if __name__ == "__main__":
+    main()

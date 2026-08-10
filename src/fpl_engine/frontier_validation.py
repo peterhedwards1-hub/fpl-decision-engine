@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from .candidate_search import (
+    DEFAULT_CONVERGENCE_STAGES,
     ScoredCandidate,
     convergence_report,
     declared_requests,
@@ -306,7 +307,7 @@ def compare_search_strategies(
     incumbent_winner: frozenset[str] = frozenset(),
     realised: dict[tuple[str, int], GameweekPlayerValue] | None = None,
     gameweeks: tuple[int, ...] = (),
-    convergence_stages: tuple[int, ...] | None = None,
+    convergence_stages: tuple[float, ...] | None = None,
     run_escape_check: bool = True,
 ) -> dict[str, Any]:
     """Run all three strategies over one candidate set and compare them."""
@@ -419,12 +420,7 @@ def compare_search_strategies(
         stages=(
             convergence_stages
             if convergence_stages is not None
-            else tuple(
-                size
-                for size in (40, 100, 250, 500)
-                if size <= max(len(mixed), 1)
-            )
-            or (len(mixed),)
+            else DEFAULT_CONVERGENCE_STAGES
         ),
     )
     return {
@@ -531,6 +527,7 @@ def validate_opening_squad_search(
     minimum_mean_appearance: float = DEFAULT_OPENING_MINIMUM_MEAN_APPEARANCE,
     incumbent_winner: frozenset[str] = frozenset(),
     generated_at: datetime | None = None,
+    checkpoint_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Compare the three searches on the live season and on history.
 
@@ -538,6 +535,12 @@ def validate_opening_squad_search(
     seasons are there to show the failure was structural rather than a quirk of
     one candidate set. Historical seasons also carry realised points, which are
     reported and discounted for the reasons in this module's docstring.
+
+    The live phase alone takes about an hour, and the historical phase takes
+    longer again. ``checkpoint_path`` writes the live result to disk the moment
+    it is complete, so an interrupted run — an ephemeral machine reclaimed, a
+    session restarted — leaves a usable artifact rather than nothing at all.
+    This is not a hypothetical: it has already cost two complete runs.
     """
 
     generated = generated_at or datetime.now(UTC)
@@ -571,6 +574,27 @@ def validate_opening_squad_search(
         mixed_scale=mixed_scale,
         incumbent_winner=incumbent_winner,
     )
+
+    if checkpoint_path is not None:
+        _write_checkpoint(
+            checkpoint_path,
+            {
+                "season_code": season_code,
+                "generated_at": generated.isoformat(),
+                "horizon_gameweeks": horizon_gameweeks,
+                "mixed_scale": mixed_scale,
+                "live": live,
+                "historical": [],
+                "historical_failures": [],
+                "feasibility_assessment": exact_objective_feasibility(),
+                "status": (
+                    "PARTIAL: the live comparison is complete and the "
+                    "historical comparison had not finished when this was "
+                    "written. Read the live section; the historical section is "
+                    "absent, not empty."
+                ),
+            },
+        )
 
     historical: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
@@ -675,11 +699,23 @@ def validate_opening_squad_search(
             sum(row["runtime_seconds"] for row in live["strategies"]), 1
         ),
     }
-    acceptance["passed"] = bool(
+    # Search acceptance and convergence are two different claims and must not be
+    # conflated. Search acceptance says the mixed search is a sound replacement:
+    # it contains everything the old searches found, no forced diagnostic
+    # escapes it, and it produces genuine starting-XI diversity. Convergence is
+    # the separate, stronger claim that expanding the search further would not
+    # find a better squad — measured by the balanced staged test. A run can be
+    # accepted without having converged, and it is reported that way; convergence
+    # is never reported as passed unless the corrected balanced test passes.
+    acceptance["search_acceptance_passed"] = bool(
         acceptance["contains_everything_the_old_search_found"]
         and acceptance["no_forced_diagnostic_escape"]
         and acceptance["meaningful_starting_xi_diversity"]
     )
+    acceptance["convergence_passed"] = bool(acceptance["live_search_converged"])
+    # ``passed`` is search acceptance alone, kept for callers that read it; it
+    # deliberately does not require convergence.
+    acceptance["passed"] = acceptance["search_acceptance_passed"]
     return {
         "season_code": season_code,
         "generated_at": generated.isoformat(),
@@ -709,6 +745,24 @@ def validate_opening_squad_search(
             "run."
         ),
     }
+
+
+def _write_checkpoint(path: str | Path, payload: dict[str, Any]) -> None:
+    """Write a partial result, and never let that failure kill the run."""
+
+    import json
+
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        # A checkpoint is insurance. Failing to write one must not destroy the
+        # thing it was insuring.
+        return
 
 
 def _rules_for_season(
@@ -919,13 +973,17 @@ def render_search_validation_markdown(result: dict[str, Any]) -> str:
         )
     lines += ["", "## 5. Convergence", "", live["convergence"]["verdict"], ""]
     lines += [
-        "| pool size | best exact | winner changed | improvement | distinct XIs "
-        "| winning family |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "Each stage expands every candidate family to the stated fraction, so "
+        "the final stage is the whole pool and the winning squad is inside it.",
+        "",
+        "| stage (all families) | pool size | best exact | winner changed "
+        "| improvement | distinct XIs | winning family |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for stage in live["convergence"]["stages"]:
         lines.append(
-            f"| {stage['actual_pool_size']} | {stage['best_exact_value']} "
+            f"| {stage['stage_fraction']:.0%} | {stage['actual_pool_size']} "
+            f"| {stage['best_exact_value']} "
             f"| {'yes' if stage['winner_changed'] else 'no'} "
             f"| {stage['improvement_over_previous_stage']} "
             f"| {stage['distinct_starting_xis']} "

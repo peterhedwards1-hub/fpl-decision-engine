@@ -1564,6 +1564,12 @@ def main() -> None:
                 include_historical=not args.skip_historical,
                 minimum_mean_appearance=args.appearance_floor,
                 incumbent_winner=incumbent,
+                # Bank the live comparison before the historical phase starts.
+                checkpoint_path=(
+                    args.output
+                    or Path("data/models")
+                    / f"opening-squad-search-validation-{args.season_code}.json"
+                ),
             )
             base = Path("data/models")
             paths = write_search_validation_artifacts(
@@ -1582,10 +1588,12 @@ def main() -> None:
             if args.quiet:
                 acceptance = result["acceptance"]
                 print(
-                    f"Acceptance: {'PASS' if acceptance['passed'] else 'FAIL'}; "
+                    "Search acceptance: "
+                    f"{'PASS' if acceptance['search_acceptance_passed'] else 'FAIL'}; "
+                    "convergence: "
+                    f"{'PASS' if acceptance['convergence_passed'] else 'FAIL'}; "
                     f"live gain over the forty-candidate frontier "
-                    f"{result['live']['exact_value_gained_over_frontier_40']}; "
-                    f"converged {acceptance['live_search_converged']}."
+                    f"{result['live']['exact_value_gained_over_frontier_40']}."
                 )
                 for path in paths:
                     print(f"Wrote {path}")

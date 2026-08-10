@@ -459,18 +459,30 @@ def test_the_mixed_pool_contains_what_plain_exclusion_would_have_found() -> None
 # --------------------------------------------------------------------------
 
 
-def test_convergence_reports_stages_in_generation_order() -> None:
+def test_convergence_expands_every_family_and_ends_on_the_whole_pool() -> None:
     league = _league()
     _, _, scored = _small_pool(league)
 
-    report = convergence_report(scored, stages=(2, 4, 8, len(scored)))
+    report = convergence_report(scored, stages=(0.25, 0.5, 0.75, 1.0))
 
     assert report["stages"]
     sizes = [row["actual_pool_size"] for row in report["stages"]]
+    # Nested fractional stages can only grow the pool.
     assert sizes == sorted(sizes)
     best = [row["best_exact_value"] for row in report["stages"]]
-    # Nested prefixes cannot get worse.
+    # A superset of candidates cannot have a worse best.
     assert best == sorted(best)
+    # The final stage is the whole pool, so its best is the pool's best and the
+    # winning squad is inside the last stage rather than beyond it.
+    assert report["stages"][-1]["best_exact_value"] == max(
+        entry.exact_value for entry in scored
+    )
+    assert report["stages"][-1]["actual_pool_size"] == len(scored)
+    # Every stage expands all families, so the family count is carried through.
+    distinct_families = len({entry.first_family for entry in scored})
+    assert all(
+        row["families_expanded"] == distinct_families for row in report["stages"]
+    )
     assert "global nonlinear optimality" in report["note"]
 
 
@@ -481,7 +493,7 @@ def test_a_search_that_keeps_improving_is_reported_as_not_converged() -> None:
     _, _, scored = _small_pool(league)
 
     strict = convergence_report(
-        scored, stages=(1, 2), tolerance=0.0, stages_required=5
+        scored, stages=(0.5, 1.0), tolerance=0.0, stages_required=5
     )
 
     assert strict["converged"] is False

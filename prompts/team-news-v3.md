@@ -98,9 +98,28 @@ adjustment_basis for every suggestion. Never translate a role, injury or
 set-piece finding into guessed minutes. Every accepted model-affecting change
 still requires explicit human review.
 
-Allowed evidence types are injury, suspension, training, manager_quote,
-predicted_lineup, tactical_role, transfer, set_piece, team_disruption and
-other. Unknown fields are forbidden.
+Allowed `evidence_type` values are exactly: injury, suspension, training,
+manager_quote, predicted_lineup, tactical_role, transfer, other. There is **no**
+`set_piece` or `team_disruption` type — the importer rejects them. For a
+set-piece change use tactical_role or other; for a coaching change or midfield
+reshuffle use tactical_role when it bears on one player's role, transfer for an
+actual signing or sale, and other otherwise. Unknown values are forbidden.
+
+Set `model_area` to exactly one of: expected_minutes, appearance_probability,
+starting_probability, sixty_probability, availability, return_date, penalties,
+corners, direct_free_kicks, tactical_role, attacking_position, team_attack,
+team_defence, fixture_status, informational. Do not invent areas such as
+`club_assignment` or `minutes`; for a transfer or club-label change that only
+needs a data refresh, use `informational`.
+
+`suggested_adjustment` is **either null or an object with exactly the two keys
+`kind` and `value`** — never a sentence, and never any other keys. Provide a
+non-null object only with adjustment_support `supported_numeric`, where `kind`
+is one of expected_minutes_delta, appearance_probability_delta,
+starting_probability_delta or sixty_probability_delta and `value` is the numeric
+delta (within ±90 for minutes, ±1 for probabilities). For adjustment_support
+`structured_flag`, `informational` or `unsupported`, `suggested_adjustment`
+**must be null** and the reasoning goes in `adjustment_basis`.
 
 ## Required JSON
 
