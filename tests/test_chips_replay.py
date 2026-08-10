@@ -11,6 +11,7 @@ from fpl_engine.chip_state import (
     ChipDecisionContext,
     ChipLedger,
     LookaheadChipPolicy,
+    ReserveChipPolicy,
     ScoringChipPolicy,
 )
 from fpl_engine.config import load_season_rules
@@ -459,6 +460,103 @@ def test_a_margin_makes_the_policy_wait_when_weeks_are_close() -> None:
         LookaheadChipPolicy(enabled=True, minimum_gain=10.0).choose(context)
         is None
     )
+
+
+def _second_half_context(now_bench: float, later_bench: float, *, top: int) -> ChipDecisionContext:
+    """A second-half context whose look-ahead stops before the set expires."""
+
+    return ChipDecisionContext(
+        gameweek_number=25,
+        values_by_gameweek={
+            gw: {Chip.BENCH_BOOST: (now_bench if gw == 25 else later_bench)}
+            for gw in range(25, top + 1)
+        },
+        legal_by_gameweek={gw: (Chip.BENCH_BOOST,) for gw in range(25, top + 1)},
+        expiry_gameweek=38,
+    )
+
+
+def test_reserve_policy_holds_a_chip_for_an_expected_unscheduled_double() -> None:
+    # An ordinary week that beats every *visible* later week but not the
+    # expected double. The look-ahead would spend it; the reserve holds it.
+    context = _second_half_context(6.0, 5.0, top=30)
+    assert not context.reaches_expiry  # GW30 < GW38, the double is still hidden
+
+    reserve = ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0},
+        reserve_until_gameweek=37,
+        enabled=True,
+    )
+    assert LookaheadChipPolicy(enabled=True).choose(context) == Chip.BENCH_BOOST
+    assert reserve.choose(context) is None
+    assert reserve.reserve_for(Chip.BENCH_BOOST, context) == 12.0
+
+
+def test_reserve_policy_plays_a_week_that_beats_the_expected_double() -> None:
+    # A genuine big week (a real double, visible now) clears the reserve bar.
+    context = _second_half_context(15.0, 5.0, top=30)
+    reserve = ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0},
+        reserve_until_gameweek=37,
+        enabled=True,
+    )
+    assert reserve.choose(context) == Chip.BENCH_BOOST
+
+
+def test_reserve_drops_once_the_projection_reaches_the_set_expiry() -> None:
+    # When the look-ahead reaches expiry, any real double is already visible, so
+    # the reserve must not block: the policy falls back to plain look-ahead.
+    context = _second_half_context(6.0, 5.0, top=38)
+    assert context.reaches_expiry
+    reserve = ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0},
+        reserve_until_gameweek=37,
+        enabled=True,
+    )
+    assert reserve.reserve_for(Chip.BENCH_BOOST, context) == 0.0
+    assert reserve.choose(context) == Chip.BENCH_BOOST
+
+
+def test_reserve_drops_after_its_window_so_the_last_week_is_play_or_lose() -> None:
+    context = ChipDecisionContext(
+        gameweek_number=37,
+        values_by_gameweek={37: {Chip.BENCH_BOOST: 6.0}},
+        legal_by_gameweek={37: (Chip.BENCH_BOOST,)},
+        expiry_gameweek=38,
+    )
+    reserve = ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0},
+        reserve_until_gameweek=37,
+        enabled=True,
+    )
+    assert reserve.reserve_for(Chip.BENCH_BOOST, context) == 0.0
+    assert reserve.choose(context) == Chip.BENCH_BOOST
+
+
+def test_reserve_discount_trades_the_expected_double_against_a_sure_week() -> None:
+    context = _second_half_context(7.0, 5.0, top=30)
+    full = ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0},
+        reserve_until_gameweek=37,
+        enabled=True,
+    )
+    # A half-discounted reserve (bar 6.0) lets a 7.0 week through; the full
+    # reserve (bar 12.0) still holds.
+    discounted = ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0},
+        reserve_until_gameweek=37,
+        reserve_discount=0.5,
+        enabled=True,
+    )
+    assert full.choose(context) is None
+    assert discounted.choose(context) == Chip.BENCH_BOOST
+
+
+def test_a_disabled_reserve_policy_plays_nothing() -> None:
+    context = _second_half_context(15.0, 5.0, top=30)
+    assert ReserveChipPolicy(
+        reserve_by_chip={Chip.BENCH_BOOST: 12.0}, reserve_until_gameweek=37
+    ).choose(context) is None
 
 
 def test_lookahead_stops_at_the_set_expiry() -> None:
