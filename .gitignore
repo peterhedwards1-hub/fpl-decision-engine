@@ -25,3 +25,5 @@ build/
 /data/raw/
 /data/reports/
 /data/models/playing-time-hurdle-hgb-*.joblib
+# Private team-news research packages and results (personal, transient).
+/data/team-news-*.json
