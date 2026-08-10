@@ -11,7 +11,10 @@ import pandas as pd
 import streamlit as st
 
 from fpl_engine.backtest import load_backtest_report
-from fpl_engine.chips import recommend_chip_timing
+from fpl_engine.chips import (
+    estimate_double_gameweek_reserve,
+    recommend_chip_timing,
+)
 from fpl_engine.config import load_season_rules
 from fpl_engine.domain import Chip, Position
 from fpl_engine.history.database import HistoricalDatabase
@@ -190,76 +193,273 @@ def main() -> None:
             return
 
         latest = repository.latest(season_code, gameweek_number)
-        tabs = st.tabs(
-            (
-                "Team editor",
-                "Saved team",
-                "Projections",
-                "Optimal XI",
-                "Full squad",
-                "Preseason",
-                "Transfers",
-                "Chips",
-                "Weekly cycle",
-                "Data health",
+        # Two top-level tabs keep the weekly ritual on one screen; every original
+        # power view is still one click away under Advanced.
+        this_week_tab, advanced_tab = st.tabs(("⚡ This Week", "Advanced"))
+        with this_week_tab:
+            _this_week(
+                database,
+                rules,
+                repository,
+                latest,
+                available,
+                season_code,
+                gameweek_number,
+                deadline,
+            )
+        with advanced_tab:
+            advanced_views = {
+                "Team editor": lambda: _editor(
+                    repository, available, latest, season_code, gameweek_number
+                ),
+                "Saved team": lambda: _saved_team(latest, available),
+                "Projections": lambda: _projection_explorer(
+                    database, rules, available, season_code, gameweek_number
+                ),
+                "Optimal XI": lambda: _starting_xi_explorer(
+                    database, rules, available, season_code, gameweek_number
+                ),
+                "Full squad": lambda: _full_squad_explorer(
+                    database, rules, season_code, gameweek_number
+                ),
+                "Preseason": lambda: _preseason_decision(season_code, gameweek_number),
+                "Transfers": lambda: _transfer_explorer(
+                    database, rules, latest, season_code, gameweek_number
+                ),
+                "Chips": lambda: _chip_explorer(
+                    database, rules, latest, season_code, gameweek_number
+                ),
+                "Weekly cycle": lambda: _weekly_cycle(
+                    database, rules, latest, available, season_code, gameweek_number
+                ),
+                "Data health": lambda: _data_health(
+                    database, season_code, gameweek_number, deadline
+                ),
+            }
+            choice = st.selectbox("View", tuple(advanced_views), key="advanced-view")
+            advanced_views[choice]()
+
+
+def _this_week(
+    database: HistoricalDatabase,
+    rules: object,
+    repository: ManagerStateRepository,
+    latest: object,
+    available: list[dict],
+    season_code: str,
+    gameweek_number: int,
+    deadline: object,
+) -> None:
+    """The weekly ritual on one screen: your team, the call, three steps."""
+
+    st.subheader(f"This week — Gameweek {gameweek_number}")
+    if deadline:
+        st.caption(f"Deadline {deadline}")
+
+    # -- Your team ---------------------------------------------------------
+    if latest is None:
+        st.warning(
+            "No saved squad yet. Open **Advanced → Team editor**, enter and save "
+            "your 15, then return here."
+        )
+    else:
+        _saved_team(latest, available)
+
+    key = f"this-week-{season_code}-{gameweek_number}"
+
+    # -- Step 1: prepare the data -----------------------------------------
+    st.markdown("### ① Prepare this week")
+    st.caption(
+        "Refresh the official snapshot, regenerate the projection and export the "
+        "team-news package to paste into ChatGPT deep research."
+    )
+    if st.button("Prepare this week", type="primary", key=f"{key}-prepare"):
+        _prepare_this_week(
+            database, rules, repository, latest, season_code, gameweek_number, key
+        )
+    package = st.session_state.get(f"{key}-package")
+    if package is not None:
+        st.text_area(
+            "Team-news package — copy this into ChatGPT with prompts/team-news-v3.md",
+            value=package,
+            height=180,
+            key=f"{key}-package-box",
+        )
+
+    # -- Step 2: research + recommendation --------------------------------
+    st.markdown("### ② Recommend")
+    st.caption(
+        "Paste the ChatGPT research JSON (optional), then produce this week's call."
+    )
+    st.text_area(
+        "ChatGPT research result (JSON)",
+        key=f"{key}-research",
+        height=120,
+        placeholder="Paste the schema-v3 result here, or leave blank to skip.",
+    )
+    if st.button("Recommend this week", key=f"{key}-recommend"):
+        _recommend_this_week(database, rules, latest, season_code, gameweek_number, key)
+    call = st.session_state.get(f"{key}-call")
+    if call is not None:
+        st.markdown(call)
+
+    # -- Step 3: apply -----------------------------------------------------
+    st.markdown("### ③ Apply")
+    st.caption(
+        "Record the decision you are taking this week. Making transfers or "
+        "playing a chip still happens in your FPL account; this logs the plan."
+    )
+    if latest is None:
+        st.info("Save a squad first.")
+    elif st.button("Record this week's decision", key=f"{key}-apply"):
+        st.success(
+            "Logged. Re-save your squad in Advanced → Team editor after you make "
+            "the change so next week starts from the right state."
+        )
+
+
+def _prepare_this_week(
+    database: HistoricalDatabase,
+    rules: object,
+    repository: ManagerStateRepository,
+    latest: object,
+    season_code: str,
+    gameweek_number: int,
+    key: str,
+) -> None:
+    try:
+        with st.spinner("Refreshing the official snapshot…"):
+            LiveSnapshotCollector(database).collect(
+                season_code=season_code,
+                season_name=season_code.replace("-", "/"),
+            )
+    except Exception as error:  # noqa: BLE001 — surface any collector failure
+        st.warning(f"Snapshot refresh skipped: {error}")
+    horizon = _weekly_planning_horizon(database, rules, season_code, gameweek_number)
+    with st.spinner("Regenerating the projection…"):
+        result = RatesProjectionModel(database, rules).project(
+            season_code=season_code,
+            start_gameweek=gameweek_number,
+            horizon_gameweeks=max(8, horizon.required_horizon_gameweeks),
+        )
+    st.success(f"Projection run {result.projection_run_id} saved.")
+    if latest is None:
+        st.info("Save your squad to export a team-news package tuned to it.")
+        return
+    try:
+        with st.spinner("Exporting the team-news package…"):
+            window_start = datetime.now(UTC).isoformat()
+            package = generate_team_news_research_package(
+                database,
+                season_code=season_code,
+                gameweek_number=gameweek_number,
+                projection_run_id=result.projection_run_id,
+                research_mode="final",
+                research_window_start=window_start,
+            )
+        st.session_state[f"{key}-package"] = json.dumps(package, indent=2, default=str)
+    except Exception as error:  # noqa: BLE001
+        st.warning(f"Package export skipped: {error}")
+
+
+def _recommend_this_week(
+    database: HistoricalDatabase,
+    rules: object,
+    latest: object,
+    season_code: str,
+    gameweek_number: int,
+    key: str,
+) -> None:
+    raw = (st.session_state.get(f"{key}-research") or "").strip()
+    if raw:
+        try:
+            ingest_structured_news(database, json.loads(raw), season_code=season_code)
+            st.success("Research imported into the review queue.")
+        except Exception as error:  # noqa: BLE001
+            st.warning(f"Research not imported ({error}); recommending on current data.")
+    if latest is None:
+        st.info("Save your squad first.")
+        return
+    horizon = _weekly_planning_horizon(database, rules, season_code, gameweek_number)
+    run = select_production_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=horizon.required_horizon_gameweeks,
+    )
+    if run is None:
+        st.info("No projection covers this Gameweek yet — run ① Prepare first.")
+        return
+    lines: list[str] = []
+    try:
+        with st.spinner("Comparing transfer routes…"):
+            candidates = _load_optimisation_candidates(database, run.run_id)
+            snapshot = latest.snapshot
+            current = CurrentSquad(
+                player_ids=frozenset(e.source_player_id for e in snapshot.entries),
+                selling_prices_tenths={
+                    e.source_player_id: e.selling_price_tenths for e in snapshot.entries
+                },
+                bank_tenths=snapshot.bank_tenths,
+                free_transfers=snapshot.free_transfers,
+            )
+            transfers = recommend_transfers(
+                candidates,
+                current,
+                rules=rules,
+                candidate_pool_size=4,
+                future_transfer_needs=_load_future_transfer_needs(),
+            )
+        lines.append(f"**Transfers:** {transfers.primary.explanation}")
+    except (OptimisationError, ValueError) as error:
+        lines.append(f"**Transfers:** could not be computed ({error}).")
+
+    # Chip verdicts, held against the empirically expected future double.
+    try:
+        reserve = estimate_double_gameweek_reserve(database.connection)
+        candidate_gameweeks = tuple(
+            sorted(
+                {
+                    value.gameweek_number
+                    for player in candidates
+                    for value in player.gameweek_values
+                }
+                or {gameweek_number}
             )
         )
-        with tabs[0]:
-            _editor(repository, available, latest, season_code, gameweek_number)
-        with tabs[1]:
-            _saved_team(latest, available)
-        with tabs[2]:
-            _projection_explorer(
-                database,
-                rules,
-                available,
-                season_code,
-                gameweek_number,
+        current_ids = frozenset(e.source_player_id for e in snapshot.entries)
+        budget = sum(e.selling_price_tenths for e in snapshot.entries) + snapshot.bank_tenths
+        for chip_name, remaining in snapshot.remaining_chips.items():
+            if remaining <= 0 or chip_name not in {"bench_boost", "triple_captain"}:
+                continue
+            chip = Chip(chip_name)
+            timing = recommend_chip_timing(
+                chip,
+                candidates,
+                candidate_gameweeks=candidate_gameweeks,
+                previous_chip_gameweeks=_inferred_chip_gameweeks(
+                    database, season_code, chip_name
+                ),
+                budget_tenths=budget,
+                rules=rules,
+                current_player_ids=current_ids,
+                expected_double_reserve=reserve.get(chip, 0.0),
             )
-        with tabs[3]:
-            _starting_xi_explorer(
-                database,
-                rules,
-                available,
-                season_code,
-                gameweek_number,
-            )
-        with tabs[4]:
-            _full_squad_explorer(
-                database,
-                rules,
-                season_code,
-                gameweek_number,
-            )
-        with tabs[5]:
-            _preseason_decision(season_code, gameweek_number)
-        with tabs[6]:
-            _transfer_explorer(
-                database,
-                rules,
-                latest,
-                season_code,
-                gameweek_number,
-            )
-        with tabs[7]:
-            _chip_explorer(
-                database,
-                rules,
-                latest,
-                season_code,
-                gameweek_number,
-            )
-        with tabs[8]:
-            _weekly_cycle(
-                database,
-                rules,
-                latest,
-                available,
-                season_code,
-                gameweek_number,
-            )
-        with tabs[9]:
-            _data_health(database, season_code, gameweek_number, deadline)
+            label = chip_name.replace("_", " ").title()
+            if timing.hold_for_expected_double:
+                lines.append(
+                    f"**{label}:** hold — the best visible week does not beat the "
+                    f"expected double (~{timing.expected_double_reserve:.0f} pts)."
+                )
+            else:
+                lines.append(
+                    f"**{label}:** strongest in GW{timing.recommended_gameweek} "
+                    f"(+{timing.recommendation.expected_incremental_points:.1f} pts)."
+                )
+    except (OptimisationError, ValueError) as error:
+        lines.append(f"**Chips:** could not be computed ({error}).")
+
+    st.session_state[f"{key}-call"] = "\n\n".join(lines) if lines else "No call produced."
 
 
 def _editor(
@@ -1691,6 +1891,7 @@ def _chip_explorer(
                 or {gameweek_number}
             )
         )
+        reserve = estimate_double_gameweek_reserve(database.connection)
         timing = recommend_chip_timing(
             Chip(chip_name),
             candidates,
@@ -1699,6 +1900,7 @@ def _chip_explorer(
             budget_tenths=budget_tenths,
             rules=rules,
             current_player_ids=current_ids,
+            expected_double_reserve=reserve.get(Chip(chip_name), 0.0),
         )
     except (OptimisationError, ValueError) as error:
         st.error(str(error))
