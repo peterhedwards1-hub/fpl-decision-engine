@@ -118,6 +118,24 @@ def _load_future_transfer_needs() -> dict[int, float] | None:
     return distribution
 
 
+def _half_aware_reserve(connection: object, rules: object, gameweek_number: int) -> dict:
+    """Expected double reserve for the chip set this Gameweek belongs to.
+
+    The two chip sets do not share doubles: big doubles happen in the second
+    half, so a first-half chip must not be held out against a second-half
+    double's value. Estimate the reserve only over the half being decided.
+    """
+
+    first_expiry = rules.chips.first_set_expiry_gameweek
+    if gameweek_number <= first_expiry:
+        return estimate_double_gameweek_reserve(
+            connection, minimum_gameweek=1, maximum_gameweek=first_expiry
+        )
+    return estimate_double_gameweek_reserve(
+        connection, minimum_gameweek=first_expiry + 1
+    )
+
+
 def main() -> None:
     st.set_page_config(
         page_title="FPL Decision Engine · My Team",
@@ -373,7 +391,12 @@ def _recommend_this_week(
     raw = (st.session_state.get(f"{key}-research") or "").strip()
     if raw:
         try:
-            ingest_structured_news(database, json.loads(raw), season_code=season_code)
+            ingest_structured_news(
+                WeeklyWorkflowRepository(database),
+                season_code=season_code,
+                gameweek_number=gameweek_number,
+                payload=raw,
+            )
             st.success("Research imported into the review queue.")
         except Exception as error:  # noqa: BLE001
             st.warning(f"Research not imported ({error}); recommending on current data.")
@@ -416,7 +439,7 @@ def _recommend_this_week(
 
     # Chip verdicts, held against the empirically expected future double.
     try:
-        reserve = estimate_double_gameweek_reserve(database.connection)
+        reserve = _half_aware_reserve(database.connection, rules, gameweek_number)
         candidate_gameweeks = tuple(
             sorted(
                 {
@@ -1891,7 +1914,7 @@ def _chip_explorer(
                 or {gameweek_number}
             )
         )
-        reserve = estimate_double_gameweek_reserve(database.connection)
+        reserve = _half_aware_reserve(database.connection, rules, gameweek_number)
         timing = recommend_chip_timing(
             Chip(chip_name),
             candidates,
