@@ -41,9 +41,12 @@ from fpl_engine.optimisation import (
     optimise_starting_xi,
 )
 from fpl_engine.preseason_final import (
+    generate_preseason_projection,
     load_final_validation,
 )
 from fpl_engine.preseason_strength import (
+    CARRY_FORWARD_PRESEASON_CONFIG,
+    PRESEASON_CARRY_FORWARD_MODEL_VERSION,
     load_preseason_validation,
     preseason_model_is_validated,
 )
@@ -354,13 +357,44 @@ def _prepare_this_week(
     except Exception as error:  # noqa: BLE001 — surface any collector failure
         st.warning(f"Snapshot refresh skipped: {error}")
     horizon = _weekly_planning_horizon(database, rules, season_code, gameweek_number)
+    horizon_gameweeks = max(8, horizon.required_horizon_gameweeks)
+    # Use the strongest model for the phase: before any real result exists the
+    # validated preseason carry-forward model is strongest (it is what the squad
+    # was built on); once games are played the standard model, which updates
+    # with results, takes over. Both parts of the app then stand on the same run.
+    finished = database.connection.execute(
+        """
+        SELECT COUNT(*) FROM fixtures
+        JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+        JOIN seasons ON seasons.id = gameweeks.season_id
+        WHERE seasons.code = ? AND fixtures.finished = 1
+        """,
+        (season_code,),
+    ).fetchone()[0]
     with st.spinner("Regenerating the projection…"):
-        result = RatesProjectionModel(database, rules).project(
-            season_code=season_code,
-            start_gameweek=gameweek_number,
-            horizon_gameweeks=max(8, horizon.required_horizon_gameweeks),
-        )
-    st.success(f"Projection run {result.projection_run_id} saved.")
+        if finished == 0:
+            projection = generate_preseason_projection(
+                database,
+                rules,
+                season_code=season_code,
+                config=CARRY_FORWARD_PRESEASON_CONFIG,
+                model_version=PRESEASON_CARRY_FORWARD_MODEL_VERSION + "-promoted-fixed",
+                gameweek_number=gameweek_number,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+            projection_run_id = projection.get("projection_run_id")
+            st.success(
+                f"Preseason projection run {projection_run_id} saved "
+                "(carry-forward model — the validated preseason model)."
+            )
+        else:
+            result = RatesProjectionModel(database, rules).project(
+                season_code=season_code,
+                start_gameweek=gameweek_number,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+            projection_run_id = result.projection_run_id
+            st.success(f"Projection run {projection_run_id} saved.")
     if latest is None:
         st.info("Save your squad to export a team-news package tuned to it.")
         return
@@ -371,7 +405,7 @@ def _prepare_this_week(
                 database,
                 season_code=season_code,
                 gameweek_number=gameweek_number,
-                projection_run_id=result.projection_run_id,
+                projection_run_id=projection_run_id,
                 research_mode="final",
                 research_window_start=window_start,
             )
