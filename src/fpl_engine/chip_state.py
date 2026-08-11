@@ -297,3 +297,88 @@ class LookaheadChipPolicy:
             "minimum_gain": self.minimum_gain,
             "margin": self.margin,
         }
+
+
+@dataclass(frozen=True)
+class ReserveChipPolicy:
+    """Hold a scoring chip against an expected but as-yet-unscheduled double.
+
+    :class:`LookaheadChipPolicy` waits only for better weeks the projection can
+    already see, and a projection can only see doubles that are already in the
+    fixture schedule. Second-half double Gameweeks are created by in-season
+    reschedules and do not exist in the fixtures until they are announced, so a
+    look-ahead that reaches the set's expiry still values every remaining week
+    as a single and will spend the chip on an ordinary week — exactly the waste
+    this policy prevents.
+
+    It adds a per-chip **reserve**: the empirically expected gain of the best
+    future double Gameweek in this set, learned from history rather than
+    guessed. While the projection cannot see all the way to the set's expiry
+    (``reaches_expiry`` is false) and a double could still plausibly occur
+    (before ``reserve_until_gameweek``), the chip is held unless this Gameweek
+    beats both the visible future *and* that reserve. Once the projection does
+    reach expiry — so any real double is now visible — or the reserve window has
+    passed, the reserve drops out and the decision falls back to the ordinary
+    look-ahead, which is play-or-lose at the end.
+
+    The reserve is an *expectation*, not a promise: a double is not guaranteed,
+    so ``reserve_discount`` (0–1) scales it down to trade the chance of a bigger
+    double against the certainty of banking a decent week now.
+    """
+
+    reserve_by_chip: dict[Chip, float]
+    reserve_until_gameweek: int
+    reserve_discount: float = 1.0
+    minimum_gain: float = 0.0
+    margin: float = 0.0
+    enabled: bool = False
+
+    @property
+    def plays_anything(self) -> bool:
+        return self.enabled
+
+    def reserve_for(self, chip: Chip, context: ChipDecisionContext) -> float:
+        """The reserve bar that applies to this chip at this Gameweek.
+
+        Zero once the future is fully visible (a real double would already be in
+        ``best_later_value``) or once no double can still be expected, so the
+        reserve never blocks the final play-or-lose week.
+        """
+
+        if context.reaches_expiry:
+            return 0.0
+        if context.gameweek_number >= self.reserve_until_gameweek:
+            return 0.0
+        return self.reserve_discount * self.reserve_by_chip.get(chip, 0.0)
+
+    def choose(self, context: ChipDecisionContext) -> Chip | None:
+        if not self.enabled:
+            return None
+        eligible = []
+        for chip in context.legal_now:
+            now = context.value(chip, context.gameweek_number)
+            if now < self.minimum_gain:
+                continue
+            bar = (
+                max(context.best_later_value(chip), self.reserve_for(chip, context))
+                + self.margin
+            )
+            if now < bar:
+                continue
+            eligible.append((now, chip.value, chip))
+        if not eligible:
+            return None
+        return max(eligible)[2]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": "reserve",
+            "enabled": self.enabled,
+            "reserve_by_chip": {
+                chip.value: value for chip, value in self.reserve_by_chip.items()
+            },
+            "reserve_until_gameweek": self.reserve_until_gameweek,
+            "reserve_discount": self.reserve_discount,
+            "minimum_gain": self.minimum_gain,
+            "margin": self.margin,
+        }
