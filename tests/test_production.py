@@ -74,46 +74,6 @@ def test_production_selection_rejects_newer_short_and_challenger_runs(tmp_path) 
         assert selected.horizon_gameweeks == 8
 
 
-def test_production_selection_prefers_the_validated_preseason_model(tmp_path) -> None:
-    # Before the season starts the validated preseason carry-forward run is the
-    # strongest forecast and must be chosen over an older standard-model run, so
-    # squad and transfer advice share one model. An unqualified challenger that
-    # merely borrows the "preseason" word must still be rejected.
-    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
-        database.initialise()
-        database.connection.execute(
-            "INSERT INTO seasons (id, code, name) VALUES (1, '2026-27', '2026/27')"
-        )
-        _insert_run(
-            database,
-            generated_at="2026-08-02T12:00:00+00:00",
-            horizon=8,
-            model_version=MODEL_VERSION,
-        )
-        preseason_id = _insert_run(
-            database,
-            generated_at="2026-08-08T12:00:00+00:00",
-            horizon=8,
-            model_version=f"{MODEL_VERSION}-preseason-carry-forward-promoted-fixed",
-        )
-        _insert_run(
-            database,
-            generated_at="2026-08-09T12:00:00+00:00",
-            horizon=8,
-            model_version="rates-unqualified-challenger-preseason",
-        )
-
-        selected = select_production_projection_run(
-            database,
-            season_code="2026-27",
-            start_gameweek=1,
-            minimum_horizon_gameweeks=8,
-        )
-
-        assert selected is not None
-        assert selected.run_id == preseason_id
-
-
 def test_production_selection_accepts_newer_long_horizon_news_run(tmp_path) -> None:
     with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
         database.initialise()

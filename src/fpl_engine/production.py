@@ -146,14 +146,7 @@ def select_production_projection_run(
     unqualified challengers may be newer than the production forecast, but
     recency alone does not authorise either to drive squad or transfer advice.
     Reviewed-news suffixes remain eligible because they preserve the incumbent
-    model family and the caller's required horizon. The validated preseason
-    carry-forward variants are eligible too: they are the strongest forecast
-    before any real result exists and the model the opening squad is built on,
-    so squad, transfer and chip advice must all use them rather than an older
-    standard-model run. This is not a licence for challengers — the acceptance is
-    scoped to the ``-preseason-carry-forward`` family of the incumbent version —
-    and recency still governs, so standard-model runs reclaim production as soon
-    as the season starts and they become the newest.
+    model family and the caller's required horizon.
     """
 
     if not season_code.strip():
@@ -171,33 +164,6 @@ def select_production_projection_run(
         f"{production_model_version}-post-research",
         f"{production_model_version}-post-news-v2-post-research",
     )
-    # The preseason carry-forward model is a *validated* member of the incumbent
-    # family, not an unqualified challenger, and before any real result exists it
-    # is the strongest forecast — it is the model the opening squad was built on.
-    # Accept its whole variant space (promoted-fixed / promoted-w… plus news
-    # suffixes) so squad, transfer and chip advice all stand on one model.
-    # Recency still decides: once the season starts, standard-model runs are
-    # newer and take back over automatically.
-    preseason_family = f"{production_model_version}-preseason-carry-forward%"
-    # Which family is strongest is a question of phase, not recency. Before any
-    # real result exists the preseason carry-forward model is strongest, so it
-    # must outrank a standard-model run even one generated more recently (a
-    # standard model has no current-season data to learn from yet). Once a single
-    # fixture has finished, the standard model — which does learn from results —
-    # is strongest and plain recency restores it.
-    preseason_phase = (
-        database.connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM fixtures
-            JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
-            JOIN seasons ON seasons.id = gameweeks.season_id
-            WHERE seasons.code = ? AND fixtures.finished = 1
-            """,
-            (season_code,),
-        ).fetchone()[0]
-        == 0
-    )
     row = database.connection.execute(
         """
         SELECT projection_runs.id, projection_runs.model_version,
@@ -208,15 +174,9 @@ def select_production_projection_run(
         WHERE seasons.code = ?
           AND projection_runs.start_gameweek = ?
           AND projection_runs.horizon_gameweeks >= ?
-          AND (projection_runs.model_version IN (?, ?, ?, ?)
-               OR projection_runs.model_version LIKE ?)
-        ORDER BY
-            CASE
-                WHEN ? = 1 AND projection_runs.model_version LIKE ? THEN 0
-                ELSE 1
-            END,
-            datetime(projection_runs.generated_at) DESC,
-            projection_runs.id DESC
+          AND projection_runs.model_version IN (?, ?, ?, ?)
+        ORDER BY datetime(projection_runs.generated_at) DESC,
+                 projection_runs.id DESC
         LIMIT 1
         """,
         (
@@ -224,9 +184,6 @@ def select_production_projection_run(
             start_gameweek,
             minimum_horizon_gameweeks,
             *allowed_versions,
-            preseason_family,
-            1 if preseason_phase else 0,
-            preseason_family,
         ),
     ).fetchone()
     if row is None:

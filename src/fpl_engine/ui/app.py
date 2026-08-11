@@ -52,7 +52,7 @@ from fpl_engine.preseason_strength import (
 )
 from fpl_engine.production import (
     recommend_planning_horizon,
-    select_production_projection_run,
+    select_decision_projection_run,
 )
 from fpl_engine.projections import (
     ProjectionOverride,
@@ -119,6 +119,37 @@ def _load_future_transfer_needs() -> dict[int, float] | None:
     if not distribution or abs(sum(distribution.values()) - 1.0) > 1e-6:
         return None
     return distribution
+
+
+def _decision_projection_run(
+    database: HistoricalDatabase,
+    *,
+    season_code: str,
+    start_gameweek: int,
+    minimum_horizon_gameweeks: int,
+):
+    """The strongest run for the phase for a squad/transfer/chip decision.
+
+    Uses the shared phase-aware chooser: the validated preseason carry-forward
+    model at GW1 (what the opening squad was built on), the incumbent model once
+    real results exist. Every decision surface in the app calls this, so the
+    squad, transfer and chip views never stand on different models.
+    """
+
+    try:
+        validated = preseason_model_is_validated(
+            load_preseason_validation(season_code), season_code=season_code
+        )
+    except Exception:  # noqa: BLE001 — a missing/invalid artifact just means unvalidated
+        validated = False
+    run, _context = select_decision_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=start_gameweek,
+        minimum_horizon_gameweeks=minimum_horizon_gameweeks,
+        preseason_model_validated=validated,
+    )
+    return run
 
 
 def _half_aware_reserve(connection: object, rules: object, gameweek_number: int) -> dict:
@@ -373,12 +404,15 @@ def _prepare_this_week(
     ).fetchone()[0]
     with st.spinner("Regenerating the projection…"):
         if finished == 0:
+            # The base carry-forward version already carries the fixed promoted
+            # prior, and it is the version select_preseason_projection_run picks
+            # up — so generate that, not a relabelled variant it would ignore.
             projection = generate_preseason_projection(
                 database,
                 rules,
                 season_code=season_code,
                 config=CARRY_FORWARD_PRESEASON_CONFIG,
-                model_version=PRESEASON_CARRY_FORWARD_MODEL_VERSION + "-promoted-fixed",
+                model_version=PRESEASON_CARRY_FORWARD_MODEL_VERSION,
                 gameweek_number=gameweek_number,
                 horizon_gameweeks=horizon_gameweeks,
             )
@@ -438,7 +472,7 @@ def _recommend_this_week(
         st.info("Save your squad first.")
         return
     horizon = _weekly_planning_horizon(database, rules, season_code, gameweek_number)
-    run = select_production_projection_run(
+    run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1021,7 +1055,7 @@ def _starting_xi_explorer(
         "A solver-proven optimum across all available players, subject to "
         "budget, position and three-per-club constraints."
     )
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1103,7 +1137,7 @@ def _full_squad_explorer(
         gameweek_number,
         OPENING_SQUAD_HORIZON_GAMEWEEKS,
     )
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1802,7 +1836,7 @@ def _transfer_explorer(
     required_horizon = planning_horizon.required_horizon_gameweeks
     if planning_horizon.reasons:
         st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1881,7 +1915,7 @@ def _chip_explorer(
         gameweek_number,
     )
     required_horizon = planning_horizon.required_horizon_gameweeks
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -2063,7 +2097,7 @@ def _weekly_cycle(
     required_horizon = planning_horizon.required_horizon_gameweeks
     if planning_horizon.reasons:
         st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
-    latest_projection = select_production_projection_run(
+    latest_projection = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
