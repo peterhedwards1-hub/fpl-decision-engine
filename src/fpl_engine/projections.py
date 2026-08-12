@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from bisect import bisect_right
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from .config import SeasonRules
@@ -188,6 +191,19 @@ class ProjectionModelConfig:
     # ``participation_v1`` is an explicit minutes challenger.  The incumbent
     # reconciliation remains the default and is deliberately unchanged.
     minutes_reconciliation_mode: str = "legacy_capped"
+    # The team-minutes budget is a statement about *minutes*, not about who is
+    # available. Left off, reconciliation back-derives appearance probability
+    # from a player's allocated share, which makes availability a function of
+    # how much recorded history his club-mates happen to have. Switched on, the
+    # estimated appearance probability survives and the correction is absorbed
+    # into minutes conditional on an appearance instead. Default is off so the
+    # incumbent is unchanged.
+    minutes_reconciliation_preserves_appearance: bool = False
+    # Path to an isotonic appearance-reliability map fitted on historical
+    # origins of this same configuration. A map fitted for one minutes
+    # configuration does not transfer to another, so the artifact records
+    # which one it belongs to. ``None`` leaves probabilities uncalibrated.
+    appearance_calibration_artifact: str | None = None
     minutes_reconciliation_max_relative_adjustment: float = 0.25
     minutes_reconciliation_max_absolute_adjustment: float = 12.0
     minutes_reconciliation_warning_deficit: float = 90.0
@@ -419,6 +435,46 @@ ROBUST_V4_MODEL_CONFIG = ProjectionModelConfig(
     team_minutes_per_fixture=990.0,
     enforce_team_minutes=True,
 )
+
+
+@lru_cache(maxsize=8)
+def _appearance_calibration_knots(path: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Load and validate an isotonic appearance-reliability map."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if payload.get("kind") != "appearance-isotonic-v1":
+        raise ValueError(
+            f"{path!r} is not an appearance-isotonic-v1 calibration artifact"
+        )
+    xs = tuple(float(value) for value in payload["knots"]["x"])
+    ys = tuple(float(value) for value in payload["knots"]["y"])
+    if len(xs) != len(ys) or len(xs) < 2:
+        raise ValueError(f"{path!r} needs at least two matching calibration knots")
+    if any(b < a for a, b in zip(xs, xs[1:], strict=False)):
+        raise ValueError(f"{path!r} calibration inputs must be non-decreasing")
+    if any(b < a for a, b in zip(ys, ys[1:], strict=False)):
+        raise ValueError(f"{path!r} calibration outputs must be non-decreasing")
+    if not all(0.0 <= value <= 1.0 for value in (*xs, *ys)):
+        raise ValueError(f"{path!r} calibration knots must be probabilities")
+    return xs, ys
+
+
+def _interpolate(
+    knots: tuple[tuple[float, ...], tuple[float, ...]], value: float
+) -> float:
+    """Piecewise-linear lookup, clamped to the fitted range at both ends."""
+
+    xs, ys = knots
+    if value <= xs[0]:
+        return ys[0]
+    if value >= xs[-1]:
+        return ys[-1]
+    index = bisect_right(xs, value)
+    left, right = xs[index - 1], xs[index]
+    if right == left:
+        return ys[index]
+    weight = (value - left) / (right - left)
+    return ys[index - 1] + weight * (ys[index] - ys[index - 1])
 
 
 def _config_hash(config: ProjectionModelConfig) -> str:
@@ -2550,6 +2606,7 @@ class RatesProjectionModel:
             player.setdefault("_unresolved_minutes", 0.0)
 
         if self.config.minutes_model == "legacy" or not self.config.enforce_team_minutes:
+            self._calibrate_appearance(players)
             return
 
         players_by_team: dict[str, list[dict[str, Any]]] = {}
@@ -2612,6 +2669,25 @@ class RatesProjectionModel:
                     player["_reconciliation_adjustment"] = expected_minutes - prior_expected
                     conditional_minutes = float(player["_conditional_minutes"])
                     appearance_probability = float(player["_appearance_probability"])
+                elif self.config.minutes_reconciliation_preserves_appearance:
+                    # Keep the estimated availability and move the team-budget
+                    # correction into conditional minutes. Whatever the
+                    # 90-minute ceiling cannot absorb is reported as unresolved
+                    # rather than fabricated into a higher appearance
+                    # probability.
+                    allocated = expected_minutes
+                    appearance_probability = float(player["_appearance_probability"])
+                    if appearance_probability <= 0.0:
+                        conditional_minutes = float(player["_conditional_minutes"])
+                        expected_minutes = 0.0
+                    else:
+                        conditional_minutes = _clamp(
+                            allocated / appearance_probability, 1.0, 90.0
+                        )
+                        expected_minutes = appearance_probability * conditional_minutes
+                    player["_conditional_minutes"] = conditional_minutes
+                    player["_unresolved_minutes"] = max(0.0, allocated - expected_minutes)
+                    player["_reconciliation_adjustment"] = expected_minutes - prior_expected
                 else:
                     conditional_minutes = float(player["_conditional_minutes"])
                     appearance_probability = _clamp(
@@ -2636,6 +2712,44 @@ class RatesProjectionModel:
                     player["_reconciliation_warning"] = (
                         residual > self.config.minutes_reconciliation_warning_deficit
                     )
+
+        self._calibrate_appearance(players)
+
+    def _calibrate_appearance(self, players: list[dict[str, Any]]) -> None:
+        """Map raw appearance probabilities through a fitted reliability curve.
+
+        The estimator is systematically overconfident about apparent nailed
+        starters at a preseason origin — the band it calls certain appears
+        about four times in five. An isotonic map fitted on historical
+        origins of the *same* configuration corrects that without disturbing
+        the ordering, because isotonic regression is monotone.
+
+        The map is applied after reconciliation, so a calibrated run no longer
+        forces each club to exactly the fixture minutes budget. That is
+        deliberate: the budget is the weaker claim, and silently restoring it
+        would reintroduce the distortion the calibration is correcting.
+        """
+
+        artifact = self.config.appearance_calibration_artifact
+        if not artifact:
+            return
+        knots = _appearance_calibration_knots(str(artifact))
+        for player in players:
+            raw = float(player["_appearance_probability"])
+            calibrated = _interpolate(knots, raw)
+            player["_appearance_probability"] = calibrated
+            player["_no_appearance_probability"] = 1.0 - calibrated
+            player["_sixty_probability"] = min(
+                calibrated,
+                calibrated * float(player["_sixty_given_appearance"]),
+            )
+            player["_expected_minutes_per_fixture"] = calibrated * float(
+                player["_conditional_minutes"]
+            )
+            player["_start_probability"] = min(
+                calibrated, float(player.get("_start_probability", calibrated))
+            )
+            player["_appearance_calibration_shift"] = calibrated - raw
 
     def _project_player(
         self,

@@ -41,15 +41,18 @@ from fpl_engine.optimisation import (
     optimise_starting_xi,
 )
 from fpl_engine.preseason_final import (
+    generate_preseason_projection,
     load_final_validation,
 )
 from fpl_engine.preseason_strength import (
+    CARRY_FORWARD_PRESEASON_CONFIG,
+    PRESEASON_CARRY_FORWARD_MODEL_VERSION,
     load_preseason_validation,
     preseason_model_is_validated,
 )
 from fpl_engine.production import (
     recommend_planning_horizon,
-    select_production_projection_run,
+    select_decision_projection_run,
 )
 from fpl_engine.projections import (
     ProjectionOverride,
@@ -116,6 +119,55 @@ def _load_future_transfer_needs() -> dict[int, float] | None:
     if not distribution or abs(sum(distribution.values()) - 1.0) > 1e-6:
         return None
     return distribution
+
+
+def _decision_projection_run(
+    database: HistoricalDatabase,
+    *,
+    season_code: str,
+    start_gameweek: int,
+    minimum_horizon_gameweeks: int,
+):
+    """The strongest run for the phase for a squad/transfer/chip decision.
+
+    Uses the shared phase-aware chooser: the validated preseason carry-forward
+    model at GW1 (what the opening squad was built on), the incumbent model once
+    real results exist. Every decision surface in the app calls this, so the
+    squad, transfer and chip views never stand on different models.
+    """
+
+    try:
+        validated = preseason_model_is_validated(
+            load_preseason_validation(season_code), season_code=season_code
+        )
+    except Exception:  # noqa: BLE001 — a missing/invalid artifact just means unvalidated
+        validated = False
+    run, _context = select_decision_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=start_gameweek,
+        minimum_horizon_gameweeks=minimum_horizon_gameweeks,
+        preseason_model_validated=validated,
+    )
+    return run
+
+
+def _half_aware_reserve(connection: object, rules: object, gameweek_number: int) -> dict:
+    """Expected double reserve for the chip set this Gameweek belongs to.
+
+    The two chip sets do not share doubles: big doubles happen in the second
+    half, so a first-half chip must not be held out against a second-half
+    double's value. Estimate the reserve only over the half being decided.
+    """
+
+    first_expiry = rules.chips.first_set_expiry_gameweek
+    if gameweek_number <= first_expiry:
+        return estimate_double_gameweek_reserve(
+            connection, minimum_gameweek=1, maximum_gameweek=first_expiry
+        )
+    return estimate_double_gameweek_reserve(
+        connection, minimum_gameweek=first_expiry + 1
+    )
 
 
 def main() -> None:
@@ -336,13 +388,47 @@ def _prepare_this_week(
     except Exception as error:  # noqa: BLE001 — surface any collector failure
         st.warning(f"Snapshot refresh skipped: {error}")
     horizon = _weekly_planning_horizon(database, rules, season_code, gameweek_number)
+    horizon_gameweeks = max(8, horizon.required_horizon_gameweeks)
+    # Use the strongest model for the phase: before any real result exists the
+    # validated preseason carry-forward model is strongest (it is what the squad
+    # was built on); once games are played the standard model, which updates
+    # with results, takes over. Both parts of the app then stand on the same run.
+    finished = database.connection.execute(
+        """
+        SELECT COUNT(*) FROM fixtures
+        JOIN gameweeks ON gameweeks.id = fixtures.gameweek_id
+        JOIN seasons ON seasons.id = gameweeks.season_id
+        WHERE seasons.code = ? AND fixtures.finished = 1
+        """,
+        (season_code,),
+    ).fetchone()[0]
     with st.spinner("Regenerating the projection…"):
-        result = RatesProjectionModel(database, rules).project(
-            season_code=season_code,
-            start_gameweek=gameweek_number,
-            horizon_gameweeks=max(8, horizon.required_horizon_gameweeks),
-        )
-    st.success(f"Projection run {result.projection_run_id} saved.")
+        if finished == 0:
+            # The base carry-forward version already carries the fixed promoted
+            # prior, and it is the version select_preseason_projection_run picks
+            # up — so generate that, not a relabelled variant it would ignore.
+            projection = generate_preseason_projection(
+                database,
+                rules,
+                season_code=season_code,
+                config=CARRY_FORWARD_PRESEASON_CONFIG,
+                model_version=PRESEASON_CARRY_FORWARD_MODEL_VERSION,
+                gameweek_number=gameweek_number,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+            projection_run_id = projection.get("projection_run_id")
+            st.success(
+                f"Preseason projection run {projection_run_id} saved "
+                "(carry-forward model — the validated preseason model)."
+            )
+        else:
+            result = RatesProjectionModel(database, rules).project(
+                season_code=season_code,
+                start_gameweek=gameweek_number,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+            projection_run_id = result.projection_run_id
+            st.success(f"Projection run {projection_run_id} saved.")
     if latest is None:
         st.info("Save your squad to export a team-news package tuned to it.")
         return
@@ -353,7 +439,7 @@ def _prepare_this_week(
                 database,
                 season_code=season_code,
                 gameweek_number=gameweek_number,
-                projection_run_id=result.projection_run_id,
+                projection_run_id=projection_run_id,
                 research_mode="final",
                 research_window_start=window_start,
             )
@@ -373,7 +459,12 @@ def _recommend_this_week(
     raw = (st.session_state.get(f"{key}-research") or "").strip()
     if raw:
         try:
-            ingest_structured_news(database, json.loads(raw), season_code=season_code)
+            ingest_structured_news(
+                WeeklyWorkflowRepository(database),
+                season_code=season_code,
+                gameweek_number=gameweek_number,
+                payload=raw,
+            )
             st.success("Research imported into the review queue.")
         except Exception as error:  # noqa: BLE001
             st.warning(f"Research not imported ({error}); recommending on current data.")
@@ -381,7 +472,7 @@ def _recommend_this_week(
         st.info("Save your squad first.")
         return
     horizon = _weekly_planning_horizon(database, rules, season_code, gameweek_number)
-    run = select_production_projection_run(
+    run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -416,7 +507,7 @@ def _recommend_this_week(
 
     # Chip verdicts, held against the empirically expected future double.
     try:
-        reserve = estimate_double_gameweek_reserve(database.connection)
+        reserve = _half_aware_reserve(database.connection, rules, gameweek_number)
         candidate_gameweeks = tuple(
             sorted(
                 {
@@ -429,8 +520,17 @@ def _recommend_this_week(
         )
         current_ids = frozenset(e.source_player_id for e in snapshot.entries)
         budget = sum(e.selling_price_tenths for e in snapshot.entries) + snapshot.bank_tenths
+        # Wildcard is deliberately absent: it rebuilds the whole squad at every
+        # candidate Gameweek, which costs minutes rather than seconds, and the
+        # answer is almost always "no" while the squad is healthy. It stays on
+        # the Advanced chip-timing screen, to be run when something actually
+        # prompts it.
         for chip_name, remaining in snapshot.remaining_chips.items():
-            if remaining <= 0 or chip_name not in {"bench_boost", "triple_captain"}:
+            if remaining <= 0 or chip_name not in {
+                "bench_boost",
+                "triple_captain",
+                "free_hit",
+            }:
                 continue
             chip = Chip(chip_name)
             timing = recommend_chip_timing(
@@ -444,6 +544,11 @@ def _recommend_this_week(
                 rules=rules,
                 current_player_ids=current_ids,
                 expected_double_reserve=reserve.get(chip, 0.0),
+                # Free Hit optimises a one-week squad at every candidate
+                # Gameweek, so the enumeration pool multiplies its cost. Bench
+                # Boost and Triple Captain score the squad already held and are
+                # unaffected by this.
+                candidate_pool_size=1 if chip is Chip.FREE_HIT else 4,
             )
             label = chip_name.replace("_", " ").title()
             if timing.hold_for_expected_double:
@@ -456,6 +561,19 @@ def _recommend_this_week(
                     f"**{label}:** strongest in GW{timing.recommended_gameweek} "
                     f"(+{timing.recommendation.expected_incremental_points:.1f} pts)."
                 )
+            # A chip that rebuilds the squad is only actionable if the squad it
+            # proposes is visible, so name the XI here rather than sending the
+            # reader to another screen.
+            squad = timing.recommendation.squad
+            if squad is not None:
+                starters = ", ".join(
+                    sorted(
+                        player.web_name
+                        for player in squad.players
+                        if player.source_player_id in squad.starting_player_ids
+                    )
+                )
+                lines.append(f"  - {label} XI: {starters}")
     except (OptimisationError, ValueError) as error:
         lines.append(f"**Chips:** could not be computed ({error}).")
 
@@ -964,7 +1082,7 @@ def _starting_xi_explorer(
         "A solver-proven optimum across all available players, subject to "
         "budget, position and three-per-club constraints."
     )
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1046,7 +1164,7 @@ def _full_squad_explorer(
         gameweek_number,
         OPENING_SQUAD_HORIZON_GAMEWEEKS,
     )
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1745,7 +1863,7 @@ def _transfer_explorer(
     required_horizon = planning_horizon.required_horizon_gameweeks
     if planning_horizon.reasons:
         st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1824,7 +1942,7 @@ def _chip_explorer(
         gameweek_number,
     )
     required_horizon = planning_horizon.required_horizon_gameweeks
-    latest_run = select_production_projection_run(
+    latest_run = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,
@@ -1891,7 +2009,7 @@ def _chip_explorer(
                 or {gameweek_number}
             )
         )
-        reserve = estimate_double_gameweek_reserve(database.connection)
+        reserve = _half_aware_reserve(database.connection, rules, gameweek_number)
         timing = recommend_chip_timing(
             Chip(chip_name),
             candidates,
@@ -2006,7 +2124,7 @@ def _weekly_cycle(
     required_horizon = planning_horizon.required_horizon_gameweeks
     if planning_horizon.reasons:
         st.caption("Planning horizon extended: " + "; ".join(planning_horizon.reasons))
-    latest_projection = select_production_projection_run(
+    latest_projection = _decision_projection_run(
         database,
         season_code=season_code,
         start_gameweek=gameweek_number,

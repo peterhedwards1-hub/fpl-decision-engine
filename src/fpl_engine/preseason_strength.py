@@ -69,18 +69,44 @@ from .squad_comparison import opening_candidates, value_squad_under
 #: is normally held roughly this long before the first meaningful rebuild.
 EARLY_SEASON_GAMEWEEKS = 8
 
+#: Both preseason arms share this minutes treatment, so the A/B below still
+#: differs in exactly one field.
+#:
+#: `minutes_reconciliation_preserves_appearance` stops the team-minutes budget
+#: back-deriving availability from a player's allocated share, which made
+#: appearance probability a function of how much recorded history his
+#: club-mates happened to have (measured squad-depth correlation 0.923, and 35
+#: players pinned at an impossible 1.000). The calibration artifact then
+#: corrects the residual overconfidence in the tail the autosub valuation
+#: leans on: preseason, the band the estimator called certain appeared about
+#: four times in five. It is fitted on GW1 origins of this same minutes
+#: configuration; appearance probability does not depend on team strength, so
+#: one artifact serves both arms.
+PRESEASON_MINUTES_BASE = replace(
+    CORRECTED_V4_MODEL_CONFIG,
+    minutes_reconciliation_preserves_appearance=True,
+    appearance_calibration_artifact=(
+        "data/models/appearance-calibration-preserve-v1.json"
+    ),
+)
+
 #: The control. The production incumbent, with the flat preseason prior.
-FLAT_PRESEASON_CONFIG = CORRECTED_V4_MODEL_CONFIG
+FLAT_PRESEASON_CONFIG = PRESEASON_MINUTES_BASE
 
 #: The candidate. Exactly one field differs from the control.
 CARRY_FORWARD_PRESEASON_CONFIG = replace(
-    CORRECTED_V4_MODEL_CONFIG, team_strength_carry_forward=True
+    PRESEASON_MINUTES_BASE, team_strength_carry_forward=True
 )
 
 #: The model version a passing candidate's live preseason run is labelled with.
 #: Deliberately outside the incumbent family the in-season selector accepts, so
 #: an in-season decision cannot pick it up by being the newest run.
-PRESEASON_CARRY_FORWARD_MODEL_VERSION = f"{MODEL_VERSION}-preseason-carry-forward"
+#:
+#: `-v2` marks the corrected minutes reconciliation and calibrated appearance
+#: probabilities. It is a new identity on purpose: runs and validation
+#: artifacts produced under the previous label describe a different model and
+#: must not be treated as evidence for this one.
+PRESEASON_CARRY_FORWARD_MODEL_VERSION = f"{MODEL_VERSION}-preseason-carry-forward-v2"
 
 #: Labels used throughout the artifact. `opponent_adjusted` is a reference
 #: only: it is never selected for production by this module.

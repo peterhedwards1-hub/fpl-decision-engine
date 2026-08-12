@@ -1,0 +1,1 @@
+{"format": "fpl-decision-engine/championship-player-roles/v1", "season_code": "2025-26", "source": {"name": "synthetic", "url": "https://example.invalid/roles"}, "players": [{"club_name": "Promoted FC", "player_name": "Regular", "appearances": 46, "starts": 44, "substitute_appearances": 2, "minutes": 3900, "team_matches": 46, "goals": 12}]}

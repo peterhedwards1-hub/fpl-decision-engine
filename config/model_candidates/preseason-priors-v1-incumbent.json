@@ -1,4 +1,5 @@
 {
+  "appearance_calibration_artifact": null,
   "appearance_prior_matches": 3.2516466478759654,
   "appearance_prior_probability": 0.4044943812940328,
   "away_attack_multiplier": 0.8512934695622035,
@@ -24,6 +25,7 @@
   "minutes_reconciliation_max_absolute_adjustment": 12.0,
   "minutes_reconciliation_max_relative_adjustment": 0.25,
   "minutes_reconciliation_mode": "legacy_capped",
+  "minutes_reconciliation_preserves_appearance": false,
   "minutes_reconciliation_warning_deficit": 90.0,
   "participation_role_decay_per_gameweek": 0.03,
   "participation_start_minutes_prior": 78.0,

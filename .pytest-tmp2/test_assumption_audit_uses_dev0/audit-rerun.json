@@ -1,0 +1,940 @@
+{
+  "audit_version": "football-assumptions-v1",
+  "development_seasons": [
+    "2024-25",
+    "2025-26"
+  ],
+  "origin_gameweek_start": 2,
+  "origin_gameweek_end": 3,
+  "horizon_gameweeks": 1,
+  "variants": [
+    {
+      "name": "reference",
+      "changed_assumption": "Frozen robust-v4 transparent reference",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "playing_time_artifact": null,
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "team_total",
+        "scoring_recent_evidence_weight": 1.0,
+        "scoring_event_source": "actual",
+        "coherent_assist_unassisted_goal_fraction": 0.1,
+        "coherent_penalty_goal_fraction": 0.08,
+        "coherent_role_shrinkage_minutes": 900.0,
+        "coherent_transfer_shrinkage": 0.5,
+        "team_form_half_life_gameweeks": 8.0,
+        "team_assist_per_goal_prior": 0.72,
+        "defensive_contribution_model": "legacy_linear",
+        "include_penalty_events": false,
+        "team_strength_carry_forward": false,
+        "carry_forward_regression_matches": 12.0,
+        "promoted_team_attack_multiplier": 0.85,
+        "promoted_team_defence_multiplier": 1.2,
+        "promoted_prior_mode": "fixed",
+        "promoted_prior_weight": 0.0,
+        "promoted_prior_minimum_attack": 0.6,
+        "promoted_prior_maximum_attack": 1.0,
+        "promoted_prior_minimum_defence": 1.0,
+        "promoted_prior_maximum_defence": 1.5,
+        "cold_start_prior": "position",
+        "cold_start_price_elasticity": 1.5,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_maximum_factor": 3.0,
+        "minutes_reconciliation_mode": "legacy_capped",
+        "minutes_reconciliation_max_relative_adjustment": 0.25,
+        "minutes_reconciliation_max_absolute_adjustment": 12.0,
+        "minutes_reconciliation_warning_deficit": 90.0,
+        "participation_start_prior_probability": 0.45,
+        "participation_start_prior_matches": 6.0,
+        "participation_substitute_prior_probability": 0.18,
+        "participation_substitute_prior_matches": 4.0,
+        "participation_start_minutes_prior": 78.0,
+        "participation_substitute_minutes_prior": 22.0,
+        "participation_role_decay_per_gameweek": 0.03,
+        "team_strength_model": "raw_goals"
+      },
+      "seasons": [
+        {
+          "season_code": "2024-25",
+          "backtest_run_id": 1,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 8.716341,
+          "overall_points_mae": 4.3715,
+          "overall_points_bias": -4.3715,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 4.3715,
+          "top_100_points_bias": -4.3715,
+          "top_100_actual_points_mean": 0.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 4.3715,
+              "points_bias": -4.3715,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        },
+        {
+          "season_code": "2025-26",
+          "backtest_run_id": 2,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 5.202641,
+          "overall_points_mae": 2.222,
+          "overall_points_bias": -1.395,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 2.222,
+          "top_100_points_bias": -1.395,
+          "top_100_actual_points_mean": 3.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 2.222,
+              "points_bias": -1.395,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        }
+      ],
+      "development_score": 7.398703,
+      "cross_season_stability_penalty": 0.439213,
+      "aggregate": {
+        "development_score": 7.398703,
+        "cross_season_stability_penalty": 0.439213,
+        "overall_points_mae": 3.2968,
+        "overall_absolute_points_bias": 2.8833,
+        "overall_minutes_mae": 50.0,
+        "top_100_points_mae": 3.2968,
+        "top_100_absolute_points_bias": 2.8833,
+        "top_100_actual_points_mean": 1.5,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0,
+        "by_position": {
+          "FWD": {
+            "samples": 4,
+            "points_mae": 3.2968,
+            "points_bias": -2.8833,
+            "minutes_mae": 50.0,
+            "minutes_bias": -50.0
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0,
+        "overall_points_mae": 0.0,
+        "overall_absolute_points_bias": 0.0,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_development_gate": false
+    },
+    {
+      "name": "position_minutes",
+      "changed_assumption": "Separate 90 goalkeeper and 900 outfield expected minutes",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "playing_time_artifact": null,
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "position_aware",
+        "scoring_recent_evidence_weight": 1.0,
+        "scoring_event_source": "actual",
+        "coherent_assist_unassisted_goal_fraction": 0.1,
+        "coherent_penalty_goal_fraction": 0.08,
+        "coherent_role_shrinkage_minutes": 900.0,
+        "coherent_transfer_shrinkage": 0.5,
+        "team_form_half_life_gameweeks": 8.0,
+        "team_assist_per_goal_prior": 0.72,
+        "defensive_contribution_model": "legacy_linear",
+        "include_penalty_events": false,
+        "team_strength_carry_forward": false,
+        "carry_forward_regression_matches": 12.0,
+        "promoted_team_attack_multiplier": 0.85,
+        "promoted_team_defence_multiplier": 1.2,
+        "promoted_prior_mode": "fixed",
+        "promoted_prior_weight": 0.0,
+        "promoted_prior_minimum_attack": 0.6,
+        "promoted_prior_maximum_attack": 1.0,
+        "promoted_prior_minimum_defence": 1.0,
+        "promoted_prior_maximum_defence": 1.5,
+        "cold_start_prior": "position",
+        "cold_start_price_elasticity": 1.5,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_maximum_factor": 3.0,
+        "minutes_reconciliation_mode": "legacy_capped",
+        "minutes_reconciliation_max_relative_adjustment": 0.25,
+        "minutes_reconciliation_max_absolute_adjustment": 12.0,
+        "minutes_reconciliation_warning_deficit": 90.0,
+        "participation_start_prior_probability": 0.45,
+        "participation_start_prior_matches": 6.0,
+        "participation_substitute_prior_probability": 0.18,
+        "participation_substitute_prior_matches": 4.0,
+        "participation_start_minutes_prior": 78.0,
+        "participation_substitute_minutes_prior": 22.0,
+        "participation_role_decay_per_gameweek": 0.03,
+        "team_strength_model": "raw_goals"
+      },
+      "seasons": [
+        {
+          "season_code": "2024-25",
+          "backtest_run_id": 3,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 8.716341,
+          "overall_points_mae": 4.3715,
+          "overall_points_bias": -4.3715,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 4.3715,
+          "top_100_points_bias": -4.3715,
+          "top_100_actual_points_mean": 0.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 4.3715,
+              "points_bias": -4.3715,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        },
+        {
+          "season_code": "2025-26",
+          "backtest_run_id": 4,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 5.202641,
+          "overall_points_mae": 2.222,
+          "overall_points_bias": -1.395,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 2.222,
+          "top_100_points_bias": -1.395,
+          "top_100_actual_points_mean": 3.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 2.222,
+              "points_bias": -1.395,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        }
+      ],
+      "development_score": 7.398703,
+      "cross_season_stability_penalty": 0.439213,
+      "aggregate": {
+        "development_score": 7.398703,
+        "cross_season_stability_penalty": 0.439213,
+        "overall_points_mae": 3.2968,
+        "overall_absolute_points_bias": 2.8833,
+        "overall_minutes_mae": 50.0,
+        "top_100_points_mae": 3.2968,
+        "top_100_absolute_points_bias": 2.8833,
+        "top_100_actual_points_mean": 1.5,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0,
+        "by_position": {
+          "FWD": {
+            "samples": 4,
+            "points_mae": 3.2968,
+            "points_bias": -2.8833,
+            "minutes_mae": 50.0,
+            "minutes_bias": -50.0
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0,
+        "overall_points_mae": 0.0,
+        "overall_absolute_points_bias": 0.0,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_development_gate": true
+    },
+    {
+      "name": "recent_scoring",
+      "changed_assumption": "Triple weight for scoring events in the recent window",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "playing_time_artifact": null,
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "team_total",
+        "scoring_recent_evidence_weight": 3.0,
+        "scoring_event_source": "actual",
+        "coherent_assist_unassisted_goal_fraction": 0.1,
+        "coherent_penalty_goal_fraction": 0.08,
+        "coherent_role_shrinkage_minutes": 900.0,
+        "coherent_transfer_shrinkage": 0.5,
+        "team_form_half_life_gameweeks": 8.0,
+        "team_assist_per_goal_prior": 0.72,
+        "defensive_contribution_model": "legacy_linear",
+        "include_penalty_events": false,
+        "team_strength_carry_forward": false,
+        "carry_forward_regression_matches": 12.0,
+        "promoted_team_attack_multiplier": 0.85,
+        "promoted_team_defence_multiplier": 1.2,
+        "promoted_prior_mode": "fixed",
+        "promoted_prior_weight": 0.0,
+        "promoted_prior_minimum_attack": 0.6,
+        "promoted_prior_maximum_attack": 1.0,
+        "promoted_prior_minimum_defence": 1.0,
+        "promoted_prior_maximum_defence": 1.5,
+        "cold_start_prior": "position",
+        "cold_start_price_elasticity": 1.5,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_maximum_factor": 3.0,
+        "minutes_reconciliation_mode": "legacy_capped",
+        "minutes_reconciliation_max_relative_adjustment": 0.25,
+        "minutes_reconciliation_max_absolute_adjustment": 12.0,
+        "minutes_reconciliation_warning_deficit": 90.0,
+        "participation_start_prior_probability": 0.45,
+        "participation_start_prior_matches": 6.0,
+        "participation_substitute_prior_probability": 0.18,
+        "participation_substitute_prior_matches": 4.0,
+        "participation_start_minutes_prior": 78.0,
+        "participation_substitute_minutes_prior": 22.0,
+        "participation_role_decay_per_gameweek": 0.03,
+        "team_strength_model": "raw_goals"
+      },
+      "seasons": [
+        {
+          "season_code": "2024-25",
+          "backtest_run_id": 5,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 8.993841,
+          "overall_points_mae": 4.5565,
+          "overall_points_bias": -4.5565,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 4.5565,
+          "top_100_points_bias": -4.5565,
+          "top_100_actual_points_mean": 0.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 4.5565,
+              "points_bias": -4.5565,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        },
+        {
+          "season_code": "2025-26",
+          "backtest_run_id": 6,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 5.325091,
+          "overall_points_mae": 2.2775,
+          "overall_points_bias": -1.5625,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 2.2775,
+          "top_100_points_bias": -1.5625,
+          "top_100_actual_points_mean": 3.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 2.2775,
+              "points_bias": -1.5625,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        }
+      ],
+      "development_score": 7.61806,
+      "cross_season_stability_penalty": 0.458594,
+      "aggregate": {
+        "development_score": 7.61806,
+        "cross_season_stability_penalty": 0.458594,
+        "overall_points_mae": 3.417,
+        "overall_absolute_points_bias": 3.0595,
+        "overall_minutes_mae": 50.0,
+        "top_100_points_mae": 3.417,
+        "top_100_absolute_points_bias": 3.0595,
+        "top_100_actual_points_mean": 1.5,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0,
+        "by_position": {
+          "FWD": {
+            "samples": 4,
+            "points_mae": 3.417,
+            "points_bias": -3.0595,
+            "minutes_mae": 50.0,
+            "minutes_bias": -50.0
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.2194,
+        "overall_points_mae": 0.1202,
+        "overall_absolute_points_bias": 0.1762,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": 0.1202,
+        "top_100_absolute_points_bias": 0.1762,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_development_gate": false
+    },
+    {
+      "name": "corrected_scoring",
+      "changed_assumption": "Threshold defensive contributions plus penalty events",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "playing_time_artifact": null,
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "team_total",
+        "scoring_recent_evidence_weight": 1.0,
+        "scoring_event_source": "actual",
+        "coherent_assist_unassisted_goal_fraction": 0.1,
+        "coherent_penalty_goal_fraction": 0.08,
+        "coherent_role_shrinkage_minutes": 900.0,
+        "coherent_transfer_shrinkage": 0.5,
+        "team_form_half_life_gameweeks": 8.0,
+        "team_assist_per_goal_prior": 0.72,
+        "defensive_contribution_model": "threshold_poisson",
+        "include_penalty_events": true,
+        "team_strength_carry_forward": false,
+        "carry_forward_regression_matches": 12.0,
+        "promoted_team_attack_multiplier": 0.85,
+        "promoted_team_defence_multiplier": 1.2,
+        "promoted_prior_mode": "fixed",
+        "promoted_prior_weight": 0.0,
+        "promoted_prior_minimum_attack": 0.6,
+        "promoted_prior_maximum_attack": 1.0,
+        "promoted_prior_minimum_defence": 1.0,
+        "promoted_prior_maximum_defence": 1.5,
+        "cold_start_prior": "position",
+        "cold_start_price_elasticity": 1.5,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_maximum_factor": 3.0,
+        "minutes_reconciliation_mode": "legacy_capped",
+        "minutes_reconciliation_max_relative_adjustment": 0.25,
+        "minutes_reconciliation_max_absolute_adjustment": 12.0,
+        "minutes_reconciliation_warning_deficit": 90.0,
+        "participation_start_prior_probability": 0.45,
+        "participation_start_prior_matches": 6.0,
+        "participation_substitute_prior_probability": 0.18,
+        "participation_substitute_prior_matches": 4.0,
+        "participation_start_minutes_prior": 78.0,
+        "participation_substitute_minutes_prior": 22.0,
+        "participation_role_decay_per_gameweek": 0.03,
+        "team_strength_model": "raw_goals"
+      },
+      "seasons": [
+        {
+          "season_code": "2024-25",
+          "backtest_run_id": 7,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 8.529591,
+          "overall_points_mae": 4.247,
+          "overall_points_bias": -4.247,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 4.247,
+          "top_100_points_bias": -4.247,
+          "top_100_actual_points_mean": 0.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 4.247,
+              "points_bias": -4.247,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        },
+        {
+          "season_code": "2025-26",
+          "backtest_run_id": 8,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 5.163241,
+          "overall_points_mae": 2.2235,
+          "overall_points_bias": -1.2775,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 2.2235,
+          "top_100_points_bias": -1.2775,
+          "top_100_actual_points_mean": 3.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 2.2235,
+              "points_bias": -1.2775,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        }
+      ],
+      "development_score": 7.26721,
+      "cross_season_stability_penalty": 0.420794,
+      "aggregate": {
+        "development_score": 7.26721,
+        "cross_season_stability_penalty": 0.420794,
+        "overall_points_mae": 3.2352,
+        "overall_absolute_points_bias": 2.7622,
+        "overall_minutes_mae": 50.0,
+        "top_100_points_mae": 3.2352,
+        "top_100_absolute_points_bias": 2.7622,
+        "top_100_actual_points_mean": 1.5,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0,
+        "by_position": {
+          "FWD": {
+            "samples": 4,
+            "points_mae": 3.2352,
+            "points_bias": -2.7622,
+            "minutes_mae": 50.0,
+            "minutes_bias": -50.0
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": -0.1315,
+        "overall_points_mae": -0.0616,
+        "overall_absolute_points_bias": -0.1211,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": -0.0616,
+        "top_100_absolute_points_bias": -0.1211,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_development_gate": true
+    },
+    {
+      "name": "combined",
+      "changed_assumption": "All implemented football-assumption corrections",
+      "config": {
+        "player_rate_prior_minutes": 2761.331925036367,
+        "minutes_prior_matches": 6.0,
+        "team_prior_matches": 19.355921510454394,
+        "home_attack_multiplier": 1.1440792800906638,
+        "away_attack_multiplier": 0.9884699819036712,
+        "minimum_team_multiplier": 0.6,
+        "maximum_team_multiplier": 1.5,
+        "minutes_model": "two_stage",
+        "playing_time_artifact": null,
+        "recent_gameweeks": 6,
+        "recent_evidence_weight": 3.4024319691135294,
+        "appearance_prior_matches": 3.2594648781387656,
+        "appearance_prior_probability": 0.5517557096047864,
+        "conditional_minutes_prior_appearances": 1.352415949352844,
+        "team_minutes_per_fixture": 990.0,
+        "enforce_team_minutes": true,
+        "minutes_allocation": "position_aware",
+        "scoring_recent_evidence_weight": 3.0,
+        "scoring_event_source": "actual",
+        "coherent_assist_unassisted_goal_fraction": 0.1,
+        "coherent_penalty_goal_fraction": 0.08,
+        "coherent_role_shrinkage_minutes": 900.0,
+        "coherent_transfer_shrinkage": 0.5,
+        "team_form_half_life_gameweeks": 8.0,
+        "team_assist_per_goal_prior": 0.72,
+        "defensive_contribution_model": "threshold_poisson",
+        "include_penalty_events": true,
+        "team_strength_carry_forward": false,
+        "carry_forward_regression_matches": 12.0,
+        "promoted_team_attack_multiplier": 0.85,
+        "promoted_team_defence_multiplier": 1.2,
+        "promoted_prior_mode": "fixed",
+        "promoted_prior_weight": 0.0,
+        "promoted_prior_minimum_attack": 0.6,
+        "promoted_prior_maximum_attack": 1.0,
+        "promoted_prior_minimum_defence": 1.0,
+        "promoted_prior_maximum_defence": 1.5,
+        "cold_start_prior": "position",
+        "cold_start_price_elasticity": 1.5,
+        "cold_start_minimum_factor": 0.35,
+        "cold_start_maximum_factor": 3.0,
+        "minutes_reconciliation_mode": "legacy_capped",
+        "minutes_reconciliation_max_relative_adjustment": 0.25,
+        "minutes_reconciliation_max_absolute_adjustment": 12.0,
+        "minutes_reconciliation_warning_deficit": 90.0,
+        "participation_start_prior_probability": 0.45,
+        "participation_start_prior_matches": 6.0,
+        "participation_substitute_prior_probability": 0.18,
+        "participation_substitute_prior_matches": 4.0,
+        "participation_start_minutes_prior": 78.0,
+        "participation_substitute_minutes_prior": 22.0,
+        "participation_role_decay_per_gameweek": 0.03,
+        "team_strength_model": "raw_goals"
+      },
+      "seasons": [
+        {
+          "season_code": "2024-25",
+          "backtest_run_id": 9,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 8.820591,
+          "overall_points_mae": 4.441,
+          "overall_points_bias": -4.441,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 4.441,
+          "top_100_points_bias": -4.441,
+          "top_100_actual_points_mean": 0.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 4.441,
+              "points_bias": -4.441,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        },
+        {
+          "season_code": "2025-26",
+          "backtest_run_id": 10,
+          "samples": 2,
+          "top_100_samples": 2,
+          "objective": 5.290391,
+          "overall_points_mae": 2.2805,
+          "overall_points_bias": -1.4535,
+          "overall_minutes_mae": 50.0,
+          "top_100_points_mae": 2.2805,
+          "top_100_points_bias": -1.4535,
+          "top_100_actual_points_mean": 3.0,
+          "captain_regret": 0.0,
+          "unconstrained_top_15_regret": 0.0,
+          "by_position": {
+            "FWD": {
+              "samples": 2,
+              "points_mae": 2.2805,
+              "points_bias": -1.4535,
+              "minutes_mae": 50.0,
+              "minutes_bias": -50.0
+            }
+          }
+        }
+      ],
+      "development_score": 7.496766,
+      "cross_season_stability_penalty": 0.441275,
+      "aggregate": {
+        "development_score": 7.496766,
+        "cross_season_stability_penalty": 0.441275,
+        "overall_points_mae": 3.3607,
+        "overall_absolute_points_bias": 2.9472,
+        "overall_minutes_mae": 50.0,
+        "top_100_points_mae": 3.3607,
+        "top_100_absolute_points_bias": 2.9472,
+        "top_100_actual_points_mean": 1.5,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0,
+        "by_position": {
+          "FWD": {
+            "samples": 4,
+            "points_mae": 3.3607,
+            "points_bias": -2.9472,
+            "minutes_mae": 50.0,
+            "minutes_bias": -50.0
+          }
+        }
+      },
+      "change_vs_reference": {
+        "development_score": 0.0981,
+        "overall_points_mae": 0.0639,
+        "overall_absolute_points_bias": 0.0639,
+        "overall_minutes_mae": 0.0,
+        "top_100_points_mae": 0.0639,
+        "top_100_absolute_points_bias": 0.0639,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_development_gate": false
+    }
+  ],
+  "learned_losses": [
+    {
+      "loss": "absolute_error",
+      "estimand": "conditional_median",
+      "folds": [
+        {
+          "artifact_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\models-rerun\\absolute_error-through-2025-26.joblib",
+          "metadata_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\models-rerun\\absolute_error-through-2025-26.json",
+          "training_run_ids": [
+            1
+          ],
+          "training_seasons": [
+            "2024-25"
+          ],
+          "validation_run_id": 2,
+          "validation_season": "2025-26",
+          "loss": "absolute_error",
+          "baseline": {
+            "samples": 2,
+            "points_mae": 2.222,
+            "points_bias": -1.395,
+            "top_100_samples": 2,
+            "top_100_points_mae": 2.222,
+            "top_100_points_bias": -1.395,
+            "top_100_actual_points_mean": 3.0,
+            "captain_regret": 0.0,
+            "unconstrained_top_15_regret": 0.0
+          },
+          "challenger": {
+            "samples": 2,
+            "points_mae": 3.0,
+            "points_bias": 3.0,
+            "top_100_samples": 2,
+            "top_100_points_mae": 3.0,
+            "top_100_points_bias": 3.0,
+            "top_100_actual_points_mean": 3.0,
+            "captain_regret": 0.0,
+            "unconstrained_top_15_regret": 0.0
+          },
+          "change": {
+            "points_mae": 0.778,
+            "absolute_points_bias": 1.605,
+            "top_100_points_mae": 0.778,
+            "top_100_absolute_bias": 1.605
+          }
+        }
+      ],
+      "aggregate": {
+        "points_mae": 3.0,
+        "absolute_points_bias": 3.0,
+        "top_100_points_mae": 3.0,
+        "top_100_absolute_points_bias": 3.0,
+        "top_100_actual_points_mean": 3.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "change_vs_absolute_error": {
+        "points_mae": 0.0,
+        "absolute_points_bias": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_mean_target_gate": false
+    },
+    {
+      "loss": "squared_error",
+      "estimand": "conditional_mean",
+      "folds": [
+        {
+          "artifact_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\models-rerun\\squared_error-through-2025-26.joblib",
+          "metadata_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\models-rerun\\squared_error-through-2025-26.json",
+          "training_run_ids": [
+            1
+          ],
+          "training_seasons": [
+            "2024-25"
+          ],
+          "validation_run_id": 2,
+          "validation_season": "2025-26",
+          "loss": "squared_error",
+          "baseline": {
+            "samples": 2,
+            "points_mae": 2.222,
+            "points_bias": -1.395,
+            "top_100_samples": 2,
+            "top_100_points_mae": 2.222,
+            "top_100_points_bias": -1.395,
+            "top_100_actual_points_mean": 3.0,
+            "captain_regret": 0.0,
+            "unconstrained_top_15_regret": 0.0
+          },
+          "challenger": {
+            "samples": 2,
+            "points_mae": 3.0,
+            "points_bias": 3.0,
+            "top_100_samples": 2,
+            "top_100_points_mae": 3.0,
+            "top_100_points_bias": 3.0,
+            "top_100_actual_points_mean": 3.0,
+            "captain_regret": 0.0,
+            "unconstrained_top_15_regret": 0.0
+          },
+          "change": {
+            "points_mae": 0.778,
+            "absolute_points_bias": 1.605,
+            "top_100_points_mae": 0.778,
+            "top_100_absolute_bias": 1.605
+          }
+        }
+      ],
+      "aggregate": {
+        "points_mae": 3.0,
+        "absolute_points_bias": 3.0,
+        "top_100_points_mae": 3.0,
+        "top_100_absolute_points_bias": 3.0,
+        "top_100_actual_points_mean": 3.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "change_vs_absolute_error": {
+        "points_mae": 0.0,
+        "absolute_points_bias": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_mean_target_gate": false
+    },
+    {
+      "loss": "poisson",
+      "estimand": "conditional_mean",
+      "folds": [
+        {
+          "artifact_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\models-rerun\\poisson-through-2025-26.joblib",
+          "metadata_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\models-rerun\\poisson-through-2025-26.json",
+          "training_run_ids": [
+            1
+          ],
+          "training_seasons": [
+            "2024-25"
+          ],
+          "validation_run_id": 2,
+          "validation_season": "2025-26",
+          "loss": "poisson",
+          "baseline": {
+            "samples": 2,
+            "points_mae": 2.222,
+            "points_bias": -1.395,
+            "top_100_samples": 2,
+            "top_100_points_mae": 2.222,
+            "top_100_points_bias": -1.395,
+            "top_100_actual_points_mean": 3.0,
+            "captain_regret": 0.0,
+            "unconstrained_top_15_regret": 0.0
+          },
+          "challenger": {
+            "samples": 2,
+            "points_mae": 3.0,
+            "points_bias": 3.0,
+            "top_100_samples": 2,
+            "top_100_points_mae": 3.0,
+            "top_100_points_bias": 3.0,
+            "top_100_actual_points_mean": 3.0,
+            "captain_regret": 0.0,
+            "unconstrained_top_15_regret": 0.0
+          },
+          "change": {
+            "points_mae": 0.778,
+            "absolute_points_bias": 1.605,
+            "top_100_points_mae": 0.778,
+            "top_100_absolute_bias": 1.605
+          }
+        }
+      ],
+      "aggregate": {
+        "points_mae": 3.0,
+        "absolute_points_bias": 3.0,
+        "top_100_points_mae": 3.0,
+        "top_100_absolute_points_bias": 3.0,
+        "top_100_actual_points_mean": 3.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "change_vs_absolute_error": {
+        "points_mae": 0.0,
+        "absolute_points_bias": 0.0,
+        "top_100_points_mae": 0.0,
+        "top_100_absolute_points_bias": 0.0,
+        "top_100_actual_points_mean": 0.0,
+        "captain_regret": 0.0,
+        "unconstrained_top_15_regret": 0.0
+      },
+      "passes_mean_target_gate": false
+    }
+  ],
+  "limitations": [
+    "Development-fold evidence only; no previously inspected validation season is queried.",
+    "Club-change resets cannot yet be isolated because historical fixture rows do not preserve a reliable per-fixture club role.",
+    "Defensive-contribution threshold scoring has no effect before the rule exists and therefore needs forward 2026/27 evidence.",
+    "Top-15 regret is unconstrained by budget, formation and club limits; full optimiser regret remains a later promotion gate.",
+    "Historical reconstructed schedules may contain later rescheduling knowledge."
+  ],
+  "output_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_assumption_audit_uses_dev0\\audit-rerun.json"
+}

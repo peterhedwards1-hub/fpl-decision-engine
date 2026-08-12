@@ -1,0 +1,2 @@
+﻿player_id,web_name,first_name,second_name,team,team_short_name,position,price_millions,selected_by_percent,selected_count,transfers_in,transfers_out,status,chance_of_playing_next_round,news,captured_at,observed_on,timing_quality,observation_kind,minutes,starts,goals,assists,clean_sheets,bonus,bps,defensive_contributions,expected_goals,expected_assists,expected_goal_involvements,total_points
+101,Ada,Ada,Striker,North Town,NTH,FWD,7.6,12.3,,150,20,a,100,,2026-07-27T12:00:00.000001+00:00,,exact,live_pre_deadline,810,9,6,3,2,8,211,5,5.4,2.1,7.5,61

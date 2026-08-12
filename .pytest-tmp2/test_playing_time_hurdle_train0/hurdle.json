@@ -1,0 +1,62 @@
+{
+  "artifact_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_playing_time_hurdle_train0\\hurdle.joblib",
+  "metadata_path": "C:\\Users\\PHEdw\\Documents\\fpl-decision-engine\\.pytest-tmp2\\test_playing_time_hurdle_train0\\hurdle.json",
+  "family": "logistic",
+  "training_seasons": [
+    "2023-24"
+  ],
+  "validation_season": "2024-25",
+  "feature_names": [
+    "gameweek_fraction",
+    "price_tenths",
+    "is_gk",
+    "is_def",
+    "is_mid",
+    "is_fwd",
+    "player_appearance_rate",
+    "player_start_rate",
+    "player_sixty_given_appearance",
+    "player_conditional_minutes",
+    "position_appearance_rate",
+    "team_appearance_rate",
+    "previous_minutes",
+    "previous_started",
+    "absence_streak",
+    "substitute_run_length",
+    "new_club",
+    "position_change"
+  ],
+  "chronological_oof_samples": 6,
+  "calibration_method": "identity_insufficient_chronological_oof",
+  "baseline": {
+    "samples": 24,
+    "appearance_brier": 0.224919,
+    "appearance_log_loss": 0.66366,
+    "start_brier": 0.298192,
+    "start_log_loss": 0.795469,
+    "sixty_brier": 0.295298,
+    "sixty_log_loss": 0.787184,
+    "expected_minutes_rmse": 37.193098,
+    "expected_minutes_bias": -6.502001,
+    "conditional_minutes_rmse": 29.667319
+  },
+  "challenger": {
+    "samples": 24,
+    "appearance_brier": 0.055069,
+    "appearance_log_loss": 0.21326,
+    "start_brier": 0.040414,
+    "start_log_loss": 0.195014,
+    "sixty_brier": 0.049857,
+    "sixty_log_loss": 0.225671,
+    "expected_minutes_rmse": 18.538991,
+    "expected_minutes_bias": -0.579361,
+    "conditional_minutes_rmse": 9.098787
+  },
+  "downstream_points": null,
+  "limitations": [
+    "Historical availability snapshots have unknown timing and are excluded.",
+    "Manager-change data is not yet present, so no manager-change feature is fitted.",
+    "Starts are predicted unconditionally; the 60-minute model is conditional on appearance.",
+    "Historical results are design evidence only; promotion requires forward 2026/27 rows."
+  ]
+}

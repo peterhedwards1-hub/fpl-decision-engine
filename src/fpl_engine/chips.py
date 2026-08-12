@@ -405,21 +405,27 @@ def estimate_double_gameweek_reserve(
     *,
     seasons: tuple[str, ...] | None = None,
     minimum_gameweek: int = 20,
+    maximum_gameweek: int | None = None,
     maximum_per_club: int = 3,
     squad_size: int = 15,
     bench_size: int = 4,
 ) -> dict[Chip, float]:
     """Expected gain of the best future double Gameweek, per scoring chip.
 
-    A second-half double Gameweek is created by an in-season reschedule and does
-    not exist in the fixtures until it is announced, so a projection cannot see
-    it and a chip policy needs a *prior* for what one is worth. This estimates
-    that prior from realised history rather than guessing it. For each season's
-    single biggest second-half double — the week a manager would target — it
-    reads which players actually played twice and their realised two-fixture
-    points, builds a plausible all-doubling squad (best realised scorers,
-    capped at ``maximum_per_club`` per club, as a real squad must be), and
-    reports what each scoring chip would have banked:
+    A double Gameweek is created by an in-season reschedule and does not exist
+    in the fixtures until it is announced, so a projection cannot see it and a
+    chip policy needs a *prior* for what one is worth. This estimates that prior
+    from realised history rather than guessing it, over the Gameweek window
+    ``[minimum_gameweek, maximum_gameweek]`` — which the caller must match to the
+    chip set being decided, since the two chip sets do not share doubles: big
+    doubles are a second-half phenomenon (the default window from GW20), and the
+    first half rarely has one, so a first-half reserve is correctly near zero and
+    the first-set chips are not held out for a double that will not come. For
+    each season's single biggest double in the window — the week a manager would
+    target — it reads which players actually played twice and their realised
+    two-fixture points, builds a plausible all-doubling squad (best realised
+    scorers, capped at ``maximum_per_club`` per club, as a real squad must be),
+    and reports what each scoring chip would have banked:
 
     - **Triple Captain**: one extra copy of the top pick's realised two-fixture
       score — the marginal multiple Triple Captain adds.
@@ -435,10 +441,13 @@ def estimate_double_gameweek_reserve(
     reserve, since erring high holds the chip rather than wasting it.
     """
 
-    where = ""
+    conditions = ["g.number >= ?"]
     params: list[object] = [minimum_gameweek]
+    if maximum_gameweek is not None:
+        conditions.append("g.number <= ?")
+        params.append(maximum_gameweek)
     if seasons is not None:
-        where = f" AND se.code IN ({','.join('?' for _ in seasons)})"
+        conditions.append(f"se.code IN ({','.join('?' for _ in seasons)})")
         params.extend(seasons)
     rows = connection.execute(
         f"""
@@ -450,7 +459,7 @@ def estimate_double_gameweek_reserve(
         JOIN seasons se ON se.id = g.season_id
         JOIN player_seasons ps ON ps.id = s.player_season_id
         JOIN teams ON teams.id = ps.team_id
-        WHERE g.number >= ?{where}
+        WHERE {" AND ".join(conditions)}
         GROUP BY se.code, g.number, ps.id
         HAVING COUNT(*) >= 2
         """,
