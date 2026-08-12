@@ -852,3 +852,112 @@ def test_position_aware_minutes_separate_goalkeeper_budget(tmp_path) -> None:
         )
         assert goalkeeper_minutes == 90
         assert outfield_minutes == pytest.approx(900, abs=0.05)
+
+
+def _budget_bundle(count: int = 24) -> HistoricalBundle:
+    """One club with more squad players than a fixture has minutes for."""
+
+    return HistoricalBundle(
+        season=SeasonRecord(code="2026-27", name="2026/27"),
+        teams=(
+            TeamRecord("1", "North Town", "NTH"),
+            TeamRecord("2", "South City", "STH"),
+        ),
+        players=tuple(
+            PlayerRecord(str(player_id), f"Player {player_id}")
+            for player_id in range(1, count + 1)
+        ),
+        player_seasons=tuple(
+            PlayerSeasonRecord(str(player_id), "1", Position.MID)
+            for player_id in range(1, count + 1)
+        ),
+        gameweeks=(GameweekRecord(1, "2026-08-14T17:30:00Z", False),),
+        fixtures=(FixtureRecord("501", "1", "2", 1, "2026-08-15T14:00:00Z"),),
+        gameweek_snapshots=tuple(
+            PlayerGameweekSnapshotRecord(
+                source_player_id=str(player_id),
+                gameweek_number=1,
+                price_tenths=50,
+                captured_at=CAPTURED_AT,
+                source_team_id="1",
+                observation_kind="live_pre_deadline",
+                timing_quality="exact",
+                source_observation_key=f"pre-gw1-{player_id}",
+            )
+            for player_id in range(1, count + 1)
+        ),
+    )
+
+
+def _appearance_by_player(database, config) -> dict[str, float]:
+    model = RatesProjectionModel(database, RULES, config=config)
+    players = model._players(
+        "2026-27", 1, observation_mode="latest_available", maximum_ingestion_run_id=None
+    )
+    model._prepare_cold_start_priors(players)
+    model._prepare_minutes(
+        players, season_code="2026-27", start_gameweek=1, use_availability=True
+    )
+    return {
+        str(player["source_player_id"]): float(player["_appearance_probability"])
+        for player in players
+    }
+
+
+def test_reconciliation_preserving_appearance_keeps_the_estimated_probability(
+    tmp_path,
+) -> None:
+    """The team-minutes budget must correct minutes, not availability.
+
+    Left off, a club's allocated share back-derives every player's appearance
+    probability, so availability moves with squad depth. Switched on, the
+    estimate survives untouched and the correction lands on conditional
+    minutes instead.
+    """
+
+    with HistoricalDatabase(tmp_path / "fpl.sqlite3") as database:
+        database.initialise()
+        database.ingest_bundle(
+            IngestionSource(
+                name="official-fpl-api",
+                retrieved_at=CAPTURED_AT,
+                identifier_namespace="official-fpl",
+            ),
+            _budget_bundle(),
+        )
+
+        base = ProjectionModelConfig(minutes_model="two_stage")
+        unreconciled = _appearance_by_player(
+            database, replace(base, enforce_team_minutes=False)
+        )
+        incumbent = _appearance_by_player(database, base)
+        preserving = _appearance_by_player(
+            database, replace(base, minutes_reconciliation_preserves_appearance=True)
+        )
+
+        # The incumbent rewrites availability; the new path does not.
+        assert incumbent != unreconciled
+        assert preserving == unreconciled
+
+        result = RatesProjectionModel(
+            database,
+            RULES,
+            config=replace(base, minutes_reconciliation_preserves_appearance=True),
+        ).project(
+            season_code="2026-27",
+            start_gameweek=1,
+            horizon_gameweeks=1,
+            generated_at=CAPTURED_AT,
+            persist=False,
+        )
+        minutes = [projection.expected_minutes for projection in result.projections]
+        # Minutes stay physical: never negative, never above a full match, and
+        # never inventing more than the fixture actually contains.
+        assert all(0 <= value <= 90 for value in minutes)
+        assert sum(minutes) <= 990 + 1e-6
+
+
+def test_reconciliation_default_is_unchanged() -> None:
+    """The incumbent must not move because the new path exists."""
+
+    assert ProjectionModelConfig().minutes_reconciliation_preserves_appearance is False

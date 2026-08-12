@@ -520,8 +520,17 @@ def _recommend_this_week(
         )
         current_ids = frozenset(e.source_player_id for e in snapshot.entries)
         budget = sum(e.selling_price_tenths for e in snapshot.entries) + snapshot.bank_tenths
+        # Wildcard is deliberately absent: it rebuilds the whole squad at every
+        # candidate Gameweek, which costs minutes rather than seconds, and the
+        # answer is almost always "no" while the squad is healthy. It stays on
+        # the Advanced chip-timing screen, to be run when something actually
+        # prompts it.
         for chip_name, remaining in snapshot.remaining_chips.items():
-            if remaining <= 0 or chip_name not in {"bench_boost", "triple_captain"}:
+            if remaining <= 0 or chip_name not in {
+                "bench_boost",
+                "triple_captain",
+                "free_hit",
+            }:
                 continue
             chip = Chip(chip_name)
             timing = recommend_chip_timing(
@@ -535,6 +544,11 @@ def _recommend_this_week(
                 rules=rules,
                 current_player_ids=current_ids,
                 expected_double_reserve=reserve.get(chip, 0.0),
+                # Free Hit optimises a one-week squad at every candidate
+                # Gameweek, so the enumeration pool multiplies its cost. Bench
+                # Boost and Triple Captain score the squad already held and are
+                # unaffected by this.
+                candidate_pool_size=1 if chip is Chip.FREE_HIT else 4,
             )
             label = chip_name.replace("_", " ").title()
             if timing.hold_for_expected_double:
@@ -547,6 +561,19 @@ def _recommend_this_week(
                     f"**{label}:** strongest in GW{timing.recommended_gameweek} "
                     f"(+{timing.recommendation.expected_incremental_points:.1f} pts)."
                 )
+            # A chip that rebuilds the squad is only actionable if the squad it
+            # proposes is visible, so name the XI here rather than sending the
+            # reader to another screen.
+            squad = timing.recommendation.squad
+            if squad is not None:
+                starters = ", ".join(
+                    sorted(
+                        player.web_name
+                        for player in squad.players
+                        if player.source_player_id in squad.starting_player_ids
+                    )
+                )
+                lines.append(f"  - {label} XI: {starters}")
     except (OptimisationError, ValueError) as error:
         lines.append(f"**Chips:** could not be computed ({error}).")
 

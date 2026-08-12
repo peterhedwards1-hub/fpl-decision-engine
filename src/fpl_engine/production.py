@@ -12,7 +12,11 @@ from .projections import MODEL_VERSION
 #: labelled with this version are eligible for that decision and no other.
 #: Keeping it outside the incumbent family is what stops the generic
 #: newest-qualified-run rule from picking it up in October.
-PRESEASON_MODEL_VERSION_SUFFIX = "-preseason-carry-forward"
+#: Kept in step with ``PRESEASON_CARRY_FORWARD_MODEL_VERSION``. The ``-v2``
+#: generation carries the corrected minutes reconciliation and calibrated
+#: appearance probabilities; a run labelled with the previous suffix is a
+#: different model and is deliberately no longer eligible.
+PRESEASON_MODEL_VERSION_SUFFIX = "-preseason-carry-forward-v2"
 PRESEASON_MODEL_VERSION = f"{MODEL_VERSION}{PRESEASON_MODEL_VERSION_SUFFIX}"
 
 #: The Gameweek at which a preseason decision exists at all. After it, there is
