@@ -1,0 +1,6 @@
+{
+  "legal_squad_regret_change": 0.0,
+  "owned_captain_regret_change": 0.0,
+  "source_report": "legal-squad, owned-captain and same-state transfer regret method=model incumbent_run=1 challenger_run=2 origins=3 captain_decisions=3 transfer_decisions=2",
+  "transfer_regret_change": 0.0
+}

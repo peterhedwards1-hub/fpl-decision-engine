@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-08-22T12:00:00+00:00",
+  "compression": "gzip",
+  "content_sha256": "d120045178ea2554ce0e97fa5c6655003aefb7d503b29daa31d11291038a436a",
+  "deadline_time": "2026-08-21T17:30:00Z",
+  "endpoints": {
+    "bootstrap-static.json.gz": "https://fantasy.premierleague.com/api/bootstrap-static/",
+    "fixtures.json.gz": "https://fantasy.premierleague.com/api/fixtures/"
+  },
+  "gameweek_number": 2,
+  "observation_kind": "post_gameweek",
+  "season_code": "2026-27"
+}

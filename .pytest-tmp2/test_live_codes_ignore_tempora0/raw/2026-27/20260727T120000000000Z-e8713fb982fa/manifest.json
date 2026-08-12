@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-07-27T12:00:00+00:00",
+  "compression": "gzip",
+  "content_sha256": "e8713fb982fae17cb335d27704dbcb16b36d384fccb74945192f61d89557b4a9",
+  "deadline_time": "2026-08-14T17:30:00Z",
+  "endpoints": {
+    "bootstrap-static.json.gz": "https://fantasy.premierleague.com/api/bootstrap-static/",
+    "fixtures.json.gz": "https://fantasy.premierleague.com/api/fixtures/"
+  },
+  "gameweek_number": 1,
+  "observation_kind": "live_pre_deadline",
+  "season_code": "2026-27"
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPL verification — 2026-27</title>
+<style>
+body{font-family:system-ui;margin:0;background:#0f172a;color:#e2e8f0}
+main{max-width:1500px;margin:auto;padding:24px}a{color:#7dd3fc}
+.cards,.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.card,section{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px}
+section{margin-top:14px}.value{font-size:1.4rem;font-weight:700}
+.wrap{overflow:auto;max-height:600px}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:8px;border-bottom:1px solid #334155;text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:#334155}
+input{padding:9px;width:min(420px,90%);margin:8px 0;background:#0f172a;color:inherit;
+border:1px solid #64748b}
+</style></head><body><main>
+<h1>FPL data verification</h1>
+<p>Season 2026-27 · Captured 2026-07-27T12:00:00+00:00</p>
+<div class="cards"><div class="card"><div>Overall</div><div class="value">All checks passed</div></div><div class="card"><div>Teams</div><div class="value">2</div></div><div class="card"><div>Players</div><div class="value">1</div></div><div class="card"><div>Fixtures</div><div class="value">1</div></div><div class="card"><div>Snapshot</div><div class="value">GW1</div></div><div class="card"><div>Deadline</div><div class="value">2026-08-14T17:30:00Z</div></div></div>
+<section><h2>Integrity checks</h2><p>10 of 10 passed.</p>
+<table><thead><tr><th>Result</th><th>Check</th><th>Detail</th></tr></thead><tbody><tr><td>PASS</td><td>Ingestion completed</td><td>Run 1 status: completed</td></tr><tr><td>PASS</td><td>Player snapshot is complete</td><td>1 snapshots for 1 players</td></tr><tr><td>PASS</td><td>Player IDs are unique</td><td>1 unique IDs</td></tr><tr><td>PASS</td><td>Fixture export is complete</td><td>1 exports for 1 fixtures</td></tr><tr><td>PASS</td><td>Fixture IDs are unique</td><td>1 unique IDs</td></tr><tr><td>PASS</td><td>Fixture history is captured</td><td>1 fixture observations for 1 fixtures in this run</td></tr><tr><td>PASS</td><td>Capture timing matches observation kind</td><td>Observation mode &#x27;latest_available&#x27; is not time-specific</td></tr><tr><td>PASS</td><td>Database relationships are valid</td><td>0 foreign-key issue(s)</td></tr><tr><td>PASS</td><td>Ingestion row count matches</td><td>7 rows processed; expected 7</td></tr><tr><td>PASS</td><td>Source checksum recorded</td><td>abc123</td></tr></tbody></table></section>
+<div class="two"><section><h2>Most expensive</h2>
+<table><thead><tr><th>Player</th><th>Team</th><th>Position</th><th>Value</th></tr></thead><tbody><tr><td>Ada</td><td>NTH</td><td>FWD</td><td>£7.5m</td></tr></tbody></table></section>
+<section><h2>Highest ownership</h2><table><thead><tr><th>Player</th><th>Team</th><th>Position</th><th>Value</th></tr></thead><tbody><tr><td>Ada</td><td>NTH</td><td>FWD</td><td>12.3%</td></tr></tbody></table></section></div>
+<section><h2>Players</h2><p><a href="players.csv">Open players.csv in Excel</a></p>
+<input id="pf" placeholder="Search players" oninput="filterRows('pf','players')">
+<div class="wrap"><table id="players"><thead><tr><th>ID</th><th>Player</th><th>Team</th><th>Pos</th><th>Price</th><th>Owned</th><th>Selected</th><th>Status</th><th>Chance</th><th>News</th></tr></thead><tbody><tr><td>101</td><td>Ada</td><td>North Town</td><td>FWD</td><td>£7.5m</td><td>12.3%</td><td></td><td>Available</td><td></td><td></td></tr></tbody></table></div></section>
+<section><h2>Fixtures</h2><p><a href="fixtures.csv">Open fixtures.csv in Excel</a></p>
+<input id="ff" placeholder="Search fixtures" oninput="filterRows('ff','fixtures')">
+<div class="wrap"><table id="fixtures"><thead><tr><th>ID</th><th>GW</th><th>Kick-off</th><th>Home</th><th>Away</th><th>Score</th><th>Finished</th></tr></thead><tbody><tr><td>501</td><td>1</td><td></td><td>North Town</td><td>South City</td><td></td><td>No</td></tr></tbody></table></div></section>
+<section><h2>Provenance</h2><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Ingestion run</td><td>1</td></tr><tr><td>Source</td><td>official-fpl-api</td></tr><tr><td>Identifier namespace</td><td>official-fpl</td></tr><tr><td>Source URL</td><td>https://fantasy.premierleague.com/api/bootstrap-static/</td></tr><tr><td>Retrieved</td><td>2026-07-27T12:00:00+00:00</td></tr><tr><td>SHA-256</td><td>abc123</td></tr><tr><td>Source revision</td><td></td></tr><tr><td>Adapter version</td><td></td></tr><tr><td>Raw archive</td><td>C:\Users\PHEdw\Documents\fpl-decision-engine\.pytest-tmp2\test_verification_report_conta0\raw</td></tr></tbody></table></section>
+<script>
+function filterRows(i,t){
+const q=document.getElementById(i).value.toLowerCase();
+document.querySelectorAll(`#${t} tbody tr`).forEach(
+r=>r.hidden=!r.innerText.toLowerCase().includes(q));
+}
+</script>
+</main></body></html>
