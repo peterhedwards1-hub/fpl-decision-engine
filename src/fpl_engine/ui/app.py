@@ -67,6 +67,15 @@ from fpl_engine.research_decision import (
     load_projection_candidates,
 )
 from fpl_engine.reviewed_modifiers import ReviewedProjectionModifier
+from fpl_engine.squad_lab import (
+    ClubLimit,
+    SquadLabRequest,
+    compare_to,
+    load_shortlist,
+    remove_from_shortlist,
+    run_squad_lab_search,
+    save_to_shortlist,
+)
 from fpl_engine.team_news_v3 import generate_team_news_research_package
 from fpl_engine.transfers import CurrentSquad, recommend_transfers
 from fpl_engine.ui.view import pitch_html
@@ -272,6 +281,9 @@ def main() -> None:
                     database, rules, available, season_code, gameweek_number
                 ),
                 "Full squad": lambda: _full_squad_explorer(
+                    database, rules, season_code, gameweek_number
+                ),
+                "Squad lab": lambda: _squad_lab(
                     database, rules, season_code, gameweek_number
                 ),
                 "Preseason": lambda: _preseason_decision(season_code, gameweek_number),
@@ -954,6 +966,326 @@ def _projection_explorer(
     )
     with st.expander("Model assumptions and team strengths"):
         st.json(latest_run["assumptions_json"])
+
+
+def _squad_lab(
+    database: HistoricalDatabase,
+    rules: object,
+    season_code: str,
+    gameweek_number: int,
+) -> None:
+    """Search for a squad under constraints you set by hand.
+
+    The solver proves an optimum for the linear objective, not the exact
+    decision value a squad is finally judged on, so the answer here is
+    searched. It is bounded by a time budget and always returns the best squad
+    it found, which makes it something to poke at rather than a job to submit.
+    """
+
+    st.subheader("Squad lab")
+    st.caption(
+        "Force players in, rule players out, tighten a club limit, then search. "
+        "Every squad is scored by the same exact decision value used everywhere "
+        "else in the app."
+    )
+    latest_run = _decision_projection_run(
+        database,
+        season_code=season_code,
+        start_gameweek=gameweek_number,
+        minimum_horizon_gameweeks=1,
+    )
+    if latest_run is None:
+        st.info("No qualified projection run exists yet. Generate one first.")
+        return
+    st.caption(
+        f"Run {latest_run.run_id} - {latest_run.model_version} - "
+        f"{latest_run.horizon_gameweeks} Gameweeks"
+    )
+    candidates = _load_optimisation_candidates(database, latest_run.run_id)
+    if not candidates:
+        st.warning("That projection run produced no priced candidates.")
+        return
+    by_id = {player.source_player_id: player for player in candidates}
+
+    def label_for(player_id: str) -> str:
+        player = by_id[player_id]
+        return (
+            f"{player.web_name} - {player.team_short_name} - "
+            f"{player.position.value} - GBP{player.price_tenths / 10:.1f}m"
+        )
+
+    ordered = sorted(
+        by_id,
+        key=lambda player_id: (
+            -by_id[player_id].expected_points,
+            by_id[player_id].web_name,
+        ),
+    )
+    clubs = sorted({player.team_short_name for player in candidates})
+
+    required = st.multiselect(
+        "Must include", ordered, format_func=label_for, key="lab-required"
+    )
+    forbidden = st.multiselect(
+        "Never include", ordered, format_func=label_for, key="lab-forbidden"
+    )
+    limited_clubs = st.multiselect("Tighten a club limit", clubs, key="lab-clubs")
+    club_limits = []
+    if limited_clubs:
+        columns = st.columns(min(4, len(limited_clubs)))
+        for index, club in enumerate(limited_clubs):
+            with columns[index % len(columns)]:
+                maximum = st.number_input(
+                    f"Max {club}",
+                    min_value=0,
+                    max_value=int(rules.squad.max_players_per_team),
+                    value=1,
+                    key=f"lab-cap-{club}",
+                )
+            club_limits.append(ClubLimit(club, int(maximum)))
+
+    budget_column, time_column, kick_column = st.columns(3)
+    with budget_column:
+        budget = st.number_input(
+            "Budget (millions)",
+            min_value=50.0,
+            max_value=float(rules.squad.budget_tenths) / 10,
+            value=float(rules.squad.budget_tenths) / 10,
+            step=0.5,
+            key="lab-budget",
+        )
+    with time_column:
+        seconds = st.number_input(
+            "Time budget (seconds)",
+            min_value=30,
+            max_value=3600,
+            value=300,
+            step=30,
+            key="lab-seconds",
+            help=(
+                "The search stops here and returns its best squad. Exact "
+                "valuation is slow, so a wide search needs minutes, not seconds."
+            ),
+        )
+    with kick_column:
+        kicks = st.number_input(
+            "Restarts",
+            min_value=0,
+            max_value=10,
+            value=2,
+            key="lab-kicks",
+            help=(
+                "After climbing to a local optimum, perturb the squad and climb "
+                "again. More restarts explore further, and cost proportionally."
+            ),
+        )
+    workers = st.slider(
+        "Parallel workers",
+        min_value=1,
+        max_value=max(2, os.cpu_count() or 4),
+        value=min(12, max(2, (os.cpu_count() or 4) - 2)),
+        key="lab-workers",
+    )
+
+    baseline_ids: tuple[str, ...] = ()
+    baseline_value = None
+    try:
+        recommended = json.loads(
+            Path("data/models/preseason-final-squad-2026-27.json").read_text(
+                encoding="utf-8"
+            )
+        )["final_squad"]
+        baseline_ids = tuple(
+            str(player["source_player_id"]) for player in recommended["players"]
+        )
+        baseline_value = float(recommended["decision_value"])
+    except (OSError, KeyError, ValueError):
+        pass
+
+    if not st.button("Search", type="primary", key="lab-run"):
+        _squad_lab_shortlist(season_code, by_id, baseline_ids, baseline_value)
+        return
+    try:
+        request = SquadLabRequest(
+            budget_tenths=int(round(budget * 10)),
+            required_player_ids=frozenset(required),
+            forbidden_player_ids=frozenset(forbidden),
+            club_limits=tuple(club_limits),
+            time_budget_seconds=float(seconds),
+            kicks=int(kicks),
+        )
+    except ValueError as error:
+        st.error(str(error))
+        return
+
+    bar = st.progress(0.0, text="Starting")
+
+    def report(message: str, fraction: float) -> None:
+        bar.progress(min(1.0, fraction), text=message)
+
+    try:
+        with st.spinner("Searching"):
+            result = run_squad_lab_search(
+                {latest_run.model_version: candidates},
+                rules,
+                request,
+                workers=int(workers),
+                progress=report,
+            )
+    except (OptimisationError, ValueError) as error:
+        bar.empty()
+        st.error(str(error))
+        return
+    bar.empty()
+    st.session_state["lab-result"] = result
+    st.session_state["lab-constraints"] = {
+        "required": [by_id[i].web_name for i in required],
+        "forbidden": [by_id[i].web_name for i in forbidden],
+        "club_limits": {limit.team_short_name: limit.maximum for limit in club_limits},
+        "budget_tenths": int(round(budget * 10)),
+    }
+    st.session_state["lab-run-id"] = latest_run.run_id
+
+    st.metric("Exact decision value", f"{result.objective:.3f}")
+    st.caption(
+        f"{result.evaluations:,} squads exact-valued in {result.seconds:.0f}s"
+    )
+    if result.note:
+        st.warning(result.note)
+
+    picked = [by_id[player_id] for player_id in result.player_ids]
+    order = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Player": player.web_name,
+                "Pos": player.position.value,
+                "Team": player.team_short_name,
+                "Price": player.price_tenths / 10,
+                "xP": round(player.expected_points, 2),
+                "Appearance": round(player.appearance_probability, 3),
+            }
+            for player in sorted(
+                picked,
+                key=lambda p: (order[p.position.value], -p.expected_points),
+            )
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    st.caption(
+        f"Cost {sum(p.price_tenths for p in picked) / 10:.1f}m of "
+        f"{budget:.1f}m available."
+    )
+    if result.climbs:
+        with st.expander("How the search went"):
+            st.dataframe(
+                pd.DataFrame(result.climbs), hide_index=True, width="stretch"
+            )
+            st.caption(
+                "A climb with zero rounds started at a local optimum. Restarts "
+                "that keep returning the same value are evidence the search has "
+                "settled; they are not proof it found the best squad."
+            )
+    _squad_lab_shortlist(season_code, by_id, baseline_ids, baseline_value)
+
+
+def _squad_lab_shortlist(
+    season_code: str,
+    by_id: dict,
+    baseline_ids: tuple[str, ...],
+    baseline_value: float | None,
+) -> None:
+    """Save squads worth keeping and line them up against the recommendation.
+
+    A value means little on its own: a squad forced to include someone is
+    answering a different question from an unconstrained one, so the
+    constraints are recorded and shown beside every entry.
+    """
+
+    st.divider()
+    st.markdown("#### Shortlist")
+    result = st.session_state.get("lab-result")
+    if result is not None:
+        name_column, save_column = st.columns([3, 1])
+        with name_column:
+            name = st.text_input(
+                "Name this squad",
+                placeholder="e.g. no Watkins, max 1 Arsenal",
+                key="lab-save-name",
+            )
+        with save_column:
+            st.write("")
+            if st.button("Save", key="lab-save"):
+                try:
+                    save_to_shortlist(
+                        season_code,
+                        name,
+                        result,
+                        constraints=st.session_state.get("lab-constraints", {}),
+                        projection_run_id=st.session_state.get("lab-run-id"),
+                    )
+                    st.success(f"Saved {name.strip()}.")
+                except ValueError as error:
+                    st.error(str(error))
+
+    entries = load_shortlist(season_code)
+    if not entries:
+        st.caption("Nothing saved yet. Run a search, name it, and save it.")
+        return
+
+    rows = []
+    for entry in entries:
+        dropped, added = compare_to(entry["player_ids"], baseline_ids)
+        constraints = entry.get("constraints") or {}
+        pieces = []
+        if constraints.get("required"):
+            pieces.append("must " + ", ".join(constraints["required"]))
+        if constraints.get("forbidden"):
+            pieces.append("no " + ", ".join(constraints["forbidden"]))
+        if constraints.get("club_limits"):
+            pieces.append(
+                ", ".join(
+                    f"{club} max {cap}"
+                    for club, cap in constraints["club_limits"].items()
+                )
+            )
+        rows.append(
+            {
+                "Squad": entry["name"],
+                "Value": entry["objective"],
+                "vs main": (
+                    None
+                    if baseline_value is None
+                    else round(entry["objective"] - baseline_value, 3)
+                ),
+                "Changes": len(dropped),
+                "Out": ", ".join(
+                    by_id[i].web_name for i in dropped if i in by_id
+                ) or "-",
+                "In": ", ".join(by_id[i].web_name for i in added if i in by_id) or "-",
+                "Constraints": "; ".join(pieces) or "none",
+                "Converged": "yes" if entry.get("converged") else "no",
+            }
+        )
+    st.dataframe(
+        pd.DataFrame(rows).sort_values("Value", ascending=False),
+        hide_index=True,
+        width="stretch",
+    )
+    st.caption(
+        "Out and In are relative to the current recommended squad. A squad that "
+        "did not converge was still improving when its time budget ran out."
+    )
+    drop = st.selectbox(
+        "Remove an entry",
+        ["-"] + [entry["name"] for entry in entries],
+        key="lab-drop",
+    )
+    if drop != "-" and st.button("Remove", key="lab-drop-go"):
+        remove_from_shortlist(season_code, drop)
+        st.rerun()
+
 
 
 def _load_optimisation_candidates(

@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fpl-app",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "streamlit",
+        "run",
+        "src/fpl_engine/ui/app.py",
+        "--server.port",
+        "8501",
+        "--server.headless",
+        "true"
+      ],
+      "port": 8501
+    }
+  ]
+}
