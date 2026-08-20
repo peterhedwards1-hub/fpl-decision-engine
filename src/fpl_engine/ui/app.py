@@ -600,14 +600,27 @@ def _editor(
     gameweek_number: int,
 ) -> None:
     player_lookup = {row["source_player_id"]: row for row in available}
+    prefill_key = f"editor-prefill-{season_code}-{gameweek_number}"
+    prefill = st.session_state.pop(prefill_key, None)
     defaults = (
-        [] if latest is None else [entry.source_player_id for entry in latest.snapshot.entries]
+        list(prefill["player_ids"])
+        if prefill is not None
+        else (
+            []
+            if latest is None
+            else [entry.source_player_id for entry in latest.snapshot.entries]
+        )
     )
+    selected_key = f"editor-selected-{season_code}-{gameweek_number}"
+    if prefill is not None or selected_key not in st.session_state:
+        st.session_state[selected_key] = [
+            player_id for player_id in defaults if player_id in player_lookup
+        ]
     selected_ids = st.multiselect(
         "Select exactly 15 players",
         options=list(player_lookup),
-        default=defaults,
         max_selections=15,
+        key=selected_key,
         format_func=lambda source_id: (
             f"{player_lookup[source_id]['web_name']} · "
             f"{player_lookup[source_id]['team_short_name']} · "
@@ -624,8 +637,36 @@ def _editor(
         if latest is None
         else {entry.source_player_id: entry for entry in latest.snapshot.entries}
     )
+    if prefill is not None and prefill.get("starting_player_ids"):
+        preferred_starters = set(prefill["starting_player_ids"])
+        bench_ids = list(prefill.get("bench_player_ids", ()))
+    elif prefill is not None:
+        # Squad Lab stores memberships only. Give the editor a legal-looking
+        # default XI and bench so the user has a concrete squad to review.
+        formation = {"GK": 1, "DEF": 3, "MID": 4, "FWD": 3}
+        preferred_starters = set()
+        for position, count in formation.items():
+            candidates = [
+                player_id
+                for player_id in selected_ids
+                if player_lookup[player_id]["position"] == position
+            ]
+            preferred_starters.update(candidates[:count])
+        bench_ids = [player_id for player_id in selected_ids if player_id not in preferred_starters]
+        bench_ids.sort(
+            key=lambda player_id: (
+                0 if player_lookup[player_id]["position"] == "GK" else 1,
+                selected_ids.index(player_id),
+            )
+        )
+    else:
+        preferred_starters = set(selected_ids[:11])
+        bench_ids = []
+    preferred_bench = {
+        player_id: index
+        for index, player_id in enumerate(bench_ids, 1)
+    }
     rows = []
-    default_starters = set(selected_ids[:11])
     for source_id in selected_ids:
         player = player_lookup[source_id]
         previous = old_entries.get(source_id)
@@ -647,9 +688,15 @@ def _editor(
                     else previous.selling_price_tenths / 10
                 ),
                 "Starter": (
-                    source_id in default_starters if previous is None else previous.is_starter
+                    source_id in preferred_starters
+                    if prefill is not None or previous is None
+                    else previous.is_starter
                 ),
-                "Bench order": (None if previous is None else previous.bench_order),
+                "Bench order": (
+                    preferred_bench.get(source_id)
+                    if prefill is not None
+                    else (None if previous is None else previous.bench_order)
+                ),
             }
         )
     st.write("Set the XI, substitute goalkeeper as bench 1, then outfield priority 2–4.")
@@ -675,12 +722,25 @@ def _editor(
     old_snapshot = None if latest is None else latest.snapshot
     captain_index = _option_index(
         role_options,
-        None if old_snapshot is None else old_snapshot.captain_source_player_id,
+        (
+            prefill.get("captain_id")
+            if prefill is not None
+            else (None if old_snapshot is None else old_snapshot.captain_source_player_id)
+        ),
     )
     vice_index = _option_index(
         role_options,
-        None if old_snapshot is None else old_snapshot.vice_captain_source_player_id,
+        (
+            prefill.get("vice_captain_id")
+            if prefill is not None
+            else (None if old_snapshot is None else old_snapshot.vice_captain_source_player_id)
+        ),
     )
+    captain_key = f"editor-captain-{season_code}-{gameweek_number}"
+    vice_key = f"editor-vice-{season_code}-{gameweek_number}"
+    if prefill is not None:
+        st.session_state[captain_key] = prefill.get("captain_id") or ""
+        st.session_state[vice_key] = prefill.get("vice_captain_id") or ""
 
     left, middle, right = st.columns(3)
     with left:
@@ -703,6 +763,7 @@ def _editor(
             "Captain",
             role_options,
             index=captain_index,
+            key=captain_key,
             format_func=lambda value: (
                 "Select captain" if not value else player_lookup[value]["web_name"]
             ),
@@ -711,6 +772,7 @@ def _editor(
             "Vice-captain",
             role_options,
             index=vice_index,
+            key=vice_key,
             format_func=lambda value: (
                 "Select vice-captain" if not value else player_lookup[value]["web_name"]
             ),
@@ -1055,6 +1117,15 @@ def _squad_lab(
             key="lab-budget",
         )
     with time_column:
+        no_time_limit = st.checkbox(
+            "No time limit",
+            value=False,
+            key="lab-no-time-limit",
+            help=(
+                "Search every configured restart and climb until the search "
+                "settles. This can take a long time."
+            ),
+        )
         seconds = st.number_input(
             "Time budget (seconds)",
             min_value=30,
@@ -1062,6 +1133,7 @@ def _squad_lab(
             value=300,
             step=30,
             key="lab-seconds",
+            disabled=no_time_limit,
             help=(
                 "The search stops here and returns its best squad. Exact "
                 "valuation is slow, so a wide search needs minutes, not seconds."
@@ -1103,7 +1175,9 @@ def _squad_lab(
         pass
 
     if not st.button("Search", type="primary", key="lab-run"):
-        _squad_lab_shortlist(season_code, by_id, baseline_ids, baseline_value)
+        _squad_lab_shortlist(
+            season_code, gameweek_number, by_id, baseline_ids, baseline_value
+        )
         return
     try:
         request = SquadLabRequest(
@@ -1111,7 +1185,7 @@ def _squad_lab(
             required_player_ids=frozenset(required),
             forbidden_player_ids=frozenset(forbidden),
             club_limits=tuple(club_limits),
-            time_budget_seconds=float(seconds),
+            time_budget_seconds=None if no_time_limit else float(seconds),
             kicks=int(kicks),
         )
     except ValueError as error:
@@ -1187,11 +1261,14 @@ def _squad_lab(
                 "that keep returning the same value are evidence the search has "
                 "settled; they are not proof it found the best squad."
             )
-    _squad_lab_shortlist(season_code, by_id, baseline_ids, baseline_value)
+    _squad_lab_shortlist(
+        season_code, gameweek_number, by_id, baseline_ids, baseline_value
+    )
 
 
 def _squad_lab_shortlist(
     season_code: str,
+    gameweek_number: int,
     by_id: dict,
     baseline_ids: tuple[str, ...],
     baseline_value: float | None,
@@ -1205,6 +1282,38 @@ def _squad_lab_shortlist(
 
     st.divider()
     st.markdown("#### Shortlist")
+    recommendation_path = Path("data/models/preseason-final-squad-2026-27.json")
+    if recommendation_path.exists():
+        try:
+            recommendation = json.loads(
+                recommendation_path.read_text(encoding="utf-8")
+            )["final_squad"]
+        except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+            st.error(f"Could not load the 430.403 recommendation: {error}")
+        else:
+            st.button(
+                "Load 430.403 recommendation into Team editor",
+                key="lab-load-main-recommendation",
+                on_click=_queue_editor_prefill,
+                kwargs={
+                    "season_code": season_code,
+                    "gameweek_number": gameweek_number,
+                    "player_ids": [
+                        str(player["source_player_id"])
+                        for player in recommendation["players"]
+                    ],
+                    "starting_player_ids": recommendation.get(
+                        "starting_player_ids", ()
+                    ),
+                    "bench_player_ids": recommendation.get("bench_player_ids", ()),
+                    "captain_id": recommendation.get("captain_id"),
+                    "vice_captain_id": recommendation.get("vice_captain_id"),
+                },
+            )
+        st.caption(
+            "Loading only fills Team editor. Review prices and manager details, "
+            "then click Validate and save snapshot."
+        )
     result = st.session_state.get("lab-result")
     if result is not None:
         name_column, save_column = st.columns([3, 1])
@@ -1277,6 +1386,23 @@ def _squad_lab_shortlist(
         "Out and In are relative to the current recommended squad. A squad that "
         "did not converge was still improving when its time budget ran out."
     )
+    st.markdown("#### Load a saved Lab squad")
+    st.caption(
+        "Each button names the exact shortlist entry it will load; nothing is "
+        "saved until you confirm it in Team editor."
+    )
+    for index, entry in enumerate(entries):
+        label = str(entry.get("name", "Unnamed squad"))
+        st.button(
+            f"Load '{label}' into Team editor",
+            key=f"lab-load-{index}-{label}",
+            on_click=_queue_editor_prefill,
+            kwargs={
+                "season_code": season_code,
+                "gameweek_number": gameweek_number,
+                "player_ids": entry.get("player_ids", ()),
+            },
+        )
     drop = st.selectbox(
         "Remove an entry",
         ["-"] + [entry["name"] for entry in entries],
@@ -1285,6 +1411,32 @@ def _squad_lab_shortlist(
     if drop != "-" and st.button("Remove", key="lab-drop-go"):
         remove_from_shortlist(season_code, drop)
         st.rerun()
+
+
+def _queue_editor_prefill(
+    season_code: str,
+    gameweek_number: int,
+    *,
+    player_ids: object,
+    starting_player_ids: object = (),
+    bench_player_ids: object = (),
+    captain_id: str | None = None,
+    vice_captain_id: str | None = None,
+) -> None:
+    """Queue a squad for Team editor without persisting manager state."""
+
+    st.session_state[f"editor-prefill-{season_code}-{gameweek_number}"] = {
+        "player_ids": [str(player_id) for player_id in player_ids],
+        "starting_player_ids": [
+            str(player_id) for player_id in starting_player_ids
+        ],
+        "bench_player_ids": [str(player_id) for player_id in bench_player_ids],
+        "captain_id": None if captain_id is None else str(captain_id),
+        "vice_captain_id": None if vice_captain_id is None else str(vice_captain_id),
+    }
+    st.session_state["advanced-view"] = "Team editor"
+    st.session_state.pop(f"editor-selected-{season_code}-{gameweek_number}", None)
+    st.session_state.pop(f"squad-grid-{season_code}-{gameweek_number}", None)
 
 
 

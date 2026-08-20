@@ -60,7 +60,7 @@ class SquadLabRequest:
     required_player_ids: frozenset[str] = frozenset()
     forbidden_player_ids: frozenset[str] = frozenset()
     club_limits: tuple[ClubLimit, ...] = ()
-    time_budget_seconds: float = 300.0
+    time_budget_seconds: float | None = 300.0
     kicks: int = 3
     kick_size: int = 3
     seed: int = 20260812
@@ -68,7 +68,7 @@ class SquadLabRequest:
     def __post_init__(self) -> None:
         if self.budget_tenths <= 0:
             raise ValueError("Budget must be positive")
-        if self.time_budget_seconds <= 0:
+        if self.time_budget_seconds is not None and self.time_budget_seconds <= 0:
             raise ValueError("Time budget must be positive")
         if self.kicks < 0:
             raise ValueError("Kick count cannot be negative")
@@ -347,9 +347,16 @@ def run_squad_lab_search(
     def announce(message: str) -> None:
         if progress is not None:
             elapsed = time.monotonic() - started
-            progress(message, min(1.0, elapsed / request.time_budget_seconds))
+            fraction = (
+                0.0
+                if request.time_budget_seconds is None
+                else min(1.0, elapsed / request.time_budget_seconds)
+            )
+            progress(message, fraction)
 
     def remaining() -> float:
+        if request.time_budget_seconds is None:
+            return float("inf")
         return request.time_budget_seconds - (time.monotonic() - started)
 
     announce("Building a legal starting squad")
