@@ -1185,7 +1185,9 @@ def _squad_lab(
             required_player_ids=frozenset(required),
             forbidden_player_ids=frozenset(forbidden),
             club_limits=tuple(club_limits),
-            time_budget_seconds=None if no_time_limit else float(seconds),
+            time_budget_seconds=(
+                None if no_time_limit or seconds is None else float(seconds)
+            ),
             kicks=int(kicks),
         )
     except ValueError as error:
